@@ -1,6 +1,6 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, text, ForeignKey, Index, CheckConstraint
+from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, text, ForeignKey, Index, CheckConstraint, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -86,6 +86,9 @@ class RoomUser(Base):
 
 
 # Pydantic 模型
+class RoomCreate(BaseModel):
+    room_id: str
+
 class BossRecordCreate(BaseModel):
     room_id: str
     channel: int
@@ -119,32 +122,60 @@ class ConnectionManager:
     def __init__(self):
         # room_id -> set of WebSocket connections
         self.room_connections: Dict[str, Set[WebSocket]] = {}
-        # websocket -> room_id mapping
-        self.connection_rooms: Dict[WebSocket, str] = {}
+        # websocket -> (room_id, user_session) mapping
+        self.connection_info: Dict[WebSocket, tuple[str, str]] = {}
 
-    async def connect(self, websocket: WebSocket, room_id: str):
+    async def connect(self, websocket: WebSocket, room_id: str, user_session: str, db: Session):
         await websocket.accept()
 
         if room_id not in self.room_connections:
             self.room_connections[room_id] = set()
-
         self.room_connections[room_id].add(websocket)
-        self.connection_rooms[websocket] = room_id
+        self.connection_info[websocket] = (room_id, user_session)
 
-        # 更新資料庫
-        await self.update_room_user_count(room_id)
+        logging.info(f"User {user_session} connecting to room {room_id}. Current connections: {len(self.room_connections[room_id])}")
 
-    def disconnect(self, websocket: WebSocket):
-        room_id = self.connection_rooms.get(websocket)
-        if room_id:
+        # 將用戶添加到 room_users 表
+        try:
+            room_user = db.query(RoomUser).filter_by(room_id=room_id, user_session=user_session).first()
+            if not room_user:
+                new_user = RoomUser(room_id=room_id, user_session=user_session)
+                db.add(new_user)
+                logging.info(f"Added new user {user_session} to room {room_id} in DB.")
+            else:
+                room_user.last_seen = datetime.utcnow()
+                logging.info(f"Updated last_seen for user {user_session} in room {room_id}.")
+            db.commit()
+            logging.info(f"DB commit successful for user {user_session} in room {room_id}.")
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Error adding/updating user {user_session} in room {room_id} to DB: {e}")
+
+        # 更新資料庫和廣播用戶數
+        await self.update_room_user_count(room_id, db)
+
+    async def disconnect(self, websocket: WebSocket, db: Session):
+        room_id, user_session = self.connection_info.get(websocket, (None, None))
+        if room_id and user_session:
+            logging.info(f"User {user_session} disconnecting from room {room_id}.")
             self.room_connections[room_id].discard(websocket)
-            del self.connection_rooms[websocket]
+            del self.connection_info[websocket]
+
+            # 從 room_users 表中刪除用戶
+            try:
+                deleted_count = db.query(RoomUser).filter_by(room_id=room_id, user_session=user_session).delete()
+                db.commit()
+                logging.info(f"Deleted {deleted_count} user {user_session} from room {room_id} in DB.")
+            except Exception as e:
+                db.rollback()
+                logging.error(f"Error deleting user {user_session} from room {room_id} from DB: {e}")
 
             if not self.room_connections[room_id]:
                 del self.room_connections[room_id]
+                logging.info(f"Room {room_id} has no more active WebSocket connections.")
 
             # 異步更新用戶數量
-            asyncio.create_task(self.update_room_user_count(room_id))
+            asyncio.create_task(self.update_room_user_count(room_id, db))
 
     async def broadcast_to_room(self, room_id: str, message: dict):
         if room_id in self.room_connections:
@@ -160,13 +191,14 @@ class ConnectionManager:
             # 清理斷開的連接
             for connection in disconnected:
                 self.room_connections[room_id].discard(connection)
-                if connection in self.connection_rooms:
-                    del self.connection_rooms[connection]
+                if connection in self.connection_info:
+                    del self.connection_info[connection]
 
-    async def update_room_user_count(self, room_id: str):
-        user_count = len(self.room_connections.get(room_id, set()))
+    async def update_room_user_count(self, room_id: str, db: Session):
+        # 從 room_users 表中獲取實際的活躍用戶數
+        user_count = db.query(RoomUser).filter_by(room_id=room_id).count()
+        logging.info(f"Updating user count for room {room_id}. Count from DB: {user_count}")
 
-        db = SessionLocal()
         try:
             # 更新房間用戶數
             room = db.query(Room).filter(Room.room_id == room_id).first()
@@ -174,14 +206,19 @@ class ConnectionManager:
                 room.active_users = user_count
                 room.last_active = datetime.utcnow()
                 db.commit()
+                logging.info(f"Room {room_id} active_users updated to {user_count}.")
 
                 # 廣播用戶數更新
                 await self.broadcast_to_room(room_id, {
                     "type": "user_count_update",
                     "count": user_count
                 })
-        finally:
-            db.close()
+                logging.info(f"Broadcasted user count {user_count} for room {room_id}.")
+            else:
+                logging.warning(f"Room {room_id} not found when updating user count.")
+        except Exception as e:
+            db.rollback()
+            logging.error(f"Error updating room user count for room {room_id}: {e}")
 
 
 # 初始化
@@ -228,7 +265,8 @@ def get_db():
 # WebSocket 端點
 @app.websocket("/ws/{room_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = Depends(get_db)):
-    await manager.connect(websocket, room_id)
+    user_session = str(uuid.uuid4())  # 為每個連接生成唯一的 session ID
+    await manager.connect(websocket, room_id, user_session, db)
 
     try:
         # 確保房間存在
@@ -237,13 +275,17 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = D
             room = Room(room_id=room_id)
             db.add(room)
             db.commit()
+            db.refresh(room)
 
-        # 發送當前房間狀態
+        # 發送當前房間狀態和用戶數
         current_state = get_room_state(db, room_id)
         await websocket.send_text(json.dumps({
             "type": "room_state",
-            "data": [record.__dict__ for record in current_state]
+            "data": current_state
         }, default=str))
+        
+        # 立即發送用戶數更新
+        await manager.update_room_user_count(room_id, db)
 
         # 處理消息
         while True:
@@ -254,17 +296,41 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = D
                 await websocket.send_text(json.dumps({"type": "pong"}))
 
     except WebSocketDisconnect:
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket, db)
     except Exception as e:
         logging.error(f"WebSocket error: {e}")
-        manager.disconnect(websocket)
+        await manager.disconnect(websocket, db)
 
 
 # REST API 端點
 
+@app.post("/api/room")
+async def create_room(room_data: RoomCreate, db: Session = Depends(get_db)):
+    try:
+        room = db.query(Room).filter(Room.room_id == room_data.room_id).first()
+        if room:
+            return {"message": "Room already exists", "room_id": room.room_id}
+        
+        new_room = Room(room_id=room_data.room_id)
+        db.add(new_room)
+        db.commit()
+        db.refresh(new_room)
+        return {"message": "Room created successfully", "room_id": new_room.room_id}
+    except Exception as e:
+        logging.error(f"Create room error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to create room")
+
 @app.post("/api/record-boss")
 async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
     try:
+        # 確保房間存在
+        room = db.query(Room).filter(Room.room_id == record.room_id).first()
+        if not room:
+            room = Room(room_id=record.room_id)
+            db.add(room)
+            db.commit()
+            db.refresh(room) # 刷新以確保 room 對象是最新的
+
         # 獲取 BOSS 類型
         boss_type = db.query(BossType).filter(BossType.boss_name == record.boss_name).first()
         if not boss_type:
@@ -273,44 +339,64 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
         # 計算重生時間
         respawn_min_time = None
         respawn_max_time = None
+        now = datetime.utcnow()
+        base_time = now # Default base time
 
         if record.status == "killed":
-            now = datetime.utcnow()
-            respawn_min_time = now + timedelta(minutes=boss_type.min_respawn_minutes)
-            respawn_max_time = now + timedelta(minutes=boss_type.max_respawn_minutes)
+            # When killed, the recorded_at for this new record is 'now'
+            # And respawn times are calculated from 'now'
+            base_time = now
+        elif record.status == "respawning":
+            # When respawning, we need to find the recorded_at of the *last* 'killed' record
+            last_killed_record = db.query(BossRecord).filter(
+                BossRecord.room_id == record.room_id,
+                BossRecord.channel == record.channel,
+                BossRecord.boss_name == record.boss_name,
+                BossRecord.status == "killed"
+            ).order_by(BossRecord.recorded_at.desc()).first()
 
-        # 創建記錄
-        boss_record = BossRecord(
+            if last_killed_record:
+                base_time = last_killed_record.recorded_at
+            else:
+                # Fallback if no previous killed record is found (shouldn't happen if logic is followed)
+                base_time = now
+
+        if record.status == "killed" or record.status == "respawning":
+            respawn_min_time = base_time + timedelta(minutes=boss_type.min_respawn_minutes)
+            respawn_max_time = base_time + timedelta(minutes=boss_type.max_respawn_minutes)
+
+        # Create record
+        new_boss_record = BossRecord( # Renamed to new_boss_record to avoid confusion
             room_id=record.room_id,
             channel=record.channel,
             boss_name=record.boss_name,
             status=record.status,
+            recorded_at=now, # The actual recorded_at for this new record
             respawn_min_time=respawn_min_time,
             respawn_max_time=respawn_max_time
         )
 
-        db.add(boss_record)
+        db.add(new_boss_record)
         db.commit()
-        db.refresh(boss_record)
+        db.refresh(new_boss_record)
 
-        # 更新房間活動時間
-        room = db.query(Room).filter(Room.room_id == record.room_id).first()
-        if room:
-            room.last_active = datetime.utcnow()
-            db.commit()
+        # Update room last_active
+        room.last_active = datetime.utcnow()
+        db.commit()
 
-        # 廣播更新
-        record_dict = boss_record.__dict__.copy()
+        # Broadcast update
+        record_dict = new_boss_record.__dict__.copy()
         record_dict.update({
             "min_respawn_minutes": boss_type.min_respawn_minutes,
             "max_respawn_minutes": boss_type.max_respawn_minutes,
-            "current_status": get_current_status(boss_record, boss_type)
+            "current_status": get_current_status(new_boss_record, boss_type)
         })
 
         await manager.broadcast_to_room(record.room_id, {
             "type": "boss_update",
             "data": record_dict
         })
+        logging.info(f"Broadcasted boss_update for room {record.room_id}: {record_dict}")
 
         return {"success": True, "data": record_dict}
 
@@ -362,7 +448,7 @@ def get_room_state(db: Session, room_id: str):
     subquery = db.query(
         BossRecord.channel,
         BossRecord.boss_name,
-        db.func.max(BossRecord.id).label('max_id')
+        func.max(BossRecord.id).label('max_id')
     ).filter(
         BossRecord.room_id == room_id
     ).group_by(
@@ -389,13 +475,23 @@ def get_room_state(db: Session, room_id: str):
 
 
 def get_current_status(boss_record: BossRecord, boss_type: BossType) -> str:
+    now = datetime.utcnow()
+
     if boss_record.status == "killed":
-        now = datetime.utcnow()
         if boss_record.respawn_min_time and now >= boss_record.respawn_min_time:
             return "may_respawn"
-        elif boss_record.respawn_min_time and now < boss_record.respawn_min_time:
+        elif boss_record.respawn_max_time and now < boss_record.respawn_max_time:
             return "respawning"
-
+        else:
+            # If killed but outside respawn window, consider it alive or not_found based on context
+            # For simplicity, let's assume it's still respawning if within max time, otherwise may_respawn
+            return "respawning" if boss_record.respawn_max_time and now < boss_record.respawn_max_time else "may_respawn"
+    elif boss_record.status == "alive":
+        return "alive"
+    elif boss_record.status == "not_found":
+        return "not_found"
+    
+    # Fallback for any other status or unexpected scenario
     return boss_record.status
 
 

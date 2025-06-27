@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-gray-100">
+  <div class="min-h-screen bg-gray-900">
     <div class="container mx-auto px-4 py-8">
       <!-- 標題 -->
       <AppHeader />
@@ -55,6 +55,7 @@ onMounted(async () => {
 
     // 載入BOSS類型
     const types = await ApiService.getBossTypes()
+    console.log('BOSS類型:', types)
     bossStore.setBossTypes(types)
 
     // 連接 WebSocket

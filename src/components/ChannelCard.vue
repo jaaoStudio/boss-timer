@@ -7,6 +7,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
 
 const props = defineProps({
@@ -17,29 +18,36 @@ const props = defineProps({
 })
 
 const bossStore = useBossStore()
+const { bossRecords, selectedBossName } = storeToRefs(bossStore)
 
 const record = computed(() => {
-  return bossStore.recordsByChannel[props.channelNumber]?.find(
-    r => r.boss_name === bossStore.selectedBossName
+  const foundRecord = bossRecords.value.find(
+    r => r.channel === props.channelNumber && r.boss_name === selectedBossName.value
   )
+  console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Found record`, foundRecord)
+  return foundRecord
 })
 
-const status = computed(() => record.value?.current_status || 'unknown')
+const status = computed(() => {
+  const currentStatus = record.value?.current_status || 'unknown'
+  console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Status`, currentStatus)
+  return currentStatus
+})
 
 const statusMapping = {
-  alive: { text: 'Alive', bg: 'bg-green-200 text-green-800' },
-  killed: { text: 'Killed', bg: 'bg-red-200 text-red-800' },
-  may_respawn: { text: 'May Respawn', bg: 'bg-yellow-200 text-yellow-800' },
-  respawning: { text: 'Respawning', bg: 'bg-blue-200 text-blue-800' },
-  not_found: { text: 'Not Found', bg: 'bg-gray-200 text-gray-800' },
-  unknown: { text: 'Unknown', bg: 'bg-gray-100 text-gray-500' },
+  alive: { text: 'Alive', bg: 'bg-green-700 text-white' },
+  killed: { text: 'Killed', bg: 'bg-red-700 text-white' },
+  may_respawn: { text: 'May Respawn', bg: 'bg-yellow-700 text-white' },
+  respawning: { text: 'Respawning', bg: 'bg-blue-700 text-white' },
+  not_found: { text: 'Not Found', bg: 'bg-gray-700 text-white' },
+  unknown: { text: 'Unknown', bg: 'bg-gray-600 text-gray-300' },
 }
 
 const statusBackgroundClass = computed(() => statusMapping[status.value]?.bg || statusMapping.unknown.bg)
 const statusText = computed(() => statusMapping[status.value]?.text || statusMapping.unknown.text)
 
 const selectChannel = () => {
-  // You can add logic here to quickly select the channel in the control panel
+  bossStore.setSelectedChannel(props.channelNumber)
 }
 
 </script>

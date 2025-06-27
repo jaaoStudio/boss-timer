@@ -1,11 +1,11 @@
 <template>
-  <div class="flex items-center justify-center min-h-screen bg-gray-100">
-    <div class="w-full max-w-md p-8 space-y-6 bg-white rounded-lg shadow-md">
+  <div class="flex items-center justify-center min-h-screen bg-gray-900">
+    <div class="w-full max-w-md p-8 space-y-6 bg-gray-800 rounded-lg shadow-md">
       <div>
-        <h2 class="text-3xl font-extrabold text-center text-gray-900">
+        <h2 class="text-3xl font-extrabold text-center text-white">
           BOSS Timer
         </h2>
-        <p class="mt-2 text-sm text-center text-gray-600">
+        <p class="mt-2 text-sm text-center text-gray-300">
           Create a new room or join an existing one to start tracking.
         </p>
       </div>
@@ -20,10 +20,10 @@
         </div>
         <div class="relative">
           <div class="absolute inset-0 flex items-center">
-            <div class="w-full border-t border-gray-300"></div>
+            <div class="w-full border-t border-gray-700"></div>
           </div>
           <div class="relative flex justify-center text-sm">
-            <span class="px-2 text-gray-500 bg-white"> Or join with a code </span>
+            <span class="px-2 text-gray-400 bg-gray-800"> Or join with a code </span>
           </div>
         </div>
         <div class="flex space-x-2">
@@ -51,6 +51,7 @@
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRoomStore } from '@/stores/roomStore'
+import ApiService from '@/services/apiService'
 
 const router = useRouter()
 const roomStore = useRoomStore()
@@ -65,10 +66,16 @@ const generateRoomId = (length = 6) => {
   return result
 }
 
-const createRoom = () => {
+const createRoom = async () => {
   const newRoomId = generateRoomId()
-  roomStore.setRoomId(newRoomId)
-  router.push({ name: 'BossTracker', params: { roomId: newRoomId } })
+  try {
+    await ApiService.createRoom(newRoomId)
+    roomStore.setRoomId(newRoomId)
+    router.push({ name: 'BossTracker', params: { roomId: newRoomId } })
+  } catch (error) {
+    console.error('Error creating room:', error)
+    alert('Failed to create room. Please try again.')
+  }
 }
 
 const joinRoom = () => {

@@ -1,6 +1,6 @@
 import { bossService } from '@/axios';
 
-const WS_URL = import.meta.env.VITE_WS_URL || `wss://${window.location.host}`;
+const WS_URL = `wss://10.5.71.159:1254`;
 
 class ApiService {
   // 獲取 BOSS 類型
@@ -18,6 +18,11 @@ class ApiService {
     const params = { limit };
     if (bossName) params.boss_name = bossName;
     return bossService.get(`/room/${roomId}/history`, { params }).then(res => res.data);
+  }
+
+  // 建立房間
+  createRoom(roomId) {
+    return bossService.post('/room', { room_id: roomId }).then(res => res.data);
   }
 
   // WebSocket 連接

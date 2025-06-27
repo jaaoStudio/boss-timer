@@ -1,16 +1,16 @@
 <template>
-  <div class="bg-gray-50 rounded-lg p-3 transition-all duration-200 ease-in-out hover:bg-gray-100">
+  <div class="bg-gray-700 rounded-lg p-3 transition-all duration-200 ease-in-out hover:bg-gray-600">
     <div class="flex justify-between items-center">
       <div class="flex items-center space-x-3">
         <StatusBadge :status="record.status" />
         <div>
-          <span class="font-semibold text-gray-800">{{ record.boss_name }}</span>
-          <span class="text-gray-500 font-mono">- CH{{ record.channel }}</span>
+          <span class="font-semibold text-white">{{ record.boss_name }}</span>
+          <span class="text-gray-300 font-mono">- CH{{ record.channel }}</span>
         </div>
       </div>
-      <div class="text-sm text-gray-600">{{ formattedTime }}</div>
+      <div class="text-sm text-gray-400">{{ formattedTime }}</div>
     </div>
-    <div v-if="record.respawn_min_time" class="text-xs text-gray-500 mt-1 pl-10">
+    <div v-if="record.respawn_min_time" class="text-xs text-gray-400 mt-1 pl-10">
       Respawn Window: {{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}
     </div>
   </div>

@@ -38,16 +38,16 @@ const props = defineProps({
 
 const typeClasses = {
   priority: {
-    container: 'bg-green-100',
-    title: 'text-green-800',
-    item: 'bg-green-200 text-green-900',
-    empty: 'text-green-700',
+    container: 'bg-green-800',
+    title: 'text-white',
+    item: 'bg-green-700 text-white',
+    empty: 'text-green-200',
   },
   avoid: {
-    container: 'bg-red-100',
-    title: 'text-red-800',
-    item: 'bg-red-200 text-red-900',
-    empty: 'text-red-700',
+    container: 'bg-red-800',
+    title: 'text-white',
+    item: 'bg-red-700 text-white',
+    empty: 'text-red-200',
   },
 }
 

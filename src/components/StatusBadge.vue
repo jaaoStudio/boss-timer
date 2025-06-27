@@ -12,12 +12,12 @@ const props = defineProps({
 })
 
 const statusConfig = {
-  alive: { text: 'Alive', class: 'bg-green-100 text-green-800' },
-  killed: { text: 'Killed', class: 'bg-red-100 text-red-800' },
-  not_found: { text: 'Not Found', class: 'bg-gray-100 text-gray-800' },
-  respawning: { text: 'Respawning', class: 'bg-yellow-100 text-yellow-800' },
-  may_respawn: { text: 'May Respawn', class: 'bg-blue-100 text-blue-800' },
-  unknown: { text: 'Unknown', class: 'bg-gray-100 text-gray-800' }
+  alive: { text: 'Alive', class: 'bg-green-700 text-white' },
+  killed: { text: 'Killed', class: 'bg-red-700 text-white' },
+  not_found: { text: 'Not Found', class: 'bg-gray-700 text-white' },
+  respawning: { text: 'Respawning', class: 'bg-yellow-700 text-white' },
+  may_respawn: { text: 'May Respawn', class: 'bg-blue-700 text-white' },
+  unknown: { text: 'Unknown', class: 'bg-gray-700 text-white' }
 }
 
 const statusText = computed(() => {
@@ -25,6 +25,6 @@ const statusText = computed(() => {
 })
 
 const badgeClass = computed(() => {
-  return statusConfig[props.status]?.class || 'bg-gray-100 text-gray-800'
+  return statusConfig[props.status]?.class || 'bg-gray-700 text-white'
 })
 </script>

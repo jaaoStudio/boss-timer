@@ -1,14 +1,14 @@
 <template>
-  <div class="bg-white rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-gray-800 mb-4">記錄 BOSS 狀態</h2>
+  <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-semibold text-white mb-4">記錄 BOSS 狀態</h2>
 
     <form @submit.prevent="recordBoss" class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <!-- 頻道選擇 -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">頻道</label>
+        <label class="block text-sm font-medium text-gray-300 mb-1">頻道</label>
         <select
           v-model="form.channel"
-          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
           <option value="">選擇頻道</option>
@@ -18,15 +18,15 @@
 
       <!-- BOSS選擇 -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">BOSS</label>
+        <label class="block text-sm font-medium text-gray-300 mb-1">BOSS</label>
         <select
           v-model="form.boss_name"
           @change="bossStore.setSelectedBossName(form.boss_name)"
-          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
           <option value="">選擇 BOSS</option>
-          <option v-for="boss in bossStore.bossTypes" :key="boss.boss_name" :value="boss.boss_name">
+          <option v-for="boss in bossTypes" :key="boss.boss_name" :value="boss.boss_name">
             {{ boss.boss_name }}
           </option>
         </select>
@@ -34,10 +34,10 @@
 
       <!-- 狀態選擇 -->
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">狀態</label>
+        <label class="block text-sm font-medium text-gray-300 mb-1">狀態</label>
         <select
           v-model="form.status"
-          class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
           <option value="">選擇狀態</option>
@@ -52,7 +52,7 @@
         <button
           type="submit"
           :disabled="!canSubmit || loading"
-          class="w-full px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed"
+          class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
         >
           {{ loading ? '記錄中...' : '記錄狀態' }}
         </button>
@@ -62,7 +62,8 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
 import { useBossStore } from '@/stores/bossStore'
 import ApiService from '@/services/apiService.js'
@@ -70,16 +71,24 @@ import ApiService from '@/services/apiService.js'
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
 
+const { roomId } = storeToRefs(roomStore)
+const { bossTypes, selectedChannel } = storeToRefs(bossStore)
+
 const form = ref({
-  channel: '',
+  channel: selectedChannel.value || '',
   boss_name: '',
   status: ''
+})
+
+// 監聽 selectedChannel 的變化並更新 form.channel
+watch(selectedChannel, (newVal) => {
+  form.value.channel = newVal
 })
 
 const loading = ref(false)
 
 const canSubmit = computed(() => {
-  return roomStore.roomId &&
+  return roomId.value &&
          form.value.channel &&
          form.value.boss_name &&
          form.value.status
@@ -91,7 +100,7 @@ const recordBoss = async () => {
   loading.value = true
   try {
     await ApiService.recordBoss({
-      room_id: roomStore.roomId,
+      room_id: roomId.value,
       channel: parseInt(form.value.channel),
       boss_name: form.value.boss_name,
       status: form.value.status

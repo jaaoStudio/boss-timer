@@ -1,6 +1,6 @@
 <template>
   <span :class="timeClass" class="font-mono font-medium">
-    {{ formattedTime }}
+    {{ displayTime }}
   </span>
 </template>
 
@@ -9,11 +9,19 @@ import { ref, computed } from 'vue'
 import { useTimer } from '../composables/useTimer'
 
 const props = defineProps({
-  targetTime: String
+  targetTime: String,
+  prefix: { // 新增 prefix prop
+    type: String,
+    default: ''
+  }
 })
 
 const targetTimeRef = computed(() => props.targetTime)
 const { timeLeft, formattedTime } = useTimer(targetTimeRef)
+
+const displayTime = computed(() => {
+  return props.prefix ? `${props.prefix} ${formattedTime.value}` : formattedTime.value
+})
 
 const timeClass = computed(() => {
   if (timeLeft.value <= 0) return 'text-green-600'

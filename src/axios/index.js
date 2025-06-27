@@ -60,7 +60,7 @@ const setAxiosInterceptor = (axiosInstance) => {
  * 若有需要部屬到不同的網域，可以透過環境變數來設定 baseURL
  */
 const bossService = new AxiosInstance({
-  baseURL: import.meta.env.VITE_APP_BASE_URL,
+  baseURL: `${import.meta.env.VITE_APP_BASE_URL}`,
 });
 
 export { bossService };

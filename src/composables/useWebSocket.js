@@ -1,53 +1,68 @@
-import { ref, onMounted, onUnmounted } from 'vue'
-import { useRoomStore } from '@/stores/roomStore'
-import { useBossStore } from '@/stores/bossStore'
+import {onUnmounted, ref} from 'vue'
+import {storeToRefs} from 'pinia'
+import {useRoomStore} from '@/stores/roomStore'
+import {useBossStore} from '@/stores/bossStore'
 import ApiService from '@/services/apiService.js'
 
 export function useWebSocket() {
   const roomStore = useRoomStore()
   const bossStore = useBossStore()
+
+  const { ws, isConnected, isManualDisconnect } = storeToRefs(roomStore)
+
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
   const reconnectDelay = ref(1000)
 
   const connect = (roomId) => {
-    if (roomStore.ws) {
-      roomStore.ws.close()
+    if (ws.value) {
+      // 在關閉舊的 WebSocket 之前，設定手動斷開標誌，防止其觸發重連
+      roomStore.setManualDisconnect(true);
+      if (ws.value.pingInterval) {
+        clearInterval(ws.value.pingInterval);
+      }
+      ws.value.close();
+      roomStore.setWebSocket(null); // 立即清除舊的 WebSocket 實例
+      roomStore.setConnected(false);
     }
 
-    const ws = ApiService.createWebSocket(roomId)
-    roomStore.setWebSocket(ws)
+    const newWs = ApiService.createWebSocket(roomId)
+    roomStore.setWebSocket(newWs)
 
-    ws.onopen = () => {
+    newWs.onopen = () => {
       console.log('WebSocket connected')
       roomStore.setConnected(true)
       reconnectAttempts.value = 0
       reconnectDelay.value = 1000
+      roomStore.setManualDisconnect(false) // 新連線成功時重置標誌
     }
 
-    ws.onmessage = (event) => {
+    newWs.onmessage = (event) => {
       const message = JSON.parse(event.data)
       handleMessage(message)
     }
 
-    ws.onclose = () => {
+    newWs.onclose = () => {
       console.log('WebSocket disconnected')
       roomStore.setConnected(false)
-      attemptReconnect(roomId)
+      if (!isManualDisconnect.value) { // 只有在非手動斷開時才嘗試重連
+        attemptReconnect(roomId)
+      } else {
+        console.log('Manual disconnect, no reconnect attempt.')
+        roomStore.setManualDisconnect(false) // 重置標誌
+      }
     }
 
-    ws.onerror = (error) => {
+    newWs.onerror = (error) => {
       console.error('WebSocket error:', error)
     }
 
     // 心跳機制
-    const pingInterval = setInterval(() => {
-      if (ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'ping' }))
+    newWs.pingInterval = setInterval(() => {
+      if (newWs.readyState === WebSocket.OPEN) {
+        newWs.send(JSON.stringify({type: 'ping'}))
       }
     }, 30000)
-
-    ws.pingInterval = pingInterval
   }
 
   const handleMessage = (message) => {
@@ -79,11 +94,12 @@ export function useWebSocket() {
   }
 
   const disconnect = () => {
-    if (roomStore.ws) {
-      if (roomStore.ws.pingInterval) {
-        clearInterval(roomStore.ws.pingInterval)
+    if (ws.value) {
+      roomStore.setManualDisconnect(true) // 設定手動斷開標誌
+      if (ws.value.pingInterval) {
+        clearInterval(ws.value.pingInterval)
       }
-      roomStore.ws.close()
+      ws.value.close()
       roomStore.setWebSocket(null)
       roomStore.setConnected(false)
     }
