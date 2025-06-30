@@ -5,8 +5,8 @@
       <div v-for="record in channels" :key="record.id" class="p-2 rounded-md text-center" :class="itemClass">
         <div class="font-semibold">CH {{ record.channel }}</div>
         <div class="text-xs">
-          <CountdownTimer v-if="type === 'priority'" :target-time="record.respawn_min_time" :prefix="'in'" />
-          <CountdownTimer v-if="type === 'avoid'" :target-time="record.respawn_max_time" :prefix="'until'" />
+          <CountdownTimer v-if="type === 'priority'" :target-time="record.respawn_max_time" :prefix="'until'" @timer-end="handleTimerEnd(record, record.respawn_max_time)" />
+          <CountdownTimer v-if="type === 'avoid'" :target-time="record.respawn_min_time" :prefix="'in'" @timer-end="handleTimerEnd(record, record.respawn_min_time)" />
         </div>
       </div>
     </div>
@@ -19,6 +19,7 @@
 <script setup>
 import { computed } from 'vue'
 import CountdownTimer from './CountdownTimer.vue'
+import { useBossStore } from '@/stores/bossStore'
 
 const props = defineProps({
   title: {
@@ -35,6 +36,12 @@ const props = defineProps({
     validator: (value) => ['priority', 'avoid'].includes(value),
   },
 })
+
+const bossStore = useBossStore()
+
+const handleTimerEnd = (record, endedTime) => {
+  bossStore.updateBossStatusOnTimerEnd(record, endedTime)
+}
 
 const typeClasses = {
   priority: {

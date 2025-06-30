@@ -61,7 +61,7 @@ class BossRecord(Base):
 
     # 約束
     __table_args__ = (
-        CheckConstraint('channel >= 1 AND channel <= 30', name='check_channel_range'),
+        CheckConstraint('channel >= 1', name='check_channel_range'),
         CheckConstraint("status IN ('alive', 'killed', 'not_found')", name='check_status_values'),
         Index('idx_boss_records_room_channel', 'room_id', 'channel'),
         Index('idx_boss_records_room_boss', 'room_id', 'boss_name'),
@@ -102,9 +102,9 @@ class BossRecordResponse(BaseModel):
     channel: int
     boss_name: str
     status: str
-    recorded_at: datetime
-    respawn_min_time: Optional[datetime]
-    respawn_max_time: Optional[datetime]
+    recorded_at: str
+    respawn_min_time: Optional[str]
+    respawn_max_time: Optional[str]
     current_status: str
     min_respawn_minutes: int
     max_respawn_minutes: int
@@ -385,20 +385,29 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
         db.commit()
 
         # Broadcast update
-        record_dict = new_boss_record.__dict__.copy()
-        record_dict.update({
-            "min_respawn_minutes": boss_type.min_respawn_minutes,
-            "max_respawn_minutes": boss_type.max_respawn_minutes,
-            "current_status": get_current_status(new_boss_record, boss_type)
-        })
+        # Serialize new_boss_record using BossRecordResponse to exclude SQLAlchemy internal state
+        boss_record_response = BossRecordResponse(
+            id=new_boss_record.id,
+            room_id=new_boss_record.room_id,
+            channel=new_boss_record.channel,
+            boss_name=new_boss_record.boss_name,
+            status=new_boss_record.status,
+            recorded_at=new_boss_record.recorded_at.isoformat() + 'Z',
+            respawn_min_time=new_boss_record.respawn_min_time.isoformat() + 'Z' if new_boss_record.respawn_min_time else None,
+            respawn_max_time=new_boss_record.respawn_max_time.isoformat() + 'Z' if new_boss_record.respawn_max_time else None,
+            min_respawn_minutes=boss_type.min_respawn_minutes,
+            max_respawn_minutes=boss_type.max_respawn_minutes,
+            current_status=get_current_status(new_boss_record, boss_type)
+        )
 
         await manager.broadcast_to_room(record.room_id, {
             "type": "boss_update",
-            "data": record_dict
+            "data": boss_record_response.__dict__
         })
-        logging.info(f"Broadcasted boss_update for room {record.room_id}: {record_dict}")
 
-        return {"success": True, "data": record_dict}
+        logging.info(f"Broadcasted boss_update for room {record.room_id}: {boss_record_response}")
+
+        return {"success": True, "data": boss_record_response}
 
     except Exception as e:
         logging.error(f"Record boss error: {e}")
@@ -426,7 +435,10 @@ async def get_room_history(
             record_dict.update({
                 "min_respawn_minutes": boss_type.min_respawn_minutes,
                 "max_respawn_minutes": boss_type.max_respawn_minutes,
-                "current_status": get_current_status(boss_record, boss_type)
+                "current_status": get_current_status(boss_record, boss_type),
+                "recorded_at": boss_record.recorded_at.isoformat() + 'Z',
+                "respawn_min_time": boss_record.respawn_min_time.isoformat() + 'Z' if boss_record.respawn_min_time else None,
+                "respawn_max_time": boss_record.respawn_max_time.isoformat() + 'Z' if boss_record.respawn_max_time else None,
             })
             records.append(record_dict)
 
@@ -467,7 +479,10 @@ def get_room_state(db: Session, room_id: str):
         record_dict.update({
             "min_respawn_minutes": boss_type.min_respawn_minutes,
             "max_respawn_minutes": boss_type.max_respawn_minutes,
-            "current_status": get_current_status(boss_record, boss_type)
+            "current_status": get_current_status(boss_record, boss_type),
+            "recorded_at": boss_record.recorded_at.isoformat() + 'Z',
+            "respawn_min_time": boss_record.respawn_min_time.isoformat() + 'Z' if boss_record.respawn_min_time else None,
+            "respawn_max_time": boss_record.respawn_max_time.isoformat() + 'Z' if boss_record.respawn_max_time else None,
         })
         records.append(record_dict)
 
@@ -478,20 +493,12 @@ def get_current_status(boss_record: BossRecord, boss_type: BossType) -> str:
     now = datetime.utcnow()
 
     if boss_record.status == "killed":
+        if boss_record.respawn_max_time and now >= boss_record.respawn_max_time:
+            return "alive" # Or some other status indicating it should have respawned
         if boss_record.respawn_min_time and now >= boss_record.respawn_min_time:
             return "may_respawn"
-        elif boss_record.respawn_max_time and now < boss_record.respawn_max_time:
-            return "respawning"
-        else:
-            # If killed but outside respawn window, consider it alive or not_found based on context
-            # For simplicity, let's assume it's still respawning if within max time, otherwise may_respawn
-            return "respawning" if boss_record.respawn_max_time and now < boss_record.respawn_max_time else "may_respawn"
-    elif boss_record.status == "alive":
-        return "alive"
-    elif boss_record.status == "not_found":
-        return "not_found"
-    
-    # Fallback for any other status or unexpected scenario
+        return "respawning"
+
     return boss_record.status
 
 

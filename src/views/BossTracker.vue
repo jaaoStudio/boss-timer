@@ -39,6 +39,7 @@ import RecordHistory from '@/components/RecordHistory.vue'
 const route = useRoute()
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
+
 const { connect, disconnect } = useWebSocket()
 
 const props = defineProps({

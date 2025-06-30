@@ -22,12 +22,12 @@ export const useBossStore = defineStore('boss', {
     },
     priorityChannels: (state) => {
       return state.bossRecords
-        .filter(record => record.current_status === 'may_respawn')
+        .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'may_respawn')
         .sort((a, b) => new Date(a.respawn_min_time) - new Date(b.respawn_min_time))
     },
     avoidChannels: (state) => {
       return state.bossRecords
-        .filter(record => record.current_status === 'respawning')
+        .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'respawning')
         .sort((a, b) => new Date(a.respawn_max_time) - new Date(b.respawn_max_time))
     },
   },
@@ -69,6 +69,32 @@ export const useBossStore = defineStore('boss', {
     },
     setSelectedChannel(channel) { // 新增 setSelectedChannel action
       this.selectedChannel = channel
+    },
+    calculateCurrentStatus(record) {
+      const now = new Date();
+      const respawnMinTime = record.respawn_min_time ? new Date(record.respawn_min_time) : null;
+      const respawnMaxTime = record.respawn_max_time ? new Date(record.respawn_max_time) : null;
+
+      if (record.status === "killed") {
+        if (respawnMaxTime && now >= respawnMaxTime) {
+          return "alive";
+        }
+        if (respawnMinTime && now >= respawnMinTime) {
+          return "may_respawn";
+        }
+        return "respawning";
+      }
+      return record.status;
+    },
+    updateBossStatusOnTimerEnd(record) {
+      const index = this.bossRecords.findIndex(
+        r => r.channel === record.channel && r.boss_name === record.boss_name
+      );
+
+      if (index !== -1) {
+        const currentRecord = this.bossRecords[index];
+        currentRecord.current_status = this.calculateCurrentStatus(currentRecord);
+      }
     },
   },
 })

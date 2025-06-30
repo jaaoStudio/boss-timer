@@ -63,18 +63,24 @@ import StatusBadge from './StatusBadge.vue'
 import CountdownTimer from './CountdownTimer.vue'
 
 const bossStore = useBossStore()
-const { bossTypes, bossRecords, selectedBossName } = storeToRefs(bossStore)
+const { bossTypes, bossRecords, selectedBossName, selectedChannel } = storeToRefs(bossStore)
+
+console.log(bossTypes.value, bossRecords.value, selectedBossName.value ,1233)
 
 const selectedBoss = computed(() => {
   return bossTypes.value.find(b => b.boss_name === selectedBossName.value)
 })
 
+
+
 const selectedRecord = computed(() => {
-  return bossRecords.value.find(r => r.boss_name === selectedBossName.value)
+  return bossRecords.value.find(r => r.boss_name === selectedBossName.value && r.channel === selectedChannel.value)
 })
+
+import { format } from 'date-fns'
 
 const formatTime = (timeString) => {
   if (!timeString) return 'N/A'
-  return new Date(timeString).toLocaleString('en-US')
+  return format(new Date(timeString), 'yyyy-MM-dd HH:mm:ss')
 }
 </script>

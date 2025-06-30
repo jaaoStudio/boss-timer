@@ -1,14 +1,14 @@
 <template>
   <div :class="['p-2', 'rounded-lg', 'text-center', 'cursor-pointer', 'transition-all', 'duration-200', 'ease-in-out', statusBackgroundClass]" @click="selectChannel">
-    <div class="font-bold text-sm">CH {{ channelNumber }}</div>
+    <div :class="['font-bold', channelNumber >= 1000 ? 'text-xs' : 'text-sm']">CH {{ channelNumber }}</div>
     <div class="text-xs font-medium">{{ statusText }}</div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import {computed} from 'vue'
+import {storeToRefs} from 'pinia'
+import {useBossStore} from '@/stores/bossStore'
 
 const props = defineProps({
   channelNumber: {
@@ -24,14 +24,13 @@ const record = computed(() => {
   const foundRecord = bossRecords.value.find(
     r => r.channel === props.channelNumber && r.boss_name === selectedBossName.value
   )
-  console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Found record`, foundRecord)
+  // console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Found record`, foundRecord)
   return foundRecord
 })
 
 const status = computed(() => {
-  const currentStatus = record.value?.current_status || 'unknown'
-  console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Status`, currentStatus)
-  return currentStatus
+  // console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Status`, currentStatus)
+  return record.value?.current_status || 'unknown'
 })
 
 const statusMapping = {

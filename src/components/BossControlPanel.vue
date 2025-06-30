@@ -1,19 +1,20 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-white mb-4">記錄 BOSS 狀態</h2>
+    <h2 class="text-xl font-semibold text-white mb-4"></h2>
 
     <form @submit.prevent="recordBoss" class="grid grid-cols-1 md:grid-cols-4 gap-4">
       <!-- 頻道選擇 -->
       <div>
         <label class="block text-sm font-medium text-gray-300 mb-1">頻道</label>
-        <select
-          v-model="form.channel"
-          class="w-full px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+        <input
+          v-model.number="form.channel"
+          type="text"
+          inputmode="numeric"
+          pattern="\d*"
+          class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
+          @input="onChannelInput"
         >
-          <option value="">選擇頻道</option>
-          <option v-for="i in 30" :key="i" :value="i">{{ i }}</option>
-        </select>
       </div>
 
       <!-- BOSS選擇 -->
@@ -22,7 +23,7 @@
         <select
           v-model="form.boss_name"
           @change="bossStore.setSelectedBossName(form.boss_name)"
-          class="w-full px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
           <option value="">選擇 BOSS</option>
@@ -37,7 +38,7 @@
         <label class="block text-sm font-medium text-gray-300 mb-1">狀態</label>
         <select
           v-model="form.status"
-          class="w-full px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+          class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
           <option value="">選擇狀態</option>
@@ -62,7 +63,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import {ref, computed, watch, onMounted} from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
 import { useBossStore } from '@/stores/bossStore'
@@ -72,7 +73,7 @@ const roomStore = useRoomStore()
 const bossStore = useBossStore()
 
 const { roomId } = storeToRefs(roomStore)
-const { bossTypes, selectedChannel } = storeToRefs(bossStore)
+const { bossTypes, selectedChannel, selectedBossName } = storeToRefs(bossStore)
 
 const form = ref({
   channel: selectedChannel.value || '',
@@ -83,6 +84,10 @@ const form = ref({
 // 監聽 selectedChannel 的變化並更新 form.channel
 watch(selectedChannel, (newVal) => {
   form.value.channel = newVal
+})
+
+watch(selectedBossName, (newVal) => {
+  form.value.boss_name = newVal
 })
 
 const loading = ref(false)
@@ -107,7 +112,8 @@ const recordBoss = async () => {
     })
 
     // 重置表單
-    form.value = { channel: '', boss_name: '', status: '' }
+    form.value.channel = ''
+
   } catch (error) {
     console.error('Failed to record boss:', error)
     alert('記錄失敗，請重試')
@@ -115,4 +121,14 @@ const recordBoss = async () => {
     loading.value = false
   }
 }
+
+const onChannelInput = (e) => {
+    // 移除非數字字元
+    e.target.value = e.target.value.replace(/\D/g, '');
+    form.value.channel = e.target.value ? parseInt(e.target.value, 10) : null;
+  }
+
+onMounted(() => {
+  form.value.boss_name = selectedBossName.value
+})
 </script>

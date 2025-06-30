@@ -5,7 +5,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { computed, defineEmits } from 'vue'
 import { useTimer } from '../composables/useTimer'
 
 const props = defineProps({
@@ -16,8 +16,14 @@ const props = defineProps({
   }
 })
 
+const emit = defineEmits(['timer-end'])
+
+const onTimerEnd = () => {
+  emit('timer-end', props.targetTime)
+}
+
 const targetTimeRef = computed(() => props.targetTime)
-const { timeLeft, formattedTime } = useTimer(targetTimeRef)
+const { timeLeft, formattedTime } = useTimer(targetTimeRef, onTimerEnd)
 
 const displayTime = computed(() => {
   return props.prefix ? `${props.prefix} ${formattedTime.value}` : formattedTime.value

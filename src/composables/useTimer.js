@@ -1,6 +1,6 @@
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 
-export function useTimer(targetTime) {
+export function useTimer(targetTime, onEnd) {
   const now = ref(Date.now())
   const interval = ref(null)
 
@@ -8,6 +8,12 @@ export function useTimer(targetTime) {
     if (!targetTime.value) return 0
     const diff = new Date(targetTime.value).getTime() - now.value
     return Math.max(0, diff)
+  })
+
+  watch(timeLeft, (newVal) => {
+    if (newVal <= 0) {
+      if (onEnd) onEnd()
+    }
   })
 
   const formattedTime = computed(() => {
