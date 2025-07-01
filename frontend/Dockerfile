@@ -20,7 +20,7 @@ RUN npm run build
 FROM nginx:alpine
 
 # 複製自定義 nginx 配置
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
 
 # 複製構建產物到 nginx 服務目錄
 # Vue.js 項目構建產物通常在 dist 目錄

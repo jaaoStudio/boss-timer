@@ -16,7 +16,7 @@ services:
     build:
       context: ./frontend
     platform: linux/arm64  # 構建適配 ARM 的镜像
-    image: ${REMOTE_REGISTRY_IP}/boss_service/twitch_chat_viewer_nginx:${VERSION}
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_tracker_nginx:${VERSION}
     container_name: boss_tracker_nginx
     ports:
-      - "6842:80"
+      - "2255:80"
