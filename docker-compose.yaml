@@ -1,0 +1,22 @@
+services:
+  boss_service:
+    build:
+      context: backend
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${VERSION}
+    platform: linux/arm64  # 構建適配 ARM 的镜像
+    container_name: boss_service
+    ports:
+      - "8000:8000"
+    command: uvicorn boss_service.main:bot_app --host 0.0.0.0 --port 8000 --root-path /api
+    volumes:
+      - ./.env:/twitch-chat-viewer/.env
+    restart: always
+
+  boss_tracker_nginx:
+    build:
+      context: ./frontend
+    platform: linux/arm64  # 構建適配 ARM 的镜像
+    image: ${REMOTE_REGISTRY_IP}/boss_service/twitch_chat_viewer_nginx:${VERSION}
+    container_name: boss_tracker_nginx
+    ports:
+      - "6842:80"
