@@ -2,7 +2,7 @@
   <div class="bg-gray-800 rounded-lg shadow-md p-6">
     <h2 class="text-xl font-semibold text-white mb-4">Record History</h2>
     <div class="flex justify-end mb-4">
-      <select v-model="selectedBossFilter" @change="filterHistory"
+      <select v-model="selectedBossFilter"
               class="px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
         <option value="">All Bosses</option>
         <option v-for="boss in bossTypes" :key="boss.boss_name" :value="boss.boss_name">
@@ -12,7 +12,7 @@
     </div>
     <div class="space-y-3 max-h-96 overflow-y-auto">
       <RecordItem
-          v-for="record in bossRecords"
+          v-for="record in filteredBossRecords"
           :key="record.id"
           :record="record"
       />
@@ -26,7 +26,6 @@ import {ref, onMounted, watch, computed} from 'vue'
 import {storeToRefs} from 'pinia'
 import {useBossStore} from '@/stores/bossStore'
 import {useRoomStore} from '@/stores/roomStore'
-import ApiService from '@/services/apiService.js'
 import RecordItem from './RecordItem.vue'
 
 const bossStore = useBossStore()
@@ -38,8 +37,11 @@ const {roomId} = storeToRefs(roomStore)
 const historyOnLoading = ref(false)
 const selectedBossFilter = ref('')
 
-const filterHistory = () => {
-
-}
+const filteredBossRecords = computed(() => {
+  if (!selectedBossFilter.value) {
+    return bossRecords.value
+  }
+  return bossRecords.value.filter(record => record.boss_name === selectedBossFilter.value)
+})
 
 </script>
