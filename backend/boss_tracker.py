@@ -524,4 +524,4 @@ async def cleanup_inactive_rooms():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=1254, ssl_keyfile="/home/jack/PycharmProjects/boss-timing/frontend/vite-key.pem", ssl_certfile="/home/jack/PycharmProjects/boss-timing/frontend/vite.pem")
+    uvicorn.run(app, host="0.0.0.0", port=1254)

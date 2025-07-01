@@ -6,10 +6,10 @@ services:
     platform: linux/arm64  # 構建適配 ARM 的镜像
     container_name: boss_service
     ports:
-      - "8000:8000"
-    command: uvicorn boss_service.main:bot_app --host 0.0.0.0 --port 8000 --root-path /api
+      - "1254:1254"
+    command: uvicorn boss_service.main:app --host 0.0.0.0 --port 1254 --root-path /api
     volumes:
-      - ./.env:/twitch-chat-viewer/.env
+      - ./.env:/boss-tracker/.env
     restart: always
 
   boss_tracker_nginx:
