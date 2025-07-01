@@ -22,7 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
-.env.development
+frontend/.env.development
 .env.production
 vite-key.pem
 vite.pem
@@ -30,3 +30,5 @@ vite.pem
 backend/db
 backend/.env
 .vscode
+
+node_modules

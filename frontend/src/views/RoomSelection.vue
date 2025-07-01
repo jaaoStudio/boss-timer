@@ -52,9 +52,12 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useRoomStore } from '@/stores/roomStore'
 import ApiService from '@/services/apiService'
+import {storeToRefs} from "pinia";
 
 const router = useRouter()
 const roomStore = useRoomStore()
+const { roomId } = storeToRefs(roomStore)
+
 const joinRoomId = ref('')
 
 const generateRoomId = (length = 6) => {
@@ -70,8 +73,8 @@ const createRoom = async () => {
   const newRoomId = generateRoomId()
   try {
     await ApiService.createRoom(newRoomId)
-    roomStore.setRoomId(newRoomId)
-    router.push({ name: 'BossTracker', params: { roomId: newRoomId } })
+    roomId.value = newRoomId
+    router.push({name: 'BossTracker', params: { roomId: newRoomId}})
   } catch (error) {
     console.error('Error creating room:', error)
     alert('Failed to create room. Please try again.')
@@ -81,7 +84,7 @@ const createRoom = async () => {
 const joinRoom = () => {
   const roomIdToJoin = joinRoomId.value.trim().toUpperCase()
   if (roomIdToJoin) {
-    roomStore.setRoomId(roomIdToJoin)
+    roomId.value = roomIdToJoin
     router.push({ name: 'BossTracker', params: { roomId: roomIdToJoin } })
   }
 }

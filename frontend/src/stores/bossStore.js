@@ -1,35 +1,26 @@
 import { defineStore } from 'pinia'
+import ApiService from '@/services/apiService.js'
 
 export const useBossStore = defineStore('boss', {
   state: () => ({
     bossTypes: [],
     bossRecords: [],
-    history: [],
+    history: new Map(),
     loading: false,
     selectedBossName: '',
     selectedChannel: null, // 新增 selectedChannel 狀態
   }),
   getters: {
-    recordsByChannel: (state) => {
-      const grouped = {}
-      state.bossRecords.forEach(record => {
-        if (!grouped[record.channel]) {
-          grouped[record.channel] = []
-        }
-        grouped[record.channel].push(record)
-      })
-      return grouped
-    },
     priorityChannels: (state) => {
       return state.bossRecords
-        .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'may_respawn')
-        .sort((a, b) => new Date(a.respawn_min_time) - new Date(b.respawn_min_time))
+          .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'may_respawn')
+          .sort((a, b) => new Date(a.respawn_min_time) - new Date(b.respawn_min_time))
     },
     avoidChannels: (state) => {
       return state.bossRecords
-        .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'respawning')
-        .sort((a, b) => new Date(a.respawn_max_time) - new Date(b.respawn_max_time))
-    },
+          .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'respawning')
+          .sort((a, b) => new Date(a.respawn_max_time) - new Date(b.respawn_max_time))
+    }
   },
   actions: {
     setBossTypes(types) {
@@ -44,25 +35,44 @@ export const useBossStore = defineStore('boss', {
     setBossRecords(records) {
       this.bossRecords = records
     },
-    updateBossRecord(record) {
+    async updateBossRecord(record) {
       const index = this.bossRecords.findIndex(
-        r => r.channel === record.channel && r.boss_name === record.boss_name
+          r => r.channel === record.channel && r.boss_name === record.boss_name
       )
       if (index >= 0) {
-        // 使用 Vue.set 或直接替換物件以確保響應性
         this.bossRecords[index] = record
       } else {
         this.bossRecords.push(record)
       }
+
+      this.bossRecords = this.bossRecords.sort((a, b) => {
+        if (a.boss_name === b.boss_name) {
+          return new Date(a.respawn_min_time) - new Date(b.respawn_min_time)
+        }
+        return a.boss_name.localeCompare(b.boss_name)
+      })
+
+      // const historyData = await ApiService.getRoomHistory(
+      //     record.room_id,
+      //     record.boss_name || null
+      // )
+
+      // this.setHistory(record.room_id, historyData)
       // 將新記錄添加到歷史記錄的開頭
-      this.history.unshift(record)
+      // console.log(this.history,'aaa')
+      // if (!this.history.has(record.roomId)) {
+      //   this.history.set(record.roomId, []);
+      // }
+      // this.history.get(record.roomId).unshift(record);
+
       // 可以選擇限制歷史記錄的長度，例如只保留最新的 50 條
       // if (this.history.length > 50) {
       //   this.history.pop()
       // }
     },
-    setHistory(historyData) {
-      this.history = historyData
+    setHistory(roomId, historyData) {
+      this.history.set(roomId, historyData)
+      console.log(this.history)
     },
     setLoading(status) {
       this.loading = status
@@ -88,7 +98,7 @@ export const useBossStore = defineStore('boss', {
     },
     updateBossStatusOnTimerEnd(record) {
       const index = this.bossRecords.findIndex(
-        r => r.channel === record.channel && r.boss_name === record.boss_name
+          r => r.channel === record.channel && r.boss_name === record.boss_name
       );
 
       if (index !== -1) {
@@ -96,5 +106,5 @@ export const useBossStore = defineStore('boss', {
         currentRecord.current_status = this.calculateCurrentStatus(currentRecord);
       }
     },
-  },
+  }
 })

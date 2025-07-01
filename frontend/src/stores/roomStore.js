@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 
 export const useRoomStore = defineStore('room', {
   state: () => ({
-    roomId: localStorage.getItem('roomId') || '',
+    roomId: '',
     userCount: 0,
     isConnected: false,
     ws: null,
@@ -11,7 +11,6 @@ export const useRoomStore = defineStore('room', {
   actions: {
     setRoomId(id) {
       this.roomId = id
-      localStorage.setItem('roomId', id)
     },
     setUserCount(count) {
       this.userCount = count
@@ -24,7 +23,6 @@ export const useRoomStore = defineStore('room', {
     },
     clearRoomId() {
       this.roomId = ''
-      localStorage.removeItem('roomId')
     },
     setManualDisconnect(status) { // 新增設定手動斷開標誌的 action
       this.isManualDisconnect = status

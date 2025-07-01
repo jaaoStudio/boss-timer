@@ -104,12 +104,15 @@ const recordBoss = async () => {
 
   loading.value = true
   try {
-    await ApiService.recordBoss({
+    const newRecord = await ApiService.recordBoss({
       room_id: roomId.value,
       channel: parseInt(form.value.channel),
       boss_name: form.value.boss_name,
       status: form.value.status
     })
+
+    // 更新 Pinia store 中的 bossRecords 和 history
+    await bossStore.updateBossRecord(newRecord.data)
 
     // 重置表單
     form.value.channel = ''

@@ -35,11 +35,12 @@ import BossInfo from '@/components/BossInfo.vue'
 import ChannelOverview from '@/components/ChannelOverview.vue'
 import RecommendedChannels from '@/components/RecommendedChannels.vue'
 import RecordHistory from '@/components/RecordHistory.vue'
+import {storeToRefs} from "pinia";
 
 const route = useRoute()
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
-
+const { roomId } = storeToRefs(roomStore)
 const { connect, disconnect } = useWebSocket()
 
 const props = defineProps({
@@ -52,8 +53,7 @@ const props = defineProps({
 onMounted(async () => {
   try {
     // 設定房間ID
-    roomStore.setRoomId(props.roomId)
-
+    roomId.value = props.roomId
     // 載入BOSS類型
     const types = await ApiService.getBossTypes()
     console.log('BOSS類型:', types)
