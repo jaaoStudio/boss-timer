@@ -30,9 +30,9 @@ const displayTime = computed(() => {
 })
 
 const timeClass = computed(() => {
-  if (timeLeft.value <= 0) return 'text-green-600'
-  if (timeLeft.value <= 300000) return 'text-red-600' // 5分鐘內
-  if (timeLeft.value <= 600000) return 'text-yellow-600' // 10分鐘內
-  return 'text-gray-600'
+  if (timeLeft.value <= 0) return 'text-green-400' // 倒數結束
+  if (timeLeft.value <= 300000) return 'text-red-400' // 5分鐘內
+  if (timeLeft.value <= 600000) return 'text-yellow-300' // 10分鐘內
+  return 'text-gray-300' // 預設顏色
 })
 </script>
