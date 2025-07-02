@@ -11,6 +11,7 @@ import asyncio
 import json
 import uuid
 import logging
+import os
 from contextlib import asynccontextmanager
 from db_config import DATABASE_URL
 
@@ -303,6 +304,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = D
 
 
 # REST API 端點
+
+@app.get("/api/health")
+async def health_check():
+    """
+    健康檢查端點
+    返回服務狀態和基本信息
+    """
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat(),
+        "service": "boss_service",
+        "version": os.getenv("VERSION"),
+    }
 
 @app.post("/api/room")
 async def create_room(room_data: RoomCreate, db: Session = Depends(get_db)):
