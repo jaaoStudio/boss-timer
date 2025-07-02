@@ -26,6 +26,7 @@ COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
 # Vue.js 項目構建產物通常在 dist 目錄
 COPY --from=builder /app/dist /usr/share/nginx/html
 
+
 # 暴露端口
 EXPOSE 80
 

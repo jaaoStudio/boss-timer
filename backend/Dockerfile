@@ -9,11 +9,11 @@ RUN apt-get update && apt-get install -y \
     gcc \
     python3-dev \
     libpq-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 複製 requirements.txt 並安裝 Python 依賴
-# 注意：你的文件名是 requerment.txt (有拼寫錯誤)
-COPY requerment.txt ./requirements.txt
+COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 複製應用程式碼
