@@ -24,12 +24,10 @@ const record = computed(() => {
   const foundRecord = bossRecords.value.find(
     r => r.channel === props.channelNumber && r.boss_name === selectedBossName.value
   )
-  // console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Found record`, foundRecord)
   return foundRecord
 })
 
 const status = computed(() => {
-  // console.log(`Channel ${props.channelNumber}, Boss ${selectedBossName.value}: Status`, currentStatus)
   return record.value?.current_status || 'unknown'
 })
 

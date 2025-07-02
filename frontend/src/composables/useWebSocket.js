@@ -30,7 +30,6 @@ export function useWebSocket() {
     roomStore.setWebSocket(newWs)
 
     newWs.onopen = () => {
-      console.log('WebSocket connected')
       roomStore.setConnected(true)
       reconnectAttempts.value = 0
       reconnectDelay.value = 1000
@@ -43,12 +42,10 @@ export function useWebSocket() {
     }
 
     newWs.onclose = () => {
-      console.log('WebSocket disconnected')
       roomStore.setConnected(false)
       if (!isManualDisconnect.value) { // 只有在非手動斷開時才嘗試重連
         attemptReconnect(roomId)
       } else {
-        console.log('Manual disconnect, no reconnect attempt.')
         roomStore.setManualDisconnect(false) // 重置標誌
       }
     }
@@ -85,7 +82,6 @@ export function useWebSocket() {
   const attemptReconnect = (roomId) => {
     if (reconnectAttempts.value < maxReconnectAttempts) {
       setTimeout(() => {
-        console.log(`Attempting to reconnect... (${reconnectAttempts.value + 1}/${maxReconnectAttempts})`)
         reconnectAttempts.value++
         reconnectDelay.value *= 2
         connect(roomId)

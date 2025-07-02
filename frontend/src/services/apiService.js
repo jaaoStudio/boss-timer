@@ -25,6 +25,10 @@ class ApiService {
     return bossService.post('/room', { room_id: roomId }).then(res => res.data);
   }
 
+  checkRoomExists(roomId) {
+    return bossService.get("/room/{room_id}/exists", { room_id: roomId}).then(res => res.data);
+  }
+
   // WebSocket 連接
   createWebSocket(roomId) {
     return new WebSocket(`${WS_URL}/ws/${roomId}`);

@@ -56,7 +56,6 @@ onMounted(async () => {
     roomId.value = props.roomId
     // 載入BOSS類型
     const types = await ApiService.getBossTypes()
-    console.log('BOSS類型:', types)
     bossStore.setBossTypes(types)
 
     // 連接 WebSocket

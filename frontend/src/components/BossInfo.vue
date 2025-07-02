@@ -65,8 +65,6 @@ import CountdownTimer from './CountdownTimer.vue'
 const bossStore = useBossStore()
 const { bossTypes, bossRecords, selectedBossName, selectedChannel } = storeToRefs(bossStore)
 
-console.log(bossTypes.value, bossRecords.value, selectedBossName.value ,1233)
-
 const selectedBoss = computed(() => {
   return bossTypes.value.find(b => b.boss_name === selectedBossName.value)
 })

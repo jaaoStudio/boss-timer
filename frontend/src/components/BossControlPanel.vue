@@ -2,7 +2,7 @@
   <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
     <h2 class="text-xl font-semibold text-white mb-4"></h2>
 
-    <form @submit.prevent="recordBoss" class="grid grid-cols-1 md:grid-cols-4 gap-4">
+    <form @submit.prevent="recordBoss" class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <!-- 頻道選擇 -->
       <div>
         <label class="block text-sm font-medium text-gray-300 mb-1">頻道</label>
@@ -36,27 +36,18 @@
       <!-- 狀態選擇 -->
       <div>
         <label class="block text-sm font-medium text-gray-300 mb-1">狀態</label>
-        <select
-          v-model="form.status"
-          class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          required
-        >
-          <option value="">選擇狀態</option>
-          <option value="alive">存活</option>
-          <option value="killed">擊殺</option>
-          <option value="not_found">未發現</option>
-        </select>
-      </div>
-
-      <!-- 提交按鈕 -->
-      <div class="flex items-end">
-        <button
-          type="submit"
-          :disabled="!canSubmit || loading"
-          class="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-400 disabled:cursor-not-allowed"
-        >
-          {{ loading ? '記錄中...' : '記錄狀態' }}
-        </button>
+        <div class="flex gap-2">
+          <BossStatusButton
+            v-for="status in statuses"
+            :key="status.type"
+            :type="status.type"
+            :disabled="loading"
+            :class="{
+              'opacity-60': loading
+            }"
+            @click="() => onSelectStatus(status.type)"
+          />
+        </div>
       </div>
     </form>
   </div>
@@ -68,6 +59,7 @@ import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
 import { useBossStore } from '@/stores/bossStore'
 import ApiService from '@/services/apiService.js'
+import BossStatusButton from "@/components/BossStatusButton.vue";
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
@@ -75,11 +67,23 @@ const bossStore = useBossStore()
 const { roomId } = storeToRefs(roomStore)
 const { bossTypes, selectedChannel, selectedBossName } = storeToRefs(bossStore)
 
+const statuses = [
+  { type: 'alive' },
+  { type: 'killed' },
+  { type: 'not_found' }
+]
+
 const form = ref({
   channel: selectedChannel.value || '',
   boss_name: '',
   status: ''
 })
+
+const onSelectStatus = async (statusType) => {
+  if (loading.value) return;
+  form.value.status = statusType;
+  await recordBoss();
+}
 
 // 監聽 selectedChannel 的變化並更新 form.channel
 watch(selectedChannel, (newVal) => {

@@ -12,6 +12,7 @@ import json
 import uuid
 import logging
 import os
+import secrets
 from contextlib import asynccontextmanager
 from db_config import DATABASE_URL
 
@@ -305,7 +306,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = D
 
 # REST API 端點
 
-@app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """
     健康檢查端點
@@ -318,23 +319,112 @@ async def health_check():
         "version": os.getenv("VERSION"),
     }
 
-@app.post("/api/room")
-async def create_room(room_data: RoomCreate, db: Session = Depends(get_db)):
+
+def generate_unique_room_id(db: Session, length: int = 10, max_attempts: int = 10) -> str:
+    """
+    使用 secrets 生成唯一的房間ID
+
+    Args:
+        db: 資料庫會話
+        length: ID長度 (預設8位，最大10位)
+        max_attempts: 最大嘗試次數
+
+    Returns:
+        唯一的房間ID
+    """
+    # 移除容易混淆的字符 (0, O, I, 1, L)
+    chars = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789'
+    max_attempts = 20
+
+    for attempt in range(max_attempts):
+        room_id = ''.join(secrets.choice(chars) for _ in range(length))
+
+        try:
+            # 直接嘗試查詢，讓 ORM 處理
+            existing_room = db.query(Room).filter(Room.room_id == room_id).first()
+
+            if not existing_room:
+                return room_id
+
+        except Exception as e:
+            # 如果是唯一性約束錯誤，繼續嘗試
+            if "unique" in str(e).lower() or "duplicate" in str(e).lower():
+                continue
+            else:
+                raise e
+
+    raise Exception(f"Unable to generate unique room ID after {max_attempts} attempts")
+
+@app.post("/room")
+async def create_room(db: Session = Depends(get_db)):
+    """
+    創建新房間 - 自動生成唯一房間ID
+    """
     try:
-        room = db.query(Room).filter(Room.room_id == room_data.room_id).first()
-        if room:
-            return {"message": "Room already exists", "room_id": room.room_id}
-        
-        new_room = Room(room_id=room_data.room_id)
+        # 生成唯一房間ID (8位)
+        room_id = generate_unique_room_id(db, length=10)
+
+        # 創建房間
+        new_room = Room(room_id=room_id)
         db.add(new_room)
         db.commit()
         db.refresh(new_room)
-        return {"message": "Room created successfully", "room_id": new_room.room_id}
-    except Exception as e:
-        logging.error(f"Create room error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to create room")
 
-@app.post("/api/record-boss")
+        logging.info(f"Created new room: {room_id}")
+
+        return {
+            "success": True,
+            "message": "Room created successfully",
+            "room_id": room_id,
+            "created_at": new_room.created_at.isoformat()
+        }
+
+    except Exception as e:
+        db.rollback()
+
+        # 區分不同類型的錯誤
+        if "Unable to generate unique room ID" in str(e):
+            logging.error(f"Room ID generation failed: {e}")
+            raise HTTPException(
+                status_code=503,
+                detail="Service temporarily unavailable. Please try again."
+            )
+        else:
+            logging.error(f"Create room error: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to create room"
+            )
+
+
+# 添加檢查房間是否存在的端點
+@app.get("/room/{room_id}/exists")
+async def check_room_exists(room_id: str, db: Session = Depends(get_db)):
+    """
+    檢查房間是否存在
+    """
+    try:
+        room = db.query(Room).filter(Room.room_id == room_id.upper()).first()
+
+        if room:
+            return {
+                "exists": True,
+                "room_id": room.room_id,
+                "created_at": room.created_at.isoformat(),
+                "last_active": room.last_active.isoformat(),
+                "active_users": room.active_users
+            }
+        else:
+            return {
+                "exists": False,
+                "room_id": room_id.upper()
+            }
+
+    except Exception as e:
+        logging.error(f"Check room exists error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to check room existence")
+
+@app.post("/record-boss")
 async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
     try:
         # 確保房間存在
@@ -428,7 +518,7 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to record boss status")
 
 
-@app.get("/api/room/{room_id}/history")
+@app.get("/room/{room_id}/history")
 async def get_room_history(
         room_id: str,
         boss_name: Optional[str] = None,
@@ -463,7 +553,7 @@ async def get_room_history(
         raise HTTPException(status_code=500, detail="Failed to get history")
 
 
-@app.get("/api/boss-types", response_model=List[BossTypeResponse])
+@app.get("/boss-types", response_model=List[BossTypeResponse])
 async def get_boss_types(db: Session = Depends(get_db)):
     return db.query(BossType).all()
 
@@ -538,4 +628,4 @@ async def cleanup_inactive_rooms():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=1254)
+    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api")

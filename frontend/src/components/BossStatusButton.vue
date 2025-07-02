@@ -22,7 +22,7 @@ const props = defineProps({
   type: {
     type: String,
     required: true,
-    validator: (value) => ['alive', 'dead', 'not_found'].includes(value)
+    validator: (value) => ['alive', 'killed', 'not_found'].includes(value)
   },
   disabled: Boolean
 })
@@ -35,7 +35,7 @@ const buttonConfigs = {
     icon: MagnifyingGlassCircleIcon,
     baseClass: 'bg-green-600 hover:bg-green-700'
   },
-  dead: {
+  killed: {
     title: '剛擊殺BOSS',
     icon: SkullIcon,
     baseClass: 'bg-red-600 hover:bg-red-700'

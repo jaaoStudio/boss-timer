@@ -71,7 +71,6 @@ export const useBossStore = defineStore('boss', {
     },
     setHistory(roomId, historyData) {
       this.history.set(roomId, historyData)
-      console.log(this.history)
     },
     setLoading(status) {
       this.loading = status
