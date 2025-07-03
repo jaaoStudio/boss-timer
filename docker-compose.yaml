@@ -12,11 +12,11 @@ services:
       - ./.env:/boss-tracker/.env
     restart: always
 
-  boss_tracker_nginx:
+  boss_timer_nginx:
     build:
       context: ./frontend
     platform: linux/arm64  # 構建適配 ARM 的镜像
-    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_tracker_nginx:${VERSION}
-    container_name: boss_tracker_nginx
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${VERSION}
+    container_name: boss_timer_nginx
     ports:
       - "2255:80"
