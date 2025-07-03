@@ -2,7 +2,7 @@
   <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
     <div class="flex items-center justify-between">
       <div>
-        <h1 class="text-3xl font-bold text-white">BOSS Tracker</h1>
+        <h1 class="text-3xl font-bold text-white">BOSS Timer</h1>
         <p class="text-gray-300 mt-1">Room: <span class="font-mono bg-gray-700 text-gray-200 px-2 py-1 rounded">{{ roomId }}</span></p>
       </div>
       <div class="flex items-center space-x-4">
