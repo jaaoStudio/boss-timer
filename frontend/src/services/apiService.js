@@ -1,6 +1,6 @@
 import { bossService } from '@/axios';
 
-const WS_URL = `wss://10.5.71.159:1254`;
+const WS_URL = `wss://127.0.0.1.1254`;
 
 class ApiService {
   // 獲取 BOSS 類型
@@ -26,7 +26,7 @@ class ApiService {
   }
 
   checkRoomExists(roomId) {
-    return bossService.get("/room/{room_id}/exists", { room_id: roomId}).then(res => res.data);
+    return bossService.get(`/room/${room_id}/exists`).then(res => res.data);
   }
 
   // WebSocket 連接
