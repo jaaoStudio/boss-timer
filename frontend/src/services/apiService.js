@@ -1,6 +1,6 @@
 import { bossService } from '@/axios';
 
-const WS_URL = `wss://127.0.0.1.1254`;
+const WS_URL = `wss://boss-timer.jaao.tw/api/ws`;
 
 class ApiService {
   // 獲取 BOSS 類型
