@@ -259,7 +259,7 @@ manager = ConnectionManager()
 # CORS 設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://boss-timer.jaao.tw","https://10.5.71.159:2255"],  # 只允許您的前端域名
+    allow_origins=["https://boss-timer.jaao.tw"],  # 只允許您的前端域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -682,4 +682,4 @@ async def cleanup_inactive_rooms():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api", ssl_certfile="../frontend/vite.pem", ssl_keyfile="../frontend/vite-key.pem")
+    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api")
