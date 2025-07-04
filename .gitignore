@@ -27,7 +27,7 @@ frontend/.env.development
 vite-key.pem
 vite.pem
 
-backend/db
+backend/db/db-data
 backend/.env
 .vscode
 

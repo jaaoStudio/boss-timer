@@ -3,8 +3,14 @@ import { createPinia } from "pinia";
 import router from "./router";
 import './style.css'
 import { createGtm } from '@gtm-support/vue-gtm'
+import apiService from '@/services/apiService.js';
 
 import App from './App.vue'
+
+// Initialize authentication
+(async () => {
+  await apiService.initAuth();
+})();
 
 const app = createApp(App);
 const pinia = createPinia();

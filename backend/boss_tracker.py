@@ -1,11 +1,11 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, text, ForeignKey, Index, CheckConstraint, func
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from pydantic import BaseModel
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Set
 import asyncio
 import json
@@ -15,6 +15,8 @@ import os
 import secrets
 from contextlib import asynccontextmanager
 from db_config import DATABASE_URL
+from jose import JWTError, jwt
+
 
 # 資料庫配置
 engine = create_engine(DATABASE_URL)
@@ -27,8 +29,8 @@ class Room(Base):
     __tablename__ = "rooms"
 
     room_id = Column(String(10), primary_key=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    last_active = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_active = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     active_users = Column(Integer, default=0)
 
     # 關聯
@@ -56,7 +58,7 @@ class BossRecord(Base):
     channel = Column(Integer, nullable=False)
     boss_name = Column(String(50), ForeignKey("boss_types.boss_name"), nullable=False)
     status = Column(String(20), nullable=False)
-    recorded_at = Column(DateTime, default=datetime.utcnow)
+    recorded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     respawn_min_time = Column(DateTime)
     respawn_max_time = Column(DateTime)
     recorder_info = Column(JSONB)
@@ -80,8 +82,8 @@ class RoomUser(Base):
 
     room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), primary_key=True)
     user_session = Column(String(100), primary_key=True)
-    joined_at = Column(DateTime, default=datetime.utcnow)
-    last_seen = Column(DateTime, default=datetime.utcnow)
+    joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # 關聯
     room = relationship("Room", back_populates="users")
@@ -118,6 +120,15 @@ class BossTypeResponse(BaseModel):
     max_respawn_minutes: int
     description: Optional[str]
 
+# --- JWT ---
+SECRET_KEY = os.getenv("SECRET_KEY")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 30  # 30 days
+
+class TokenData(BaseModel):
+    user_id: Optional[str] = None
+# --- END JWT ---
+
 
 # WebSocket 連接管理器
 class ConnectionManager:
@@ -145,7 +156,7 @@ class ConnectionManager:
                 db.add(new_user)
                 logging.info(f"Added new user {user_session} to room {room_id} in DB.")
             else:
-                room_user.last_seen = datetime.utcnow()
+                room_user.last_seen = datetime.now(timezone.utc)
                 logging.info(f"Updated last_seen for user {user_session} in room {room_id}.")
             db.commit()
             logging.info(f"DB commit successful for user {user_session} in room {room_id}.")
@@ -206,7 +217,7 @@ class ConnectionManager:
             room = db.query(Room).filter(Room.room_id == room_id).first()
             if room:
                 room.active_users = user_count
-                room.last_active = datetime.utcnow()
+                room.last_active = datetime.now(timezone.utc)
                 db.commit()
                 logging.info(f"Room {room_id} active_users updated to {user_count}.")
 
@@ -215,7 +226,7 @@ class ConnectionManager:
                     "type": "user_count_update",
                     "count": user_count
                 })
-                logging.info(f"Broadcasted user count {user_count} for room {room_id}.")
+                logging.info(f"Broadcast user count {user_count} for room {room_id}.")
             else:
                 logging.warning(f"Room {room_id} not found when updating user count.")
         except Exception as e:
@@ -248,7 +259,7 @@ manager = ConnectionManager()
 # CORS 設定
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 生產環境應該限制特定域名
+    allow_origins=["https://boss-timer.jaao.tw","https://10.5.71.159:2255"],  # 只允許您的前端域名
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -262,6 +273,36 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# --- JWT HELPERS & DEPENDENCY ---
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
+
+async def get_current_user_id(request: Request):
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials, token missing or invalid",
+    )
+    token = request.cookies.get("access_token")
+
+    if token is None:
+        raise credentials_exception
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+    return user_id
+# --- END JWT HELPERS & DEPENDENCY ---
 
 
 # WebSocket 端點
@@ -306,6 +347,26 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = D
 
 # REST API 端點
 
+@app.post("/token", tags=["Authentication"])
+async def login_for_access_token(response: Response):
+    """
+    Generate a new JWT for an anonymous user and set it in an HttpOnly cookie.
+    """
+    user_id = str(uuid.uuid4())
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user_id}, expires_delta=access_token_expires
+    )
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        samesite='lax',
+        secure=True,
+        max_age=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+    )
+    return {"status": "token set"}
+
 @app.get("/health")
 async def health_check():
     """
@@ -314,11 +375,10 @@ async def health_check():
     """
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "service": "boss_service",
         "version": os.getenv("VERSION"),
     }
-
 
 def generate_unique_room_id(db: Session, length: int = 10, max_attempts: int = 10) -> str:
     """
@@ -425,7 +485,7 @@ async def check_room_exists(room_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail="Failed to check room existence")
 
 @app.post("/record-boss")
-async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
+async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)):
     try:
         # 確保房間存在
         room = db.query(Room).filter(Room.room_id == record.room_id).first()
@@ -443,7 +503,7 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
         # 計算重生時間
         respawn_min_time = None
         respawn_max_time = None
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         base_time = now # Default base time
 
         if record.status == "killed":
@@ -477,7 +537,8 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
             status=record.status,
             recorded_at=now, # The actual recorded_at for this new record
             respawn_min_time=respawn_min_time,
-            respawn_max_time=respawn_max_time
+            respawn_max_time=respawn_max_time,
+            recorder_info={"user_id": user_id}
         )
 
         db.add(new_boss_record)
@@ -485,7 +546,7 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
         db.refresh(new_boss_record)
 
         # Update room last_active
-        room.last_active = datetime.utcnow()
+        room.last_active = datetime.now(timezone.utc)
         db.commit()
 
         # Broadcast update
@@ -496,9 +557,9 @@ async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db)):
             channel=new_boss_record.channel,
             boss_name=new_boss_record.boss_name,
             status=new_boss_record.status,
-            recorded_at=new_boss_record.recorded_at.isoformat() + 'Z',
-            respawn_min_time=new_boss_record.respawn_min_time.isoformat() + 'Z' if new_boss_record.respawn_min_time else None,
-            respawn_max_time=new_boss_record.respawn_max_time.isoformat() + 'Z' if new_boss_record.respawn_max_time else None,
+            recorded_at=new_boss_record.recorded_at.isoformat(),
+            respawn_min_time=new_boss_record.respawn_min_time.isoformat() if new_boss_record.respawn_min_time else None,
+            respawn_max_time=new_boss_record.respawn_max_time.isoformat() if new_boss_record.respawn_max_time else None,
             min_respawn_minutes=boss_type.min_respawn_minutes,
             max_respawn_minutes=boss_type.max_respawn_minutes,
             current_status=get_current_status(new_boss_record, boss_type)
@@ -535,16 +596,7 @@ async def get_room_history(
 
         records = []
         for boss_record, boss_type in results:
-            record_dict = boss_record.__dict__.copy()
-            record_dict.update({
-                "min_respawn_minutes": boss_type.min_respawn_minutes,
-                "max_respawn_minutes": boss_type.max_respawn_minutes,
-                "current_status": get_current_status(boss_record, boss_type),
-                "recorded_at": boss_record.recorded_at.isoformat() + 'Z',
-                "respawn_min_time": boss_record.respawn_min_time.isoformat() + 'Z' if boss_record.respawn_min_time else None,
-                "respawn_max_time": boss_record.respawn_max_time.isoformat() + 'Z' if boss_record.respawn_max_time else None,
-            })
-            records.append(record_dict)
+            records.append(serialize_boss_record(boss_record, boss_type))
 
         return records
 
@@ -557,6 +609,17 @@ async def get_room_history(
 async def get_boss_types(db: Session = Depends(get_db)):
     return db.query(BossType).all()
 
+def serialize_boss_record(boss_record: BossRecord, boss_type: BossType) -> dict:
+    record_dict = boss_record.__dict__.copy()
+    record_dict.update({
+        "min_respawn_minutes": boss_type.min_respawn_minutes,
+        "max_respawn_minutes": boss_type.max_respawn_minutes,
+        "current_status": get_current_status(boss_record, boss_type),
+        "recorded_at": boss_record.recorded_at.isoformat(),
+        "respawn_min_time": boss_record.respawn_min_time.isoformat() if boss_record.respawn_min_time else None,
+        "respawn_max_time": boss_record.respawn_max_time.isoformat() if boss_record.respawn_max_time else None,
+    })
+    return record_dict
 
 # 輔助函數
 def get_room_state(db: Session, room_id: str):
@@ -579,22 +642,13 @@ def get_room_state(db: Session, room_id: str):
 
     records = []
     for boss_record, boss_type in results:
-        record_dict = boss_record.__dict__.copy()
-        record_dict.update({
-            "min_respawn_minutes": boss_type.min_respawn_minutes,
-            "max_respawn_minutes": boss_type.max_respawn_minutes,
-            "current_status": get_current_status(boss_record, boss_type),
-            "recorded_at": boss_record.recorded_at.isoformat() + 'Z',
-            "respawn_min_time": boss_record.respawn_min_time.isoformat() + 'Z' if boss_record.respawn_min_time else None,
-            "respawn_max_time": boss_record.respawn_max_time.isoformat() + 'Z' if boss_record.respawn_max_time else None,
-        })
-        records.append(record_dict)
+        records.append(serialize_boss_record(boss_record, boss_type))
 
     return records
 
 
 def get_current_status(boss_record: BossRecord, boss_type: BossType) -> str:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
 
     if boss_record.status == "killed":
         if boss_record.respawn_max_time and now >= boss_record.respawn_max_time:
@@ -614,7 +668,7 @@ async def cleanup_inactive_rooms():
 
             db = SessionLocal()
             try:
-                cutoff_time = datetime.utcnow() - timedelta(hours=24)
+                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
                 db.query(Room).filter(Room.last_active < cutoff_time).delete()
                 db.commit()
                 logging.info("Cleaned up inactive rooms")
@@ -628,4 +682,4 @@ async def cleanup_inactive_rooms():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api")
+    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api", ssl_certfile="../frontend/vite.pem", ssl_keyfile="../frontend/vite-key.pem")
