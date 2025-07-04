@@ -15,8 +15,9 @@
 
 <script setup>
 import { computed } from 'vue'
-import { MagnifyingGlassCircleIcon, QuestionMarkCircleIcon } from '@heroicons/vue/24/outline'
 import SkullIcon from "/icons/SkullIcon.vue"
+import SearchIcon from "/icons/SearchIcon.vue";
+import QuestionIcon from "/icons/questionIcon.vue";
 
 const props = defineProps({
   type: {
@@ -32,7 +33,7 @@ defineEmits(['click'])
 const buttonConfigs = {
   alive: {
     title: '發現活著的BOSS',
-    icon: MagnifyingGlassCircleIcon,
+    icon: SearchIcon,
     baseClass: 'bg-green-600 hover:bg-green-700'
   },
   killed: {
@@ -42,7 +43,7 @@ const buttonConfigs = {
   },
   not_found: {
     title: '沒有發現BOSS',
-    icon: QuestionMarkCircleIcon,
+    icon: QuestionIcon,
     baseClass: 'bg-gray-600 hover:bg-gray-700'
   }
 }

@@ -16,6 +16,11 @@ const router: Router = createRouter({
       props: true,
     },
     {
+      path: '/credits',
+      name: 'Credits',
+      component: () => import('../views/Credits.vue'),
+    },
+    {
       // Redirect to home if no other route matches
       path: '/:pathMatch(.*)*',
       redirect: '/',
