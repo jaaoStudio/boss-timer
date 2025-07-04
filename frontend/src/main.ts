@@ -15,7 +15,7 @@ app.use(createGtm({
   defer: false,
   compatibility: false,
   enabled: true,
-  debug: true,
+  debug: false,
   loadScript: true,
   vueRouter: router,
   trackOnNextTick: false,
