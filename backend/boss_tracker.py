@@ -280,9 +280,11 @@ app = FastAPI(lifespan=lifespan)
 manager = ConnectionManager()
 
 # CORS 設定
+allowed_origins = os.getenv("ALLOWED_ORIGINS", "")
+origin_list = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://boss-timer.jaao.tw"],  # 只允許您的前端域名
+    allow_origins=origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
