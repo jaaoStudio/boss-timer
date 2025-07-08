@@ -114,14 +114,14 @@ const createRoom = async () => {
 
   try {
     const response = await ApiService.createRoom()
-    console.log(response.data)
+    // console.log(response.data)
     if (response.success) {
       const newRoomId = response.room_id
       roomId.value = newRoomId
 
       // 顯示成功訊息
       successMessage.value = `Room ${newRoomId} created successfully!`
-      console.log(newRoomId)
+      // console.log(newRoomId)
       await router.push({ name: 'BossTracker', params: { roomId: newRoomId } })
     }
   } catch (error) {

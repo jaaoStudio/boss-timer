@@ -60,6 +60,7 @@ import { useRoomStore } from '@/stores/roomStore.js'
 import { useBossStore } from '@/stores/bossStore.js'
 import ApiService from '@/services/apiService.ts'
 import BossStatusButton from "@/components/BossStatusButton.vue";
+import {showMessage} from "@/composables/useElementPlus.js";
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
@@ -122,8 +123,8 @@ const recordBoss = async () => {
     form.value.channel = ''
 
   } catch (error) {
-    console.error('Failed to record boss:', error)
-    alert('記錄失敗，請重試')
+    // console.error('Failed to record boss:', error)
+    showMessage.error("紀錄失敗，請重試。")
   } finally {
     loading.value = false
   }

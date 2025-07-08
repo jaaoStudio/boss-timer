@@ -1,4 +1,5 @@
 import { bossService } from '@/axios';
+import {showMessage} from "@/composables/useElementPlus";
 
 const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`;
 
@@ -14,9 +15,10 @@ class ApiService {
         // The backend will set the cookie on its own.
         // We just need to call this endpoint once if we suspect the user is new.
         await this.getToken();
-        console.log('Auth token refresh/initialization attempted.');
+        // console.log('Auth token refresh/initialization attempted.');
     } catch (error) {
-        console.error('Failed to initialize auth token:', error);
+        // console.error('Failed to initialize auth token:', error);
+      showMessage.error('登入失敗');
     }
   }
 

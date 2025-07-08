@@ -66,7 +66,6 @@ export function useWebSocket() {
   const handleMessage = (message) => {
     switch (message.type) {
       case 'error':
-        console.log('ss', message)
         disconnect()
         router.push("/").then(r => {})
         break
