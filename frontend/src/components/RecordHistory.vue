@@ -24,8 +24,8 @@
 <script setup>
 import {ref, onMounted, watch, computed} from 'vue'
 import {storeToRefs} from 'pinia'
-import {useBossStore} from '@/stores/bossStore'
-import {useRoomStore} from '@/stores/roomStore'
+import {useBossStore} from '@/stores/bossStore.js'
+import {useRoomStore} from '@/stores/roomStore.js'
 import RecordItem from './RecordItem.vue'
 
 const bossStore = useBossStore()

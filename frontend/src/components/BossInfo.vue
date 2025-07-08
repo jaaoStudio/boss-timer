@@ -58,7 +58,7 @@
 <script setup>
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '../stores/bossStore'
+import { useBossStore } from '../stores/bossStore.js'
 import StatusBadge from './StatusBadge.vue'
 import CountdownTimer from './CountdownTimer.vue'
 

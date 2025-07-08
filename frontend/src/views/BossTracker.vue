@@ -24,11 +24,11 @@
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
-import { useRoomStore } from '@/stores/roomStore'
-import { useBossStore } from '@/stores/bossStore'
+import { useRoute, useRouter } from 'vue-router'
+import { useRoomStore } from '@/stores/roomStore.js'
+import { useBossStore } from '@/stores/bossStore.js'
 import { useWebSocket } from '@/composables/useWebSocket'
-import ApiService from '@/services/apiService.js'
+import ApiService from '@/services/apiService.ts'
 import AppHeader from '@/components/AppHeader.vue'
 import BossControlPanel from '@/components/BossControlPanel.vue'
 import BossInfo from '@/components/BossInfo.vue'
@@ -36,8 +36,10 @@ import ChannelOverview from '@/components/ChannelOverview.vue'
 import RecommendedChannels from '@/components/RecommendedChannels.vue'
 import RecordHistory from '@/components/RecordHistory.vue'
 import {storeToRefs} from "pinia";
+import {showMessage} from "@/composables/useElementPlus.js";
 
 const route = useRoute()
+const router = useRouter()
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
 const { roomId } = storeToRefs(roomStore)
@@ -54,15 +56,22 @@ onMounted(async () => {
   try {
     // 設定房間ID
     roomId.value = props.roomId
-    // 載入BOSS類型
-    const types = await ApiService.getBossTypes()
-    bossStore.setBossTypes(types)
+    const roomExistResponse = await ApiService.checkRoomExists(roomId.value)
+    if (roomExistResponse.exists) {
+      // 載入BOSS類型
 
-    // 連接 WebSocket
-    connect(props.roomId)
+      const types = await ApiService.getBossTypes()
+      bossStore.setBossTypes(types)
 
+      // 連接 WebSocket
+      connect(props.roomId)
+    }
   } catch (error) {
-    console.error('Failed to initialize app:', error)
+    // console.error('Failed to initialize app:', error)
+    if (error.status === 404){
+      await router.push({name: 'RoomSelection',})
+      showMessage.error("房間不存在")
+    }
   }
 })
 

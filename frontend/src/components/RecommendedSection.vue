@@ -19,7 +19,7 @@
 <script setup>
 import { computed } from 'vue'
 import CountdownTimer from './CountdownTimer.vue'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore } from '@/stores/bossStore.js'
 
 const props = defineProps({
   title: {

@@ -18,7 +18,7 @@
 
 <script setup>
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore } from '@/stores/bossStore.js'
 import RecommendedSection from './RecommendedSection.vue'
 
 const bossStore = useBossStore()

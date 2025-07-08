@@ -4,4 +4,15 @@
     { "path": "./tsconfig.app.json"},
     { "path": "./tsconfig.node.json"}
   ],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["src/*"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "src/**/*.ts",
+    "src/**/*.vue"
+  ]
 }

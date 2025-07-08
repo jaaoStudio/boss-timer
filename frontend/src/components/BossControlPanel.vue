@@ -56,9 +56,9 @@
 <script setup>
 import {ref, computed, watch, onMounted} from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoomStore } from '@/stores/roomStore'
-import { useBossStore } from '@/stores/bossStore'
-import ApiService from '@/services/apiService.js'
+import { useRoomStore } from '@/stores/roomStore.js'
+import { useBossStore } from '@/stores/bossStore.js'
+import ApiService from '@/services/apiService.ts'
 import BossStatusButton from "@/components/BossStatusButton.vue";
 
 const roomStore = useRoomStore()

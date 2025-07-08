@@ -90,8 +90,8 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useRoomStore } from '@/stores/roomStore'
-import ApiService from '@/services/apiService'
+import { useRoomStore } from '@/stores/roomStore.ts'
+import ApiService from '@/services/apiService.ts'
 import {storeToRefs} from "pinia";
 
 const router = useRouter()

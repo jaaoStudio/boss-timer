@@ -8,7 +8,7 @@
 <script setup>
 import {computed} from 'vue'
 import {storeToRefs} from 'pinia'
-import {useBossStore} from '@/stores/bossStore'
+import {useBossStore} from '@/stores/bossStore.js'
 
 const props = defineProps({
   channelNumber: {

@@ -21,37 +21,30 @@ class ApiService {
   }
 
   getToken() {
-    return bossService.post('/token').then(res => res.data);
+    return bossService.post('/token');
   }
 
   // 獲取 BOSS 類型
   getBossTypes() {
-    return bossService.get('/boss-types').then(res => res.data);
+    return bossService.get('/boss-types');
   }
 
   // 記錄 BOSS 狀態
-  recordBoss(data) {
-    return bossService.post('/record-boss', data).then(res => res.data);
-  }
-
-  // 獲取房間歷史
-  getRoomHistory(roomId, bossName = null, limit = 50) {
-    const params = { limit };
-    if (bossName) params.boss_name = bossName;
-    return bossService.get(`/room/${roomId}/history`, { params }).then(res => res.data);
+  recordBoss(data: string) {
+    return bossService.post('/record-boss', data);
   }
 
   // 建立房間
-  createRoom(roomId) {
-    return bossService.post('/room', { room_id: roomId }).then(res => res.data);
+  createRoom(roomId: string) {
+    return bossService.post('/room', { room_id: roomId });
   }
 
-  checkRoomExists(roomId) {
-    return bossService.get(`/room/${roomId}/exists`).then(res => res.data);
+  checkRoomExists(roomId: string) {
+    return bossService.get(`/room/${roomId}/exists`);
   }
 
   // WebSocket 連接
-  createWebSocket(roomId) {
+  createWebSocket(roomId: string) {
     return new WebSocket(`${WS_URL}/ws/${roomId}`);
   }
 }

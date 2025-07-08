@@ -1,15 +1,16 @@
 import { createApp } from 'vue'
 import { createPinia } from "pinia";
 import router from "./router";
-import './style.css'
-import { createGtm } from '@gtm-support/vue-gtm'
-import apiService from '@/services/apiService.js';
+import './style.css';
+import { createGtm } from '@gtm-support/vue-gtm';
+import ApiService from '@/services/apiService.ts';
+import 'element-plus/theme-chalk/dark/css-vars.css'
 
 import App from './App.vue'
 
 // Initialize authentication
 (async () => {
-  await apiService.initAuth();
+  await ApiService.initAuth();
 })();
 
 const app = createApp(App);

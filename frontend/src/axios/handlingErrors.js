@@ -1,5 +1,5 @@
 import router from "@/router/index.js";
-import { useAppInfoStore } from "@/stores/appInfo";
+import { useAppInfoStore } from "@/stores/appInfo.js";
 import {storeToRefs} from "pinia";
 
 export const handleError = (axiosInstance, error) => {

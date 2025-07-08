@@ -1,6 +1,10 @@
 import { fileURLToPath, URL } from 'node:url'
 import { defineConfig, loadEnv } from 'vite'
 import type { ConfigEnv } from 'vite'
+import AutoImport from 'unplugin-auto-import/vite'
+import Components from 'unplugin-vue-components/vite'
+import { ElementPlusResolver } from 'unplugin-vue-components/resolvers'
+import ElementPlus from 'unplugin-element-plus/vite'
 import vue from '@vitejs/plugin-vue'
 import tailwindcss from '@tailwindcss/vite'
 import VitePluginHtmlEnv from 'vite-plugin-html-env'
@@ -16,6 +20,13 @@ export default defineConfig((config: ConfigEnv) => {
       vue(),
       VitePluginHtmlEnv(),
       tailwindcss(),
+      ElementPlus({}),
+      AutoImport({
+        resolvers: [ElementPlusResolver()],
+      }),
+      Components({
+        resolvers: [ElementPlusResolver()],
+      }),
     ],
     resolve: {
       alias: {

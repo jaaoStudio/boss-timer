@@ -32,7 +32,7 @@
 
 <script setup>
 import { storeToRefs } from 'pinia'
-import { useRoomStore } from '@/stores/roomStore'
+import { useRoomStore } from '@/stores/roomStore.js'
 import { UserIcon } from '@heroicons/vue/24/solid'
 import RoomManager from '@/components/RoomManager.vue'
 

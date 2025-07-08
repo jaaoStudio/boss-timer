@@ -1,8 +1,9 @@
 import {onUnmounted, ref} from 'vue'
 import {storeToRefs} from 'pinia'
-import {useRoomStore} from '@/stores/roomStore'
-import {useBossStore} from '@/stores/bossStore'
-import ApiService from '@/services/apiService.js'
+import {useRoomStore} from '@/stores/roomStore.js'
+import {useBossStore} from '@/stores/bossStore.js'
+import ApiService from '@/services/apiService.ts'
+import router from "@/router/index.js";
 
 export function useWebSocket() {
   const roomStore = useRoomStore()
@@ -64,11 +65,16 @@ export function useWebSocket() {
 
   const handleMessage = (message) => {
     switch (message.type) {
+      case 'error':
+        console.log('ss', message)
+        disconnect()
+        router.push("/").then(r => {})
+        break
       case 'room_state':
         bossStore.setBossRecords(message.data)
         break
       case 'boss_update':
-        bossStore.updateBossRecord(message.data)
+        bossStore.updateBossRecord(message.data).then(r => {})
         break
       case 'user_count_update':
         roomStore.setUserCount(message.count)
