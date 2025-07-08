@@ -69,7 +69,7 @@ onMounted(async () => {
   } catch (error) {
     // console.error('Failed to initialize app:', error)
     if (error.status === 404){
-      await router.push({name: 'RoomSelection',})
+      await router.push({name: 'RoomSelection'})
       showMessage.error("房間不存在")
     }
   }

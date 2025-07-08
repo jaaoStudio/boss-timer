@@ -21,26 +21,26 @@ class ApiService {
   }
 
   getToken() {
-    return bossService.post('/token');
+    return bossService.post('/token').then(res => res.data);
   }
 
   // 獲取 BOSS 類型
   getBossTypes() {
-    return bossService.get('/boss-types');
+    return bossService.get('/boss-types').then(res => res.data);
   }
 
   // 記錄 BOSS 狀態
   recordBoss(data: string) {
-    return bossService.post('/record-boss', data);
+    return bossService.post('/record-boss', data).then(res => res.data);
   }
 
   // 建立房間
   createRoom(roomId: string) {
-    return bossService.post('/room', { room_id: roomId });
+    return bossService.post('/room', { room_id: roomId }).then(res => res.data);
   }
 
   checkRoomExists(roomId: string) {
-    return bossService.get(`/room/${roomId}/exists`);
+    return bossService.get(`/room/${roomId}/exists`).then(res => res.data);
   }
 
   // WebSocket 連接

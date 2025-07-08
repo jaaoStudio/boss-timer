@@ -93,6 +93,7 @@ import { useRouter } from 'vue-router'
 import { useRoomStore } from '@/stores/roomStore.ts'
 import ApiService from '@/services/apiService.ts'
 import {storeToRefs} from "pinia";
+import { showMessage } from "@/composables/useElementPlus.js";
 
 const router = useRouter()
 const roomStore = useRoomStore()
@@ -113,21 +114,19 @@ const createRoom = async () => {
 
   try {
     const response = await ApiService.createRoom()
-
+    console.log(response.data)
     if (response.success) {
       const newRoomId = response.room_id
       roomId.value = newRoomId
 
       // 顯示成功訊息
       successMessage.value = `Room ${newRoomId} created successfully!`
-
+      console.log(newRoomId)
       await router.push({ name: 'BossTracker', params: { roomId: newRoomId } })
-    } else {
-      throw new Error(response.message || 'Failed to create room')
     }
   } catch (error) {
     console.error('Error creating room:', error)
-    alert('Failed to create room. Please try again.')
+    showMessage.error("房間建立失敗，請稍後再試。")
   } finally {
     isCreating.value = false
   }

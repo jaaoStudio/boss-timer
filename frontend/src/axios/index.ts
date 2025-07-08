@@ -18,19 +18,19 @@ class AxiosInstance {
    * 參考：https://axios-http.com/docs/cancellation
    */
 
-  get(url, config) {
+  get(url, config = {}) {
     return this.axiosInstance.get(url, config);
   }
 
-  post(url, data, config) {
+  post(url, data = {}, config = {}) {
     return this.axiosInstance.post(url, data, config);
   }
 
-  put(url, data, config) {
+  put(url, data = {}, config = {}) {
     return this.axiosInstance.put(url, data, config);
   }
 
-  delete(url, config) {
+  delete(url, config = {}) {
     return this.axiosInstance.delete(url, config);
   }
 }
