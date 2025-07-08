@@ -14,6 +14,9 @@ import logging
 import os
 import secrets
 from contextlib import asynccontextmanager
+
+from websockets import ConnectionClosed, ConnectionClosedError, ConnectionClosedOK
+
 from db_config import DATABASE_URL
 from jose import JWTError, jwt
 
@@ -192,14 +195,34 @@ class ConnectionManager:
 
     async def broadcast_to_room(self, room_id: str, message: dict):
         if room_id in self.room_connections:
-            message_str = json.dumps(message, default=str)
+            try:
+                message_str = json.dumps(message, default=str)
+            except (TypeError, ValueError) as e:
+                logging.error(f"Failed to serialize message for room {room_id}: {e}")
+                return
+
             disconnected = set()
 
             for connection in self.room_connections[room_id]:
                 try:
                     await connection.send_text(message_str)
-                except:
+                except (ConnectionClosed, ConnectionClosedError, ConnectionClosedOK):
+                    # Clean disconnection
                     disconnected.add(connection)
+                except ConnectionResetError:
+                    # Network reset
+                    disconnected.add(connection)
+                except BrokenPipeError:
+                    # Broken pipe
+                    disconnected.add(connection)
+                except OSError as e:
+                    # Other OS-level errors
+                    disconnected.add(connection)
+                    logging.error(f"OS error in room {room_id}: {e}")
+                except Exception as e:
+                    # Log unexpected errors but don't disconnect unless it's clearly a connection issue
+                    logging.error(f"Unexpected error sending to room {room_id}: {type(e).__name__}: {e}")
+                    # You might want to add specific handling for your framework's exceptions here
 
             # 清理斷開的連接
             for connection in disconnected:
@@ -527,20 +550,20 @@ async def record_boss(
         raise HTTPException(status_code=500, detail="Failed to record boss status")
 
 
-async def _validate_room_exists(db: Session, room_id: str) -> Type[Room]:
+async def _validate_room_exists(db: Session, room_id: str) -> Room:
     """驗證房間是否存在"""
     room = db.query(Room).filter(Room.room_id == room_id).first()
     if not room:
         raise HTTPException(status_code=404, detail=f"房間 {room_id} 不存在")
-    return room
+    return room # type: ignore
 
 
-async def _validate_boss_type_exists(db: Session, boss_name: str) -> Type[BossType]:
+async def _validate_boss_type_exists(db: Session, boss_name: str) -> BossType:
     """驗證 BOSS 類型是否存在"""
     boss_type = db.query(BossType).filter(BossType.boss_name == boss_name).first()
     if not boss_type:
         raise HTTPException(status_code=400, detail="Invalid boss type")
-    return boss_type
+    return boss_type # type: ignore
 
 
 async def _calculate_respawn_times(
@@ -570,7 +593,7 @@ async def _calculate_respawn_times(
     }
 
 
-async def _get_last_killed_time(db: Session, record: BossRecordCreate) -> InstrumentedAttribute | None:
+async def _get_last_killed_time(db: Session, record: BossRecordCreate) -> Optional[datetime]:
     """獲取最後一次被殺死的時間"""
     last_killed_record = db.query(BossRecord).filter(
         BossRecord.room_id == record.room_id,
