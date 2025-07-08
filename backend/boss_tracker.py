@@ -2,11 +2,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depe
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, Column, String, Integer, DateTime, Text, text, ForeignKey, Index, CheckConstraint, func
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, Session, relationship, InstrumentedAttribute
 from sqlalchemy.dialects.postgresql import JSONB
 from pydantic import BaseModel
 from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict, Set
+from typing import Optional, List, Dict, Set, Any, Coroutine, Type
 import asyncio
 import json
 import uuid
@@ -315,10 +315,14 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, db: Session = D
         # 確保房間存在
         room = db.query(Room).filter(Room.room_id == room_id).first()
         if not room:
-            room = Room(room_id=room_id)
-            db.add(room)
-            db.commit()
-            db.refresh(room)
+            # 房間不存在，發送錯誤訊息並關閉連接
+            await websocket.send_text(json.dumps({
+                "type": "error",
+                "message": f"房間 {room_id} 不存在",
+                "error_code": "ROOM_NOT_FOUND"
+            }))
+            await websocket.close(code=1008, reason="Room not found")
+            return
 
         # 發送當前房間狀態和用戶數
         current_state = get_room_state(db, room_id)
@@ -475,108 +479,173 @@ async def check_room_exists(room_id: str, db: Session = Depends(get_db)):
                 "active_users": room.active_users
             }
         else:
-            return {
-                "exists": False,
-                "room_id": room_id.upper()
-            }
-
+            raise HTTPException(
+                status_code=404,
+                detail= {
+                    "exists": False,
+                    "room_id": room_id.upper()
+                }
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Check room exists error: {e}")
         raise HTTPException(status_code=500, detail="Failed to check room existence")
 
-@app.post("/record-boss")
-async def record_boss(record: BossRecordCreate, db: Session = Depends(get_db), user_id: str = Depends(get_current_user_id)):
-    try:
-        # 確保房間存在
-        room = db.query(Room).filter(Room.room_id == record.room_id).first()
-        if not room:
-            room = Room(room_id=record.room_id)
-            db.add(room)
-            db.commit()
-            db.refresh(room) # 刷新以確保 room 對象是最新的
 
-        # 獲取 BOSS 類型
-        boss_type = db.query(BossType).filter(BossType.boss_name == record.boss_name).first()
-        if not boss_type:
-            raise HTTPException(status_code=400, detail="Invalid boss type")
+@app.post("/record-boss")
+async def record_boss(
+        record: BossRecordCreate,
+        db: Session = Depends(get_db),
+        user_id: str = Depends(get_current_user_id)
+):
+    """記錄 BOSS 狀態"""
+    try:
+        # 驗證房間和 BOSS 類型
+        room = await _validate_room_exists(db, record.room_id)
+        boss_type = await _validate_boss_type_exists(db, record.boss_name)
 
         # 計算重生時間
-        respawn_min_time = None
-        respawn_max_time = None
-        now = datetime.now(timezone.utc)
-        base_time = now # Default base time
+        respawn_times = await _calculate_respawn_times(db, record, boss_type)
 
-        if record.status == "killed":
-            # When killed, the recorded_at for this new record is 'now'
-            # And respawn times are calculated from 'now'
-            base_time = now
-        elif record.status == "respawning":
-            # When respawning, we need to find the recorded_at of the *last* 'killed' record
-            last_killed_record = db.query(BossRecord).filter(
-                BossRecord.room_id == record.room_id,
-                BossRecord.channel == record.channel,
-                BossRecord.boss_name == record.boss_name,
-                BossRecord.status == "killed"
-            ).order_by(BossRecord.recorded_at.desc()).first()
+        # 創建 BOSS 記錄
+        boss_record = await _create_boss_record(db, record, respawn_times, user_id)
 
-            if last_killed_record:
-                base_time = last_killed_record.recorded_at
-            else:
-                # Fallback if no previous killed record is found (shouldn't happen if logic is followed)
-                base_time = now
+        # 更新房間最後活躍時間
+        await _update_room_last_active(db, room)
 
-        if record.status == "killed" or record.status == "respawning":
-            respawn_min_time = base_time + timedelta(minutes=boss_type.min_respawn_minutes)
-            respawn_max_time = base_time + timedelta(minutes=boss_type.max_respawn_minutes)
+        # 廣播更新
+        await _broadcast_boss_update(record.room_id, boss_record, boss_type)
 
-        # Create record
-        new_boss_record = BossRecord( # Renamed to new_boss_record to avoid confusion
-            room_id=record.room_id,
-            channel=record.channel,
-            boss_name=record.boss_name,
-            status=record.status,
-            recorded_at=now, # The actual recorded_at for this new record
-            respawn_min_time=respawn_min_time,
-            respawn_max_time=respawn_max_time,
-            recorder_info={"user_id": user_id}
-        )
+        # 返回響應
+        return _create_success_response(boss_record, boss_type)
 
-        db.add(new_boss_record)
-        db.commit()
-        db.refresh(new_boss_record)
-
-        # Update room last_active
-        room.last_active = datetime.now(timezone.utc)
-        db.commit()
-
-        # Broadcast update
-        # Serialize new_boss_record using BossRecordResponse to exclude SQLAlchemy internal state
-        boss_record_response = BossRecordResponse(
-            id=new_boss_record.id,
-            room_id=new_boss_record.room_id,
-            channel=new_boss_record.channel,
-            boss_name=new_boss_record.boss_name,
-            status=new_boss_record.status,
-            recorded_at=new_boss_record.recorded_at.isoformat(),
-            respawn_min_time=new_boss_record.respawn_min_time.isoformat() if new_boss_record.respawn_min_time else None,
-            respawn_max_time=new_boss_record.respawn_max_time.isoformat() if new_boss_record.respawn_max_time else None,
-            min_respawn_minutes=boss_type.min_respawn_minutes,
-            max_respawn_minutes=boss_type.max_respawn_minutes,
-            current_status=get_current_status(new_boss_record, boss_type)
-        )
-
-        await manager.broadcast_to_room(record.room_id, {
-            "type": "boss_update",
-            "data": boss_record_response.__dict__
-        })
-
-        logging.info(f"Broadcasted boss_update for room {record.room_id}: {boss_record_response}")
-
-        return {"success": True, "data": boss_record_response}
-
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"Record boss error: {e}")
         raise HTTPException(status_code=500, detail="Failed to record boss status")
+
+
+async def _validate_room_exists(db: Session, room_id: str) -> Type[Room]:
+    """驗證房間是否存在"""
+    room = db.query(Room).filter(Room.room_id == room_id).first()
+    if not room:
+        raise HTTPException(status_code=404, detail=f"房間 {room_id} 不存在")
+    return room
+
+
+async def _validate_boss_type_exists(db: Session, boss_name: str) -> Type[BossType]:
+    """驗證 BOSS 類型是否存在"""
+    boss_type = db.query(BossType).filter(BossType.boss_name == boss_name).first()
+    if not boss_type:
+        raise HTTPException(status_code=400, detail="Invalid boss type")
+    return boss_type
+
+
+async def _calculate_respawn_times(
+        db: Session,
+        record: BossRecordCreate,
+        boss_type: BossType
+) -> dict:
+    """計算 BOSS 重生時間"""
+    now = datetime.now(timezone.utc)
+
+    if record.status == "killed":
+        base_time = now
+    elif record.status == "respawning":
+        base_time = await _get_last_killed_time(db, record) or now
+    else:
+        # 其他狀態不需要重生時間
+        return {
+            "respawn_min_time": None,
+            "respawn_max_time": None,
+            "base_time": now
+        }
+
+    return {
+        "respawn_min_time": base_time + timedelta(minutes=boss_type.min_respawn_minutes),
+        "respawn_max_time": base_time + timedelta(minutes=boss_type.max_respawn_minutes),
+        "base_time": now
+    }
+
+
+async def _get_last_killed_time(db: Session, record: BossRecordCreate) -> InstrumentedAttribute | None:
+    """獲取最後一次被殺死的時間"""
+    last_killed_record = db.query(BossRecord).filter(
+        BossRecord.room_id == record.room_id,
+        BossRecord.channel == record.channel,
+        BossRecord.boss_name == record.boss_name,
+        BossRecord.status == "killed"
+    ).order_by(BossRecord.recorded_at.desc()).first()
+
+    return last_killed_record.recorded_at if last_killed_record else None
+
+
+async def _create_boss_record(
+        db: Session,
+        record: BossRecordCreate,
+        respawn_times: dict,
+        user_id: str
+) -> BossRecord:
+    """創建 BOSS 記錄"""
+    boss_record = BossRecord(
+        room_id=record.room_id,
+        channel=record.channel,
+        boss_name=record.boss_name,
+        status=record.status,
+        recorded_at=respawn_times["base_time"],
+        respawn_min_time=respawn_times["respawn_min_time"],
+        respawn_max_time=respawn_times["respawn_max_time"],
+        recorder_info={"user_id": user_id}
+    )
+
+    db.add(boss_record)
+    db.commit()
+    db.refresh(boss_record)
+
+    return boss_record
+
+
+async def _update_room_last_active(db: Session, room: Room):
+    """更新房間最後活躍時間"""
+    room.last_active = datetime.now(timezone.utc)
+    db.commit()
+
+
+def _create_boss_record_response(boss_record: BossRecord, boss_type: BossType) -> BossRecordResponse:
+    """創建 BossRecordResponse 對象"""
+    return BossRecordResponse(
+        id=boss_record.id,
+        room_id=boss_record.room_id,
+        channel=boss_record.channel,
+        boss_name=boss_record.boss_name,
+        status=boss_record.status,
+        recorded_at=boss_record.recorded_at.isoformat(),
+        respawn_min_time=boss_record.respawn_min_time.isoformat() if boss_record.respawn_min_time else None,
+        respawn_max_time=boss_record.respawn_max_time.isoformat() if boss_record.respawn_max_time else None,
+        min_respawn_minutes=boss_type.min_respawn_minutes,
+        max_respawn_minutes=boss_type.max_respawn_minutes,
+        current_status=get_current_status(boss_record, boss_type)
+    )
+
+
+async def _broadcast_boss_update(room_id: str, boss_record: BossRecord, boss_type: BossType):
+    """廣播 BOSS 更新"""
+    boss_record_response = _create_boss_record_response(boss_record, boss_type)
+
+    await manager.broadcast_to_room(room_id, {
+        "type": "boss_update",
+        "data": boss_record_response.__dict__
+    })
+
+    logging.info(f"Broadcasted boss_update for room {room_id}: {boss_record_response}")
+
+
+def _create_success_response(boss_record: BossRecord, boss_type: BossType) -> dict:
+    """創建成功響應"""
+    boss_record_response = _create_boss_record_response(boss_record, boss_type)
+    return {"success": True, "data": boss_record_response}
 
 
 @app.get("/room/{room_id}/history")
