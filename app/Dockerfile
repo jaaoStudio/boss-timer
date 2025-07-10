@@ -1,4 +1,4 @@
-# backend/Dockerfile
+# app/Dockerfile
 FROM python:3.11-slim
 
 # 設置工作目錄

@@ -44,7 +44,7 @@ CREATE INDEX IF NOT EXISTS idx_room_users_room ON room_users(room_id);
 
 -- 預設 BOSS 類型
 INSERT INTO boss_types (boss_name, min_respawn_minutes, max_respawn_minutes, description) VALUES
-('雪毛怪人', 45, 68, '冰源雪域'),
+('雪毛怪人', 45, 68, '冰原雪域'),
 ('黑輪王',780 , 1020, '西門町'),
 ('巴洛古', 405, 540, '維多利亞島'),
 ('肯得熊', 113, 128, '桃花仙境'),
@@ -63,7 +63,7 @@ INSERT INTO boss_types (boss_name, min_respawn_minutes, max_respawn_minutes, des
 ('殭屍猴王', 38, 45, '維多利亞島'),
 ('樹妖王', 23, 30, '維多利亞島'),
 ('巨居蟹', 45, 60, '黃金海岸'),
-('雪山魔女', 158, 180, '冰源雪域'),
-('厄運死神', 45, 105, '冰源雪域'),
+('雪山魔女', 158, 180, '冰原雪域'),
+('厄運死神', 45, 105, '冰原雪域'),
 ('紅寶王', 23, 30, '維多利亞島')
 ON CONFLICT (boss_name) DO NOTHING;
