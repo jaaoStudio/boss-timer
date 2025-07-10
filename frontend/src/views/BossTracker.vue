@@ -57,14 +57,14 @@ onMounted(async () => {
     // 設定房間ID
     roomId.value = props.roomId
     const roomExistResponse = await ApiService.checkRoomExists(roomId.value)
-    if (roomExistResponse.exists) {
+    if (roomExistResponse.data.exists) {
       // 載入BOSS類型
-
       const types = await ApiService.getBossTypes()
-      bossStore.setBossTypes(types)
+      bossStore.setBossTypes(types.data)
 
       // 連接 WebSocket
       connect(props.roomId)
+
     }
   } catch (error) {
     // console.error('Failed to initialize app:', error)

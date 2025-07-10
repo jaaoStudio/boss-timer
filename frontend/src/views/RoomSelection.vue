@@ -114,9 +114,9 @@ const createRoom = async () => {
 
   try {
     const response = await ApiService.createRoom()
-    // console.log(response.data)
-    if (response.success) {
-      const newRoomId = response.room_id
+    // console.log(response)
+    if (response.status === 200) {
+      const newRoomId = response.data.room_id
       roomId.value = newRoomId
 
       // 顯示成功訊息
@@ -150,7 +150,7 @@ const joinRoom = async () => {
     // 檢查房間是否存在
     const roomCheck = await ApiService.checkRoomExists(roomIdToJoin)
 
-    if (roomCheck.exists) {
+    if (roomCheck.data.exists) {
       roomId.value = roomIdToJoin
 
       // 顯示成功訊息

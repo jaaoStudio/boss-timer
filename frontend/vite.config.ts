@@ -48,7 +48,7 @@ export default defineConfig((config: ConfigEnv) => {
         cert: fs.readFileSync('./vite.pem'),
       },
       host: '0.0.0.0',
-      port: 2255,
+      port: 5173,
       proxy: {
         '/api': {
           target: 'https://10.5.71.159:1254',

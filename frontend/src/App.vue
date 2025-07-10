@@ -1,7 +1,12 @@
 <script setup>
 import { RouterView } from "vue-router";
 import AppFooter from "@/components/AppFooter.vue";
+import ApiService from "@/services/apiService.js";
 
+// Initialize authentication
+(async () => {
+  await ApiService.initAuth();
+})();
 
 </script>
 

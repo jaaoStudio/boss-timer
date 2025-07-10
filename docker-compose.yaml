@@ -1,7 +1,7 @@
 services:
   boss_service:
     build:
-      context: backend
+      context: app
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${VERSION}
     platform: linux/arm64  # 構建適配 ARM 的镜像
     container_name: boss_service

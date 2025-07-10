@@ -27,40 +27,45 @@ export function useWebSocket() {
       roomStore.setConnected(false);
     }
 
-    const newWs = ApiService.createWebSocket(roomId)
-    roomStore.setWebSocket(newWs)
+    try {
+      const newWs = ApiService.createWebSocket(roomId)
+      roomStore.setWebSocket(newWs)
 
-    newWs.onopen = () => {
-      roomStore.setConnected(true)
-      reconnectAttempts.value = 0
-      reconnectDelay.value = 1000
-      roomStore.setManualDisconnect(false) // 新連線成功時重置標誌
-    }
-
-    newWs.onmessage = (event) => {
-      const message = JSON.parse(event.data)
-      handleMessage(message)
-    }
-
-    newWs.onclose = () => {
-      roomStore.setConnected(false)
-      if (!isManualDisconnect.value) { // 只有在非手動斷開時才嘗試重連
-        attemptReconnect(roomId)
-      } else {
-        roomStore.setManualDisconnect(false) // 重置標誌
+      newWs.onopen = () => {
+        roomStore.setConnected(true)
+        reconnectAttempts.value = 0
+        reconnectDelay.value = 1000
+        roomStore.setManualDisconnect(false) // 新連線成功時重置標誌
       }
-    }
 
-    newWs.onerror = (error) => {
-      console.error('WebSocket error:', error)
-    }
-
-    // 心跳機制
-    newWs.pingInterval = setInterval(() => {
-      if (newWs.readyState === WebSocket.OPEN) {
-        newWs.send(JSON.stringify({type: 'ping'}))
+      newWs.onmessage = (event) => {
+        const message = JSON.parse(event.data)
+        handleMessage(message)
       }
-    }, 30000)
+
+      newWs.onclose = () => {
+        roomStore.setConnected(false)
+        if (!isManualDisconnect.value) { // 只有在非手動斷開時才嘗試重連
+          attemptReconnect(roomId)
+        } else {
+          roomStore.setManualDisconnect(false) // 重置標誌
+        }
+      }
+
+      newWs.onerror = (error) => {
+        console.error('WebSocket error:', error)
+      }
+
+      // 心跳機制
+      newWs.pingInterval = setInterval(() => {
+        if (newWs.readyState === WebSocket.OPEN) {
+          newWs.send(JSON.stringify({type: 'ping'}))
+        }
+      }, 30000)
+    } catch (error) {
+      console.error("Failed to create WebSocket:", error);
+      router.push("/");
+    }
   }
 
   const handleMessage = (message) => {
