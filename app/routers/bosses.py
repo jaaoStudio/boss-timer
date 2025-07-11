@@ -54,14 +54,3 @@ async def record_boss(
 async def get_boss_types(db: Session = Depends(get_db)):
     return db.query(BossType).all()
 
-def serialize_boss_record(boss_record: BossRecord, boss_type: BossType) -> dict:
-    record_dict = boss_record.__dict__.copy()
-    record_dict.update({
-        "min_respawn_minutes": boss_type.min_respawn_minutes,
-        "max_respawn_minutes": boss_type.max_respawn_minutes,
-        "current_status": BossService.get_current_status(boss_record, boss_type),
-        "recorded_at": boss_record.recorded_at.isoformat(),
-        "respawn_min_time": boss_record.respawn_min_time.isoformat() if boss_record.respawn_min_time else None,
-        "respawn_max_time": boss_record.respawn_max_time.isoformat() if boss_record.respawn_max_time else None,
-    })
-    return record_dict

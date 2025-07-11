@@ -1,20 +1,40 @@
 # app/database/models.py
-from sqlalchemy import Column, String, Integer, DateTime, Text, ForeignKey, Index, CheckConstraint, func
+from sqlalchemy import (
+    Column, String, Integer, DateTime, Text, ForeignKey, Index,
+    CheckConstraint, func, BigInteger
+)
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timezone
 from app.database.database import Base
 
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(BigInteger, primary_key=True)
+    google_id = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), unique=True, nullable=False)
+    display_name = Column(String(100))
+    avatar_url = Column(Text)
+    preferences = Column(JSONB, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_login_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    records = relationship("BossRecord", back_populates="recorder")
+    room_associations = relationship("RoomUser", back_populates="user")
+
+
 class Room(Base):
     __tablename__ = "rooms"
 
     room_id = Column(String(10), primary_key=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_active = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    active_users = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_active = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     boss_records = relationship("BossRecord", back_populates="room", cascade="all, delete-orphan")
-    users = relationship("RoomUser", back_populates="room", cascade="all, delete-orphan")
+    user_associations = relationship("RoomUser", back_populates="room", cascade="all, delete-orphan")
+
 
 class BossType(Base):
     __tablename__ = "boss_types"
@@ -26,17 +46,19 @@ class BossType(Base):
 
     records = relationship("BossRecord", back_populates="boss_type")
 
+
 class BossRecord(Base):
     __tablename__ = "boss_records"
 
-    id = Column(Integer, primary_key=True, autoincrement=True)
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
     room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=False)
     channel = Column(Integer, nullable=False)
     boss_name = Column(String(50), ForeignKey("boss_types.boss_name"), nullable=False)
     status = Column(String(20), nullable=False)
-    recorded_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    respawn_min_time = Column(DateTime)
-    respawn_max_time = Column(DateTime)
+    recorded_at = Column(DateTime(timezone=True), server_default=func.now())
+    respawn_min_time = Column(DateTime(timezone=True))
+    respawn_max_time = Column(DateTime(timezone=True))
+    recorder_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     recorder_info = Column(JSONB)
 
     __table_args__ = (
@@ -45,17 +67,29 @@ class BossRecord(Base):
         Index('idx_boss_records_room_channel', 'room_id', 'channel'),
         Index('idx_boss_records_room_boss', 'room_id', 'boss_name'),
         Index('idx_boss_records_time', 'recorded_at'),
+        Index('idx_boss_records_recorder_id', 'recorder_id'),
     )
 
     room = relationship("Room", back_populates="boss_records")
     boss_type = relationship("BossType", back_populates="records")
+    recorder = relationship("User", back_populates="records")
+
 
 class RoomUser(Base):
     __tablename__ = "room_users"
 
-    room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), primary_key=True)
-    user_session = Column(String(100), primary_key=True)
-    joined_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    last_seen = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+    id = Column(BigInteger, primary_key=True)
+    room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
+    anonymous_session_id = Column(String(100))
+    joined_at = Column(DateTime(timezone=True), server_default=func.now())
+    last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    room = relationship("Room", back_populates="users")
+    __table_args__ = (
+        CheckConstraint('user_id IS NOT NULL OR anonymous_session_id IS NOT NULL', name='chk_user_or_anonymous'),
+        Index('idx_room_users_room_id', 'room_id'),
+        Index('idx_room_users_user_id', 'user_id'),
+    )
+
+    room = relationship("Room", back_populates="user_associations")
+    user = relationship("User", back_populates="room_associations")

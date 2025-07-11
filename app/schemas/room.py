@@ -12,7 +12,6 @@ class RoomResponse(BaseModel):
     room_id: str
     created_at: datetime
     last_active: datetime
-    active_users: int
 
     class Config:
         from_attributes = True
@@ -23,4 +22,3 @@ class RoomExists(BaseModel):
     room_id: str
     created_at: Optional[datetime] = None
     last_active: Optional[datetime] = None
-    active_users: Optional[int] = None

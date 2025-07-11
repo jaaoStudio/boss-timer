@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     # CORS 配置
     allowed_origins: str = os.getenv("ALLOWED_ORIGINS", "")
 
+    # Google Auth
+    google_client_id: str = os.getenv("GOOGLE_CLIENT_ID")
+
     # 應用配置
     version: str = os.getenv("VERSION", "1.0.0")
 

@@ -2,8 +2,19 @@
 CREATE TABLE IF NOT EXISTS rooms (
     room_id VARCHAR(10) PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_active TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    active_users INTEGER DEFAULT 0
+    last_active TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 使用者表
+CREATE TABLE IF NOT EXISTS users (
+    id BIGSERIAL PRIMARY KEY,
+    google_id VARCHAR(255) UNIQUE NOT NULL,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    display_name VARCHAR(100),
+    avatar_url TEXT,
+    preferences JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
 
 -- BOSS 類型配置表
@@ -24,23 +35,31 @@ CREATE TABLE IF NOT EXISTS boss_records (
     recorded_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     respawn_min_time TIMESTAMPTZ,
     respawn_max_time TIMESTAMPTZ,
+    recorder_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
     recorder_info JSONB
 );
 
 -- 房間活動用戶表
 CREATE TABLE IF NOT EXISTS room_users (
+    id BIGSERIAL PRIMARY KEY,
     room_id VARCHAR(10) NOT NULL REFERENCES rooms(room_id) ON DELETE CASCADE,
-    user_session VARCHAR(100) NOT NULL,
+    user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+    anonymous_session_id VARCHAR(100),
     joined_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_seen TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    PRIMARY KEY (room_id, user_session)
+    CONSTRAINT chk_user_or_anonymous CHECK (user_id IS NOT NULL OR anonymous_session_id IS NOT NULL),
+    UNIQUE (room_id, user_id),
+    UNIQUE (room_id, anonymous_session_id)
 );
 
 -- 索引
+CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
+CREATE INDEX IF NOT EXISTS idx_boss_records_recorder_id ON boss_records(recorder_id);
 CREATE INDEX IF NOT EXISTS idx_boss_records_room_channel ON boss_records(room_id, channel);
 CREATE INDEX IF NOT EXISTS idx_boss_records_room_boss ON boss_records(room_id, boss_name);
 CREATE INDEX IF NOT EXISTS idx_boss_records_time ON boss_records(recorded_at);
-CREATE INDEX IF NOT EXISTS idx_room_users_room ON room_users(room_id);
+CREATE INDEX IF NOT EXISTS idx_room_users_room_id ON room_users(room_id);
+CREATE INDEX IF NOT EXISTS idx_room_users_user_id ON room_users(user_id);
 
 -- 預設 BOSS 類型
 INSERT INTO boss_types (boss_name, min_respawn_minutes, max_respawn_minutes, description) VALUES
