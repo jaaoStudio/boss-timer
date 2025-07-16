@@ -127,7 +127,7 @@ const joinRoom = async () => {
 
   try {
     const roomCheck = await apiService.checkRoomExists(roomIdToJoin);
-    if (roomCheck.detail.exists) {
+    if (roomCheck.exists) {
       roomStore.setRoomId(roomIdToJoin);
       await router.push({name: 'BossTracker', params: {roomId: roomIdToJoin}});
     }
