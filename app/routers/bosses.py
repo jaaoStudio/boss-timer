@@ -7,9 +7,9 @@ from typing import Optional, List, Dict, Set, Any, Coroutine, Type
 from app.config import settings
 from app.database.database import get_db
 from app.database.models import BossRecord, BossType
-from app.services.room_service import RoomService
+from app.services.room_service import update_room_last_active
 from app.services.boss_service import BossService
-from app.schemas.boss import BossTypeResponse, BossRecordCreate
+from app.schemas.boss import BossTypeResponse, BossRecordCreate, BossRecordResponse
 from app.utils.jwt_helper import get_current_user_id
 import logging
 
@@ -35,13 +35,13 @@ async def record_boss(
         boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)
 
         # 更新房間最後活躍時間
-        await RoomService._update_room_last_active(db, room)
+        update_room_last_active(db, record.room_id)
 
         # 廣播更新
         await BossService._broadcast_boss_update(record.room_id, boss_record, boss_type)
 
         # 返回響應
-        return BossService._create_success_response(boss_record, boss_type)
+        return BossRecordResponse.model_validate(boss_record)
 
     except HTTPException:
         raise

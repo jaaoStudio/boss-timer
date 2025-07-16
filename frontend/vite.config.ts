@@ -51,7 +51,7 @@ export default defineConfig((config: ConfigEnv) => {
       port: 5173,
       proxy: {
         '/api': {
-          target: 'https://10.5.71.159:1254',
+          target: 'https://localhost:1254',
           rewrite: (path) => path.replace(/^\/api/, ""),
           changeOrigin: true,
           secure: false,

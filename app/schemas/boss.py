@@ -1,5 +1,5 @@
 # app/schemas/boss.py
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional, Dict, Any
 from datetime import datetime
 from .auth import User  # 引入 User schema
@@ -24,9 +24,9 @@ class BossRecordResponse(BaseModel):
     respawn_max_time: Optional[datetime]
     recorder: Optional[User] = None # 顯示記錄的使用者資訊
     recorder_info: Optional[Dict[str, Any]] = None # 顯示匿名記錄者資訊
+    current_status: str
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BossTypeResponse(BaseModel):
@@ -35,5 +35,4 @@ class BossTypeResponse(BaseModel):
     max_respawn_minutes: int
     description: Optional[str]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

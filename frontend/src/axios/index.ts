@@ -61,6 +61,9 @@ const setAxiosInterceptor = (axiosInstance) => {
  */
 const bossService = new AxiosInstance({
   baseURL: `${import.meta.env.VITE_APP_BASE_URL}`,
+  headers: {
+    'Content-Type': 'application/json'
+  }
 });
 
 export { bossService };

@@ -117,14 +117,18 @@ const recordBoss = async () => {
     })
 
     // 更新 Pinia store 中的 bossRecords 和 history
-    await bossStore.updateBossRecord(newRecord.data.data)
+    console.log(newRecord)
+    await bossStore.updateBossRecord(newRecord)
 
     // 重置表單
     form.value.channel = ''
 
   } catch (error) {
-    console.error('Failed to record boss:', error)
-    showMessage.error("紀錄失敗，請重試。")
+    if(error.status !== 401){
+      console.error('Failed to record boss:', error)
+      showMessage.error("紀錄失敗，請重試。");
+    }
+
   } finally {
     loading.value = false
   }

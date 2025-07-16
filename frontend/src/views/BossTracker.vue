@@ -57,20 +57,24 @@ onMounted(async () => {
     // 設定房間ID
     roomId.value = props.roomId
     const roomExistResponse = await ApiService.checkRoomExists(roomId.value)
-    if (roomExistResponse.data.exists) {
+    console.log(roomExistResponse)
+    if (roomExistResponse.exists) {
       // 載入BOSS類型
       const types = await ApiService.getBossTypes()
-      bossStore.setBossTypes(types.data)
+      console.log(types)
+      bossStore.setBossTypes(types)
 
       // 連接 WebSocket
       connect(props.roomId)
 
     }
   } catch (error) {
-    // console.error('Failed to initialize app:', error)
+    console.error('Failed to initialize app:', error)
+    await router.push({name: 'RoomSelection'})
+    showMessage.error("進入房間失敗，請重新嘗試")
     if (error.status === 404){
-      await router.push({name: 'RoomSelection'})
-      showMessage.error("房間不存在")
+      // await router.push({name: 'RoomSelection'})
+      // showMessage.error("房間不存在")
     }
   }
 })

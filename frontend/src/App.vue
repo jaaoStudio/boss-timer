@@ -1,22 +1,25 @@
 <script setup>
+import { onMounted } from 'vue';
 import { RouterView } from "vue-router";
 import AppFooter from "@/components/AppFooter.vue";
-import ApiService from "@/services/apiService.js";
+import { useUserStore } from '@/stores/userStore';
 
-// Initialize authentication
-(async () => {
-  await ApiService.initAuth();
-})();
+const userStore = useUserStore();
 
+// When the component is mounted, try to fetch the user data
+onMounted(async () => {
+  // 初始化認證狀態
+  await userStore.initializeAuth()
+});
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen">
+  <div class="flex flex-col min-h-screen bg-gray-900 text-gray-200">
     <RouterView />
     <AppFooter/>
   </div>
 </template>
 
 <style scoped>
-/* 不再需要自訂 app-footer 或 attribution 样式 */
+/* Scoped styles if needed */
 </style>

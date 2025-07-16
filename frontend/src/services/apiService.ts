@@ -1,70 +1,93 @@
 import { bossService } from '@/axios';
-import {showMessage} from "@/composables/useElementPlus";
-import { useUserStore } from '@/stores/userStore';
 
 const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`;
 
+
 class ApiService {
+  constructor() {
+    this.client = bossService;
+  }
+
+  // 設定認證 token
+  setAuthToken(token) {
+    console.log(this.client);
+    this.client.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`
+  }
+
+  // 移除認證 token
+  removeAuthToken() {
+    delete this.client.axiosInstance.defaults.headers.common['Authorization']
+  }
+
+  // 處理 token 過期
+  handleTokenExpired() {
+    // 清除本地儲存
+    localStorage.removeItem('auth_token')
+    localStorage.removeItem('user_info')
+
+    // 重定向到登入頁面
+    window.location.href = '/'
+  }
+
+  // 驗證 token
+  async validateToken(token) {
+    try {
+      const response = await this.client.post('/auth/validate')
+      return response.data
+    } catch (error) {
+      return { valid: false }
+    }
+  }
+
   // --- Auth ---
-  async initAuth() {
-    // We can't directly check for the HttpOnly cookie from JS.
-    // Instead, we can have a lightweight endpoint to verify if the user is authenticated.
-    // For now, we will assume the cookie is set if the user has visited before.
-    // A robust implementation might have a /api/me endpoint.
-    // Let's try to get a token, if it fails (e.g. due to CORS or other issues), we log it.
-    try {
-        // The app will set the cookie on its own.
-        // We just need to call this endpoint once if we suspect the user is new.
-        await this.getToken();
-        // console.log('Auth token refresh/initialization attempted.');
-    } catch (error) {
-        console.error('Failed to initialize auth token:', error);
-      showMessage.error('登入失敗');
-    }
+  async loginWithGoogle(credential: string) {
+    const response = await this.client.post('/auth/google', { credential });
+    return response.data;
   }
 
-  async getToken() {
-    const userStore = useUserStore();
-    try {
-      const response = await bossService.post('auth/token');
-      if (response.data.access_token) {
-        userStore.setToken(response.data.access_token);
-      }
-      return response;
-    } catch (error) {
-      userStore.setToken(null);
-      throw error;
-    }
+  // 登出
+  async logout() {
+    const response = await this.client.post('/auth/logout')
+    return response.data;
   }
 
-  // 獲取 BOSS 類型
+  async getMe() {
+    const response = await this.client.get('/auth/me');
+    return response.data;
+  }
+
+  async refresh_token(){
+    const response = await this.client.post('auth/refresh');
+    return response.data;
+  }
+
+  async updateMyPreferences(preferences: Record<string, any>) {
+    const response = await this.client.put('/auth/me/preferences', preferences);
+    return response.data;
+  }
+
+  // --- Boss & Room ---
   getBossTypes() {
-    return bossService.get('/boss/boss-types').then(res => res);
+    return this.client.get('/boss/boss-types').then(res => res.data);
   }
 
-  // 記錄 BOSS 狀態
-  recordBoss(data: string) {
-    return bossService.post('/boss/record-boss', data).then(res => res);
+  recordBoss(data: any) { // Changed type to any to be more flexible
+    return this.client.post('/boss/record-boss', data).then(res => res.data);
   }
 
-  // 建立房間
   createRoom(roomId: string) {
-    return bossService.post('/room/').then(res => res);
+    return this.client.post('/room/', { room_id: roomId }).then(res => res.data);
   }
 
   checkRoomExists(roomId: string) {
-    return bossService.get(`/room/${roomId}/exists`).then(res => res);
+    return this.client.get(`/room/${roomId}/exists`).then(res => res.data);
   }
 
-  // WebSocket 連接
+  // --- WebSocket ---
   createWebSocket(roomId: string) {
-    const userStore = useUserStore();
-    const token = userStore.token;
-    if (!token) {
-      // console.error("WebSocket connection failed: No token available.");
-      throw new Error("No token available for WebSocket connection.");
-    }
-    return new WebSocket(`${WS_URL}/ws/${roomId}?token=${token}`);
+    // The HttpOnly cookie will be sent automatically by the browser.
+    // No need to manually attach a token.
+    return new WebSocket(`${WS_URL}/ws/${roomId}`);
   }
 }
 

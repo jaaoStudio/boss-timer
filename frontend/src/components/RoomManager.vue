@@ -25,7 +25,12 @@ import { useRoomStore } from '@/stores/roomStore.js'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { useDark, useToggle } from '@vueuse/core'
 
-const isDark = useDark()
+const isDark = useDark({
+  selector: 'html',
+  attribute: 'color-scheme',
+  valueDark: 'dark',
+  valueLight: 'light',
+})
 const toggleDark = useToggle(isDark)
 
 const router = useRouter()

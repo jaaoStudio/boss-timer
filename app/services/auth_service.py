@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import secrets
 
 from app.database import models, database
 from app.schemas import auth as auth_schemas
@@ -68,14 +69,115 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
         expire = datetime.now(timezone.utc) + expires_delta
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=settings.access_token_expire_minutes)
-    to_encode.update({"exp": expire})
+    to_encode.update({"exp": expire, "type": "access"})
     encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
     return encoded_jwt
 
 
-def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
+def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
-    解析 JWT 並獲取當前使用者。
+    生成 JWT refresh token。
+    """
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.now(timezone.utc) + expires_delta
+    else:
+        expire = datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_expire_days)
+
+    # 加入隨機 jti (JWT ID) 用於撤銷
+    to_encode.update({
+        "exp": expire,
+        "type": "refresh",
+        "jti": secrets.token_hex(16)
+    })
+    encoded_jwt = jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
+    return encoded_jwt
+
+
+def save_refresh_token(db: Session, user_id: int, refresh_token: str):
+    """
+    將 refresh token 儲存到資料庫。
+    """
+    # 解析 token 獲取 jti 和過期時間
+    try:
+        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
+        jti = payload.get("jti")
+        exp = payload.get("exp")
+
+        # 先刪除該用戶的舊 refresh token
+        db.query(models.RefreshToken).filter(
+            models.RefreshToken.user_id == user_id
+        ).delete()
+
+        # 創建新的 refresh token 記錄
+        db_refresh_token = models.RefreshToken(
+            user_id=user_id,
+            jti=jti,
+            token=refresh_token,
+            expires_at=datetime.fromtimestamp(exp, timezone.utc),
+            created_at=datetime.now(timezone.utc)
+        )
+        db.add(db_refresh_token)
+        db.commit()
+
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to save refresh token"
+        )
+
+
+def verify_refresh_token(db: Session, refresh_token: str) -> Optional[int]:
+    """
+    驗證 refresh token 並返回用戶 ID。
+    """
+    try:
+        # 先驗證 JWT 格式和簽名
+        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
+
+        # 檢查 token 類型
+        if payload.get("type") != "refresh":
+            return None
+
+        user_id = int(payload.get("sub"))
+        jti = payload.get("jti")
+
+        # 檢查資料庫中是否存在該 refresh token
+        db_token = db.query(models.RefreshToken).filter(
+            models.RefreshToken.user_id == user_id,
+            models.RefreshToken.jti == jti,
+            models.RefreshToken.expires_at > datetime.now(timezone.utc)
+        ).first()
+
+        if db_token:
+            return user_id
+        else:
+            return None
+
+    except JWTError:
+        return None
+
+
+def revoke_refresh_token(db: Session, refresh_token: str):
+    """
+    撤銷 refresh token。
+    """
+    try:
+        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
+        jti = payload.get("jti")
+
+        db.query(models.RefreshToken).filter(
+            models.RefreshToken.jti == jti
+        ).delete()
+        db.commit()
+
+    except JWTError:
+        pass  # 忽略無效的 token
+
+
+def get_current_user_from_token(token: str, db: Session) -> models.User:
+    """
+    從 token 字符串解析並獲取當前使用者。
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -84,17 +186,29 @@ def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(
     )
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: int = payload.get("sub")
+
+        # 檢查 token 類型
+        if payload.get("type") != "access":
+            raise credentials_exception
+
+        user_id: int = int(payload.get("sub"))
         if user_id is None:
             raise credentials_exception
-        token_data = auth_schemas.TokenData(user_id=user_id)
+
     except JWTError:
         raise credentials_exception
 
-    user = db.query(models.User).filter(models.User.id == token_data.user_id).first()
+    user = db.query(models.User).filter(models.User.id == user_id).first()
     if user is None:
         raise credentials_exception
     return user
+
+
+def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(database.get_db)) -> models.User:
+    """
+    解析 JWT 並獲取當前使用者。
+    """
+    return get_current_user_from_token(token, db)
 
 
 def update_user_preferences(db: Session, user: models.User, preferences: dict) -> models.User:

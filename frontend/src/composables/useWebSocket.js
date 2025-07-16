@@ -75,10 +75,10 @@ export function useWebSocket() {
         router.push("/").then(r => {})
         break
       case 'room_state':
-        bossStore.setBossRecords(message.data)
+        bossStore.setBossRecords(message.boss_records)
         break
       case 'boss_update':
-        bossStore.updateBossRecord(message.data).then(r => {})
+        bossStore.updateBossRecord(message.data)
         break
       case 'user_count_update':
         roomStore.setUserCount(message.count)

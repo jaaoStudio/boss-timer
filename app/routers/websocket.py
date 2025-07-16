@@ -1,17 +1,19 @@
 # app/routers/websocket.py
 import json
 import uuid
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
+from app.database import models
 from app.database.database import get_db
-from app.services.room_service import RoomService
-from app.dependencies import get_current_user_from_ws, ConnectionManager, get_connection_manager
+from app.services import room_service
+from app.dependencies import get_current_user_from_ws, get_connection_manager
+from app.websocket.manager import ConnectionManager
 import logging
 
-
-router = APIRouter(prefix="/ws", tags=["websocket_router"])
+router = APIRouter(prefix="/ws", tags=["websocket"])
 
 
 @router.websocket("/{room_id}")
@@ -19,44 +21,50 @@ async def websocket_endpoint(
     websocket: WebSocket,
     room_id: str,
     db: Session = Depends(get_db),
-    user_id: str = Depends(get_current_user_from_ws),
+    current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    await manager.connect(websocket, room_id, user_id, db)
+    """
+    處理 WebSocket 連線，支援已登入和匿名使用者。
+    """
+    # 確定使用者身份
+    if current_user:
+        user_id = current_user.id
+        anonymous_id = None
+        logging.info(f"User {user_id} connected to room {room_id}")
+    else:
+        user_id = None
+        anonymous_id = str(uuid.uuid4())
+        logging.info(f"Anonymous user {anonymous_id} connected to room {room_id}")
+
+    # 連線到管理器
+    await manager.connect(websocket, room_id, db, user_id, anonymous_id)
 
     try:
-        # 確保房間存在
-        room = RoomService.get_room_by_id(db, room_id)
-        if not room:
-            # 房間不存在，發送錯誤訊息並關閉連接
-            await websocket.send_text(json.dumps({
-                "type": "error",
-                "message": f"房間 {room_id} 不存在",
-                "error_code": "ROOM_NOT_FOUND"
-            }))
+        # 驗證房間是否存在
+        if not room_service.get_room_by_id(db, room_id):
             await websocket.close(code=1008, reason="Room not found")
             return
 
-        # 發送當前房間狀態和用戶數
-        current_state = RoomService.get_room_state(db, room_id)
-        await websocket.send_text(json.dumps({
-            "type": "room_state",
-            "data": current_state
-        }, default=str))
+        # 發送初始房間狀態
+        initial_state = room_service.get_room_state(db, room_id)
+        await websocket.send_text(json.dumps(initial_state, default=str))
 
-        # 立即發送用戶數更新
-        await manager.update_room_user_count(room_id, db)
+        # 廣播更新後的用戶數
+        await manager.broadcast_user_count(room_id, db)
 
-        # 處理消息
+        # 監聽訊息
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-
-            if message["type"] == "ping":
+            if message.get("type") == "ping":
                 await websocket.send_text(json.dumps({"type": "pong"}))
 
     except WebSocketDisconnect:
-        await manager.disconnect(websocket, db)
+        logging.info(f"Client disconnected from room {room_id}")
     except Exception as e:
-        logging.error(f"WebSocket error: {e}")
-        await manager.disconnect(websocket, db)
+        logging.error(f"WebSocket error in room {room_id}: {e}", exc_info=True)
+    finally:
+        # 確保無論如何都執行斷線邏輯
+        await manager.disconnect(websocket, room_id, db, user_id, anonymous_id)
+        await manager.broadcast_user_count(room_id, db)

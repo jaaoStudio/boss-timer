@@ -5,13 +5,18 @@ import './style.css';
 import { createGtm } from '@gtm-support/vue-gtm';
 import ApiService from '@/services/apiService.ts';
 import 'element-plus/theme-chalk/dark/css-vars.css'
-
+import vue3GoogleLogin from 'vue3-google-login'
 import App from './App.vue'
 
 const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 app.use(router);
+
+app.use(vue3GoogleLogin, {
+  clientId: `${import.meta.env.VITE_GOOGLE_CLIENT_ID}`
+})
+
 app.use(createGtm({
   id: `${import.meta.env.VITE_GTM_ID}`,
   defer: false,

@@ -1,6 +1,9 @@
 import router from "@/router/index.js";
 import { useAppInfoStore } from "@/stores/appInfo.js";
+import { useUserStore} from "@/stores/userStore.js";
 import {storeToRefs} from "pinia";
+import {showMessage} from "@/composables/useElementPlus.js";
+import apiService from "@/services/apiService.js";
 
 export const handleError = (axiosInstance, error) => {
   switch (error.response.status) {
@@ -15,6 +18,7 @@ export const handleError = (axiosInstance, error) => {
 
 // 401 Unauthorized
 const handleUnauthorized = (axiosInstance, error) => {
+
   /**
    * 若專案有 refresh token 的機制，可以在此設定
    *
@@ -25,34 +29,32 @@ const handleUnauthorized = (axiosInstance, error) => {
    * 2. 若是 Token Expired，則發送 refresh token 的請求，
    * 並在成功後重新發送原本的請求，若仍失敗則導向登入頁
    */
-  // const originalRequestConfig = error.config;
-  // if (
-  //   error.response.status === 401 &&
-  //   error.response.data.error === "MissingToken" &&
-  //   originalRequestConfig.url !== "/whoami"
-  // ) {
-  //   store.commit("updateUserInfo", null);
-  //   router.push({ name: "Login" });
-  //   showMessage.error("連線過期, 請重新登入！");
-  // }
-  // if (
-  //   error.response.status === 401 &&
-  //   error.response.data.error === "ExpiredAccessError" &&
-  //   originalRequestConfig.url !== "/refresh"
-  // ) {
-  //   return callRefreshToken(axiosInstance, originalRequestConfig);
-  // }
+  const originalRequestConfig = error.config;
+  if (
+    error.response.status === 401 &&
+    originalRequestConfig.url !== "auth/refresh"
+  ) {
+      console.log("401401401", originalRequestConfig)
+      console.log("error", error)
+      return callRefreshToken(axiosInstance, originalRequestConfig);
+  }else{
+    router.push({name: "RoomSelection"})
+    // window.location.href = "/"
+    showMessage.error("請先登入")
+  }
 };
 
 const callRefreshToken = async (axiosInstance, originalRequestConfig) => {
-  // const result = await refreshToken();
-  // if (result.status === 401) {
-  //   store.commit("updateUserInfo", null);
-  //   router.push({ name: "Login" });
-  //   showMessage.warning("連線過期, 請重新登入！");
-  //   return;
-  // }
-  // return axiosInstance.request(originalRequestConfig);
+
+  const userStore = useUserStore()
+  const result = await apiService.refresh_token();
+  if (result.status === 401) {
+    userStore.clearAuth()
+    await router.push({name: "RoomSelection"});
+    showMessage.warning("連線過期, 請重新登入！");
+    return;
+  }
+  return axiosInstance.request(originalRequestConfig);
 };
 
 // 5xx Server Error

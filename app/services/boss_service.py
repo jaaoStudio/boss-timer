@@ -130,11 +130,9 @@ class BossService:
             channel=boss_record.channel,
             boss_name=boss_record.boss_name,
             status=boss_record.status,
-            recorded_at=boss_record.recorded_at.isoformat(),
+            recorded_at=boss_record.recorded_at,
             respawn_min_time=boss_record.respawn_min_time.isoformat() if boss_record.respawn_min_time else None,
             respawn_max_time=boss_record.respawn_max_time.isoformat() if boss_record.respawn_max_time else None,
-            min_respawn_minutes=boss_type.min_respawn_minutes,
-            max_respawn_minutes=boss_type.max_respawn_minutes,
             current_status=BossService.get_current_status(boss_record, boss_type)
         )
 

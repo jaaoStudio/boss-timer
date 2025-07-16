@@ -24,6 +24,9 @@ class User(Base):
     records = relationship("BossRecord", back_populates="recorder")
     room_associations = relationship("RoomUser", back_populates="user")
 
+    # 關聯
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
+
 
 class Room(Base):
     __tablename__ = "rooms"
@@ -61,6 +64,17 @@ class BossRecord(Base):
     recorder_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     recorder_info = Column(JSONB)
 
+    @property
+    def current_status(self) -> str:
+        now = datetime.now(timezone.utc)
+        if self.status == "killed":
+            if self.respawn_max_time and now >= self.respawn_max_time:
+                return "alive"
+            if self.respawn_min_time and now >= self.respawn_min_time:
+                return "may_respawn"
+            return "respawning"
+        return self.status
+
     __table_args__ = (
         CheckConstraint('channel >= 1', name='check_channel_range'),
         CheckConstraint("status IN ('alive', 'killed', 'not_found')", name='check_status_values'),
@@ -93,3 +107,17 @@ class RoomUser(Base):
 
     room = relationship("Room", back_populates="user_associations")
     user = relationship("User", back_populates="room_associations")
+
+
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
+    jti = Column(String, unique=True, index=True)  # JWT ID
+    token = Column(Text)
+    expires_at = Column(DateTime)
+    created_at = Column(DateTime)
+
+    # 關聯
+    user = relationship("User", back_populates="refresh_tokens")
