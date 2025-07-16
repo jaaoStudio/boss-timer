@@ -1,5 +1,5 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request, Response
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Optional
@@ -7,6 +7,7 @@ from app.database.models import Room, RoomUser, BossRecord, BossType
 from app.schemas.boss import BossRecordResponse, BossTypeResponse, BossRecordCreate
 
 from app.dependencies import get_current_user_from_ws, ConnectionManager, get_connection_manager
+
 
 class BossService:
     @staticmethod
@@ -113,37 +114,46 @@ class BossService:
         return boss_record
 
     @staticmethod
-    async def _broadcast_boss_update(room_id: str, boss_record: BossRecord, boss_type: BossType):
-        """廣播 BOSS 更新"""
-        boss_record_response = BossService._create_boss_record_response(boss_record, boss_type)
+    async def _broadcast_boss_update(db: Session,
+                                     room_id: str,
+                                     boss_record_id: int):
+        """
+        廣播單一 BOSS 的更新。
+        會重新查詢資料庫以確保包含完整的關聯資料 (如 recorder)。
+        """
 
-        await get_connection_manager().broadcast_to_room(room_id=room_id, message={
-            "type": "boss_update",
-            "data": boss_record_response.__dict__
-        })
+        # 1. 根據 ID 重新查詢，並使用 joinedload 預先載入 recorder 關聯
 
-        logging.info(f"Broadcasted boss_update for room {room_id}: {boss_record_response}")
+        record_with_recorder = db.query(BossRecord).options(
 
-    @staticmethod
-    def _create_success_response(boss_record: BossRecord, boss_type: BossType) -> dict:
-        """創建成功響應"""
-        boss_record_response = BossService._create_boss_record_response(boss_record, boss_type)
-        return {"success": True, "data": boss_record_response}
+            joinedload(BossRecord.recorder)
+        ).filter(BossRecord.id == boss_record_id).first()
 
-    @staticmethod
-    def _create_boss_record_response(boss_record: BossRecord, boss_type: BossType) -> BossRecordResponse:
-        """創建 BossRecordResponse 對象"""
-        return BossRecordResponse(
-            id=boss_record.id,
-            room_id=boss_record.room_id,
-            channel=boss_record.channel,
-            boss_name=boss_record.boss_name,
-            status=boss_record.status,
-            recorded_at=boss_record.recorded_at,
-            respawn_min_time=boss_record.respawn_min_time.isoformat() if boss_record.respawn_min_time else None,
-            respawn_max_time=boss_record.respawn_max_time.isoformat() if boss_record.respawn_max_time else None,
-            current_status=BossService.get_current_status(boss_record, boss_type)
+        if not record_with_recorder:
+            logging.error(f"Could not find boss_record with id {boss_record_id} to broadcast update.")
+            return
+
+        # 2. 使用 Pydantic 模型進行序列化，它會自動處理 recorder 和 recorder_info
+        # model_validate 會自動呼叫 @property 來計算 current_status
+
+        response_data = BossRecordResponse.model_validate(record_with_recorder)
+
+        # 3. 廣播序列化後的 JSON 資料
+
+        await get_connection_manager().broadcast_to_room(
+
+            room_id=room_id,
+
+            message={
+
+                "type": "boss_update",
+                # 使用 .model_dump(mode='json') 來確保 datetime 等物件被正確轉換為字串
+
+                "data": response_data.model_dump(mode='json')
+            }
         )
+
+        logging.info(f"Broadcasted boss_update for room {room_id}: {response_data.model_dump_json()}")
 
     @staticmethod
     async def _get_last_killed_time(db: Session, record: BossRecordCreate) -> Optional[datetime]:

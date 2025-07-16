@@ -38,7 +38,7 @@ async def record_boss(
         update_room_last_active(db, record.room_id)
 
         # 廣播更新
-        await BossService._broadcast_boss_update(record.room_id, boss_record, boss_type)
+        await BossService._broadcast_boss_update(db=db, room_id=record.room_id, boss_record_id=boss_record.id)
 
         # 返回響應
         return BossRecordResponse.model_validate(boss_record)
