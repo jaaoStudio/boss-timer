@@ -6,7 +6,7 @@ from app.services.room_service import create_room as room_service_create_room, g
 from app.services.boss_service import BossService
 from app.schemas.room import RoomResponse, RoomExists
 from app.database.models import BossRecord, BossType
-from app.utils.jwt_helper import get_current_user_id
+from app.utils.jwt_helper import get_current_user_id, get_optional_current_user_id
 from typing import Optional
 import logging
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/room", tags=["rooms"])
 @router.post("/", response_model=RoomResponse)
 async def create_room(
         db: Session = Depends(get_db),
-        user_id: str = Depends(get_current_user_id)):
+        user_id: Optional[str] = Depends(get_optional_current_user_id)):
     """創建新房間"""
     try:
         room = room_service_create_room(db)
@@ -29,7 +29,8 @@ async def create_room(
 
 
 @router.get("/{room_id}/exists", response_model=RoomExists)
-async def check_room_exists(room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"), db: Session = Depends(get_db)):
+async def check_room_exists(room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
+                            db: Session = Depends(get_db)):
     """檢查房間是否存在"""
     try:
         room = get_room_by_id(db, room_id)

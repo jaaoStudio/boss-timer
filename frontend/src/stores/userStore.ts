@@ -6,6 +6,8 @@ interface User {
   display_name: string | null;
   avatar_url: string | null;
   preferences: Record<string, any>;
+  anonymousId: string | null;
+  anonymousName: string | null;
 }
 
 interface UserState {
@@ -23,6 +25,8 @@ export const useUserStore = defineStore('user', {
     isLoggedIn: false,
     isLoading: false,
     _channel: undefined,
+    anonymousId: null,
+    anonymousName: null,
   }),
 
   actions: {
@@ -98,6 +102,7 @@ export const useUserStore = defineStore('user', {
             this.logout();
           }
         }
+        this.loadAnonymousUser();
       } catch (error) {
         alert('Auth initialization failed:' + error);
         this.logout();
@@ -133,6 +138,7 @@ export const useUserStore = defineStore('user', {
 
         // 通知其他分頁
         this.notifyLogin();
+        // this.clearAnonymousUser();
 
         console.log('Login successful', this.user);
       } catch (error) {
@@ -211,11 +217,44 @@ export const useUserStore = defineStore('user', {
 
         // 通知其他分頁
         this.notifyLogout();
+        this.loadAnonymousUser();
 
         console.log('User logged out');
       } catch (error) {
         console.error('Logout error:', error);
       }
     },
+
+    loadAnonymousUser(){
+      if (this.isLoggedIn){
+        // this.clearAnonymousUser();
+        return;
+      }
+
+      let storedId = localStorage.getItem('anonymous_id');
+      if(!storedId){
+        storedId = crypto.randomUUID();
+        localStorage.setItem('anonymous_id', storedId);
+      }
+      this.anonymousId = storedId;
+
+      const storedName = localStorage.getItem('anonymous_name');
+      if(storedName){
+        this.anonymousName = storedName;
+      }
+    },
+
+    setAnonymousName(name){
+      this.anonymousName = name;
+      localStorage.setItem('anonymous_name', name);
+    },
+
+    clearAnonymousUser(){
+      this.anonymousId = null;
+      this.anonymousName = null;
+      localStorage.removeItem('anonymous_id');
+      localStorage.removeItem('anonymous_name');
+    }
+
   },
 });

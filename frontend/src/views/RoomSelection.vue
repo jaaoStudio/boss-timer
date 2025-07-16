@@ -1,4 +1,4 @@
-<template>
+'''<template>
   <div class="flex flex-col items-center justify-center h-full bg-gray-900 p-4">
     <div class="flex flex-col justify-center gap-5 w-full h-full  max-w-md">
       <!-- Header -->
@@ -37,13 +37,24 @@
 
       <!-- Auth Section -->
       <div class="p-6 bg-gray-800 rounded-lg shadow-md">
-        <div v-if="!userStore.isLoggedIn" class="text-center">
-          <p class="text-gray-300 text-sm pb-3">Sign in to sync your settings and history.</p>
+        <div v-if="!userStore.isLoggedIn" class="text-center space-y-4">
+          <div>
+            <label for="anonymousName" class="block text-sm font-medium text-gray-300 mb-1">您的暱稱 (訪客)</label>
+            <input
+              id="anonymousName"
+              v-model="userStore.anonymousName"
+              @input="userStore.setAnonymousName($event.target.value)"
+              type="text"
+              placeholder="請輸入您的暱稱"
+              class="block w-full px-3 py-2 placeholder-gray-500 border border-gray-600 bg-gray-900 text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            />
+          </div>
+          <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-400 bg-gray-800">或</span></div></div>
+          <p class="text-gray-300 text-sm">登入以同步您的設定與歷史紀錄</p>
           <GoogleLogin
             :callback="handleLoginSuccess"
             :error="handleLoginError"
             prompt
-
             class="google-login-custom"
           />
         </div>
@@ -100,6 +111,10 @@ const handleLogout = () => {
 
 // --- Room Handlers ---
 const createRoom = async () => {
+  if (!userStore.isLoggedIn && !userStore.anonymousName) {
+    showMessage.error("請先輸入您的暱稱，或登入後再創建房間。");
+    return;
+  }
   if (isCreating.value) return;
   isCreating.value = true;
   try {
@@ -115,6 +130,10 @@ const createRoom = async () => {
 };
 
 const joinRoom = async () => {
+  if (!userStore.isLoggedIn && !userStore.anonymousName) {
+    showMessage.error("請先輸入您的暱稱，或登入後再加入房間。");
+    return;
+  }
   const roomIdToJoin = joinRoomId.value.trim();
   if (!roomIdToJoin) {
     joinRoomError.value = 'Please enter a room code.';
@@ -149,3 +168,4 @@ const joinRoom = async () => {
   }
 };
 </script>
+''

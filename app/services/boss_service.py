@@ -83,8 +83,16 @@ class BossService:
             db: Session,
             record: BossRecordCreate,
             respawn_times: dict,
-            user_id: str
+            user_id: Optional[str]
     ) -> BossRecord:
+
+        recorder_id_to_save = None
+        recorder_info_to_save = None
+
+        if user_id:
+            recorder_id_to_save = int(user_id)
+        else:
+            recorder_info_to_save = record.recorder_info
         """創建 BOSS 記錄"""
         boss_record = BossRecord(
             room_id=record.room_id,
@@ -94,7 +102,8 @@ class BossService:
             recorded_at=respawn_times["base_time"],
             respawn_min_time=respawn_times["respawn_min_time"],
             respawn_max_time=respawn_times["respawn_max_time"],
-            recorder_info={"user_id": user_id}
+            recorder_id=recorder_id_to_save,
+            recorder_info=recorder_info_to_save
         )
 
         db.add(boss_record)

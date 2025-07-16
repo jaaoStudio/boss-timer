@@ -32,3 +32,11 @@ async def get_current_user_id(request: Request):
     except JWTError:
         raise credentials_exception
     return user_id
+async def get_optional_current_user_id(request: Request) -> Optional[str]:
+    try:
+     # 直接複用您現有的驗證邏輯
+        return await get_current_user_id(request)
+    except HTTPException:
+        # 如果 get_current_user_id 拋出錯誤 (例如 token 無效或不存在)，
+        # 我們捕捉它並回傳 None，代表這是一位匿名使用者。
+        return None

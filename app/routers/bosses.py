@@ -10,7 +10,7 @@ from app.database.models import BossRecord, BossType
 from app.services.room_service import update_room_last_active
 from app.services.boss_service import BossService
 from app.schemas.boss import BossTypeResponse, BossRecordCreate, BossRecordResponse
-from app.utils.jwt_helper import get_current_user_id
+from app.utils.jwt_helper import get_current_user_id, get_optional_current_user_id
 import logging
 
 router = APIRouter(prefix="/boss", tags=["boss"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/boss", tags=["boss"])
 async def record_boss(
         record: BossRecordCreate,
         db: Session = Depends(get_db),
-        user_id: str = Depends(get_current_user_id)
+        user_id: Optional[str] = Depends(get_optional_current_user_id)
 ):
     """記錄 BOSS 狀態"""
     try:

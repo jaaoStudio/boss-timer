@@ -37,7 +37,7 @@
         <div v-else class="flex items-center space-x-3">
           <img :src="userStore.user.avatar_url" alt="User Avatar" class="w-8 h-8 rounded-full" v-if="userStore.user && userStore.user.avatar_url"/>
           <span class="text-white font-medium text-sm">{{ userStore.user.display_name }}</span>
-          <button @click="handleLogout" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-medium">Logout</button>
+<!--          <button @click="handleLogout" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-medium">Logout</button>-->
         </div>
 
         <!-- Room Manager -->
