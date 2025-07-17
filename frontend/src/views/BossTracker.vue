@@ -17,7 +17,7 @@
       <RecommendedChannels />
 
       <!-- 歷史紀錄 -->
-      <RecordHistory />
+      <RecordHistory v-if="userStore.user?.preferences?.showRecordHistory ?? true" />
     </div>
   </div>
 </template>
@@ -53,8 +53,6 @@ const props = defineProps({
     required: true,
   },
 })
-
-const MAX_CONNECTIONS = 1000;
 
 onMounted(async () => {
   try {

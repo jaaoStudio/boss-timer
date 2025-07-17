@@ -2,12 +2,13 @@ import {defineStore} from 'pinia';
 import apiService from '@/services/apiService';
 import ApiService from "@/services/apiService";
 import {showMessage} from "@/composables/useElementPlus";
+import { useAppInfoStore} from "@/stores/appInfo";
 
 interface User {
   id: number;
   display_name: string | null;
   avatar_url: string | null;
-  preferences: Record<string, any>;
+  preferences: { [key: string]: any };
   anonymousId: string | null;
   anonymousName: string | null;
 }
@@ -96,7 +97,7 @@ export const useUserStore = defineStore('user', {
             this.isLoggedIn = true;
 
             // 設定 API 請求的預設 header
-            apiService.setAuthToken(storedToken);
+            await apiService.setAuthToken(storedToken);
           } else {
             // Token 無效，清除儲存
             this.logout();
@@ -124,16 +125,21 @@ export const useUserStore = defineStore('user', {
 
     async loginWithGoogle(credential: string) {
       try {
+        // 如果已經登入，先強制登出以清除舊的憑證
+        if (this.isLoggedIn) {
+          await this.logout();
+        }
+
         const response = await apiService.loginWithGoogle(credential);
         this.token = response.access_token;
         this.user = response.user;
         this.isLoggedIn = true;
 
         // 持久化儲存
-        this.saveAuthToStorage();
+        await this.saveAuthToStorage();
 
         // 設定 API 請求的預設 header
-        apiService.setAuthToken(response.token);
+        await apiService.setAuthToken(this.token);
 
         // 通知其他分頁
         this.notifyLogin();
@@ -170,8 +176,9 @@ export const useUserStore = defineStore('user', {
       if (!this.user) return;
       try {
         const updatedUser = await apiService.updateMyPreferences(preferences);
-        this.user["preferences"] = updatedUser;
-        console.log('Preferences updated');
+        // console.log(updatedUser)
+        this.user = updatedUser;
+
       } catch (error) {
         console.error('Failed to update preferences:', error);
       }
@@ -209,10 +216,10 @@ export const useUserStore = defineStore('user', {
       apiService.removeAuthToken();
     },
 
-    logout() {
+    async logout() {
       try {
         this.clearAuth();
-        apiService.logout();
+        await apiService.logout();
 
         // 通知其他分頁
         this.notifyLogout();
@@ -276,6 +283,7 @@ export const useUserStore = defineStore('user', {
         console.error('Error checking WebSocket connections:', error);
         return false;
       }
-    }
+    },
+
   },
 });
