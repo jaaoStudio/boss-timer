@@ -1,5 +1,7 @@
 import {defineStore} from 'pinia';
 import apiService from '@/services/apiService';
+import ApiService from "@/services/apiService";
+import {showMessage} from "@/composables/useElementPlus";
 
 interface User {
   id: number;
@@ -232,15 +234,17 @@ export const useUserStore = defineStore('user', {
       }
 
       let storedId = localStorage.getItem('anonymous_id');
-      if(!storedId){
+      if(!this.isValidUUID(storedId)){
         storedId = crypto.randomUUID();
         localStorage.setItem('anonymous_id', storedId);
       }
       this.anonymousId = storedId;
 
       const storedName = localStorage.getItem('anonymous_name');
-      if(storedName){
+      if(this.validateNickname(storedName)){
         this.anonymousName = storedName;
+      }else{
+        storedName ? storedName.slice(0, 20) : '別搞QQ';
       }
     },
 
@@ -254,7 +258,28 @@ export const useUserStore = defineStore('user', {
       this.anonymousName = null;
       localStorage.removeItem('anonymous_id');
       localStorage.removeItem('anonymous_name');
-    }
+    },
 
+    validateNickname(name) {
+      return !!name && name.length <= 20;
+    },
+
+    // 驗證是否為有效的 UUID
+    isValidUUID(id) {
+      if (!id) return false;
+      // UUID 格式正則表達式 (8-4-4-4-12)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+      return uuidRegex.test(id);
+    },
+
+    async canEstablishWebSocket() {
+      try {
+        const currentConnections = await ApiService.getWebSocketConnectionsCount();
+        return currentConnections < 1000;
+      }catch (error) {
+        console.error('Error checking WebSocket connections:', error);
+        return false;
+      }
+    }
   },
 });

@@ -22,7 +22,7 @@ app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifes
 origin_list = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

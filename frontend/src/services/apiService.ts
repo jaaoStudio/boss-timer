@@ -89,6 +89,11 @@ class ApiService {
     // No need to manually attach a token.
     return new WebSocket(`${WS_URL}/ws/${roomId}`);
   }
+
+  async getWebSocketConnectionsCount() {
+    const response = await this.client.get('/ws/connections/count');
+    return response.data.count;
+  }
 }
 
 export default new ApiService();

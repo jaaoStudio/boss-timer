@@ -44,6 +44,7 @@
               id="anonymousName"
               v-model="userStore.anonymousName"
               @input="userStore.setAnonymousName($event.target.value)"
+              maxlength="20"
               type="text"
               placeholder="請輸入您的暱稱"
               class="block w-full px-3 py-2 placeholder-gray-500 border border-gray-600 bg-gray-900 text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
@@ -90,6 +91,9 @@ const isCreating = ref(false);
 const isJoining = ref(false);
 
 // --- Auth Handlers ---
+const MAX_CONNECTIONS = 1000;
+
+// --- Auth Handlers ---
 const handleLoginSuccess = async (response) => {
   try {
     await userStore.loginWithGoogle(response.credential);
@@ -116,8 +120,16 @@ const createRoom = async () => {
     return;
   }
   if (isCreating.value) return;
-  isCreating.value = true;
+
   try {
+    const canConnect = await userStore.canEstablishWebSocket();
+    if (!canConnect) {
+      showMessage.error("連線數已達上限，無法進入房間。請稍後再試。");
+      await router.push({name: 'RoomSelection'});
+      return;
+    }
+
+    isCreating.value = true;
     const newRoom = await apiService.createRoom();
     roomStore.setRoomId(newRoom.room_id);
     router.push({ name: 'BossTracker', params: { roomId: newRoom.room_id } });
@@ -141,10 +153,17 @@ const joinRoom = async () => {
   }
   if (isJoining.value) return;
 
-  isJoining.value = true;
-  joinRoomError.value = '';
-
   try {
+    const canConnect = await userStore.canEstablishWebSocket();
+    if (!canConnect) {
+      showMessage.error("連線數已達上限，無法進入房間。請稍後再試。");
+      await router.push({name: 'RoomSelection'});
+      return;
+    }
+
+    isJoining.value = true;
+    joinRoomError.value = '';
+
     const roomCheck = await apiService.checkRoomExists(roomIdToJoin);
     if (roomCheck.exists) {
       roomStore.setRoomId(roomIdToJoin);
