@@ -13,9 +13,13 @@ async def cleanup_inactive_rooms():
             db = SessionLocal()
             try:
                 cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
-                db.query(Room).filter(Room.last_active < cutoff_time).delete()
+                inactive_rooms = db.query(Room).filter(Room.last_active < cutoff_time, Room.is_active == True).all()
+                for room in inactive_rooms:
+                    room.is_active = False
+                    for record in room.boss_records:
+                        record.is_archived = True
                 db.commit()
-                logging.info("Cleaned up inactive rooms")
+                logging.info(f"Marked {len(inactive_rooms)} inactive rooms and their records as inactive/archived.")
             finally:
                 db.close()
 

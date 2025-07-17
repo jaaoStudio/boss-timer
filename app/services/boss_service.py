@@ -39,7 +39,7 @@ class BossService:
     @staticmethod
     async def _validate_room_exists(db: Session, room_id: str) -> Room:
         """驗證房間是否存在"""
-        room = db.query(Room).filter(Room.room_id == room_id).first()
+        room = db.query(Room).filter(Room.room_id == room_id, Room.is_active == True).first()
         if not room:
             raise HTTPException(status_code=404, detail=f"房間 {room_id} 不存在")
         return room  # type: ignore
@@ -162,7 +162,8 @@ class BossService:
             BossRecord.room_id == record.room_id,
             BossRecord.channel == record.channel,
             BossRecord.boss_name == record.boss_name,
-            BossRecord.status == "killed"
+            BossRecord.status == "killed",
+            BossRecord.is_archived == False  # 只考慮未歸檔的紀錄
         ).order_by(BossRecord.recorded_at.desc()).first()
 
         return last_killed_record.recorded_at if last_killed_record else None

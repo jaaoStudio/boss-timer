@@ -54,6 +54,7 @@ import { useUserStore } from '@/stores/userStore';
 import { UsersIcon } from '@heroicons/vue/24/outline';
 import RoomManager from '@/components/RoomManager.vue';
 import {GoogleLogin} from "vue3-google-login";
+import {showMessage} from "@/composables/useElementPlus.js";
 
 const roomStore = useRoomStore();
 const { roomId, isConnected, userCount } = storeToRefs(roomStore);
@@ -62,7 +63,7 @@ const userStore = useUserStore();
 const { isLoggedIn } = storeToRefs(userStore)
 
 const handleLoginSuccess = async (response) => {
-  console.log("Google sign-in success:", response);
+  // console.log("Google sign-in success:", response);
   try {
     await userStore.loginWithGoogle(response.credential);
   } catch (error) {
@@ -73,6 +74,7 @@ const handleLoginSuccess = async (response) => {
 
 const handleLoginError = (error) => {
   console.error("Google sign-in error:", error);
+  showMessage.error("Login failed")
 };
 
 const handleLogout = () => {

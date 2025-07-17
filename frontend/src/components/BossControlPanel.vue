@@ -131,7 +131,6 @@ const recordBoss = async () => {
     const newRecord = await ApiService.recordBoss(payload);
 
     // 更新 Pinia store 中的 bossRecords 和 history
-    console.log(newRecord)
     await bossStore.updateBossRecord(newRecord)
 
     // 重置表單

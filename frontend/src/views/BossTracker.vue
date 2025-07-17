@@ -68,11 +68,9 @@ onMounted(async () => {
     // 設定房間ID
     roomId.value = props.roomId
     const roomExistResponse = await ApiService.checkRoomExists(roomId.value)
-    console.log(roomExistResponse)
     if (roomExistResponse.exists) {
       // 載入BOSS類型
       const types = await ApiService.getBossTypes()
-      console.log(types)
       bossStore.setBossTypes(types)
 
       // 連接 WebSocket

@@ -97,7 +97,6 @@ const MAX_CONNECTIONS = 1000;
 const handleLoginSuccess = async (response) => {
   try {
     await userStore.loginWithGoogle(response.credential);
-    console.log(response);
     showMessage.success("Login successful!");
   } catch (error) {
     showMessage.error("Login failed. Please try again.");

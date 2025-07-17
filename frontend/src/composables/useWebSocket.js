@@ -5,12 +5,15 @@ import {useBossStore} from '@/stores/bossStore.js'
 import ApiService from '@/services/apiService.ts'
 import {useRouter} from 'vue-router'
 import {showMessage} from "@/composables/useElementPlus.js";
+import {useUserStore} from "@/stores/userStore.js";
 
 export function useWebSocket() {
   const roomStore = useRoomStore()
   const bossStore = useBossStore()
+  const userStore = useUserStore();
   const router = useRouter()
 
+  const { user, anonymousId } = storeToRefs(userStore)
   const { ws, isConnected, isManualDisconnect } = storeToRefs(roomStore)
 
   const reconnectAttempts = ref(0)
@@ -30,6 +33,10 @@ export function useWebSocket() {
     }
 
     try {
+      const userId = user.value ? user.value.id : anonymousId.value
+      const payload = {
+        user_id: userId,
+      }
       const newWs = ApiService.createWebSocket(roomId)
       roomStore.setWebSocket(newWs)
 

@@ -10,7 +10,6 @@ class ApiService {
 
   // 設定認證 token
   setAuthToken(token) {
-    console.log(this.client);
     this.client.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`
   }
 

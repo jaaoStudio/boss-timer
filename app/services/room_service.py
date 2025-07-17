@@ -32,7 +32,7 @@ def create_room(db: Session) -> models.Room:
 
 def get_room_by_id(db: Session, room_id: str) -> Optional[models.Room]:
     """根據ID獲取房間"""
-    return db.query(models.Room).filter(models.Room.room_id == room_id.upper()).first()
+    return db.query(models.Room).filter(models.Room.room_id == room_id.upper(), models.Room.is_active == True).first()
 
 
 def update_room_last_active(db: Session, room_id: str):
@@ -88,7 +88,8 @@ def get_room_state(db: Session, room_id: str) -> dict:
         joinedload(models.BossRecord.recorder),
         joinedload(models.BossRecord.boss_type)
     ).filter(
-        models.BossRecord.room_id == room_id
+        models.BossRecord.room_id == room_id,
+        models.BossRecord.is_archived == False  # 只獲取未歸檔的紀錄
     ).order_by(
         models.BossRecord.channel,
         models.BossRecord.boss_name,

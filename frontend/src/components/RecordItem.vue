@@ -29,7 +29,6 @@ const props = defineProps({
 })
 
 const recorderDisplayName = computed(() => {
-  console.log(props.record)
   // 優先顯示已登入的使用者資訊 (recorder 是關聯的 User 物件)
   if (props.record.recorder && props.record.recorder.display_name) {
     return props.record.recorder.display_name;

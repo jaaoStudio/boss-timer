@@ -94,13 +94,11 @@ export const useUserStore = defineStore('user', {
             this.token = storedToken;
             this.user = res.user;
             this.isLoggedIn = true;
-            console.log("456", storedToken, storedUser);
 
             // 設定 API 請求的預設 header
             apiService.setAuthToken(storedToken);
           } else {
             // Token 無效，清除儲存
-            console.log("123", storedToken, storedUser);
             this.logout();
           }
         }
@@ -118,7 +116,6 @@ export const useUserStore = defineStore('user', {
       try {
         // 向後端發送驗證請求
         const response = await apiService.validateToken(token);
-        console.log(response);
         return response;
       } catch (error) {
         return { valid: false };
@@ -142,7 +139,7 @@ export const useUserStore = defineStore('user', {
         this.notifyLogin();
         // this.clearAnonymousUser();
 
-        console.log('Login successful', this.user);
+        // console.log('Login successful', this.user);
       } catch (error) {
         console.error('Google login failed:', error);
         this.logout();
@@ -162,7 +159,7 @@ export const useUserStore = defineStore('user', {
       try {
         const userData = await apiService.getMe();
         this.user = userData;
-        console.log('Fetched user data', this.user);
+        // console.log('Fetched user data', this.user);
       } catch (error) {
         // This is expected if the user is not logged in
         this.user = null;
@@ -221,7 +218,6 @@ export const useUserStore = defineStore('user', {
         this.notifyLogout();
         this.loadAnonymousUser();
 
-        console.log('User logged out');
       } catch (error) {
         console.error('Logout error:', error);
       }
