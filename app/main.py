@@ -8,7 +8,6 @@ import logging
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket
 from app.tasks.cleanup import cleanup_inactive_rooms
-from app.websocket.manager import ConnectionManager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

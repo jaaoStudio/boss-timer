@@ -14,10 +14,11 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="flex flex-col min-h-screen bg-gray-900 text-gray-200">
+  <div class="flex flex-col min-h-screen items-centerbg-gray-900 text-gray-200">
     <RouterView />
     <AppFooter/>
   </div>
+
 </template>
 
 <style scoped>

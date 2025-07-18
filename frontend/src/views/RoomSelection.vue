@@ -1,8 +1,8 @@
 '''<template>
-  <div class="flex flex-col items-center justify-center h-full bg-gray-900 p-4">
-    <div class="flex flex-col justify-center gap-5 w-full h-full  max-w-md">
+  <div class="flex flex-1 flex-col items-center justify-center h-full bg-gray-900 p-4">
+    <div class="flex flex-col justify-center gap-5 w-full  max-w-md">
       <!-- Header -->
-      <div class="text-center mb-8 mt-40">
+      <div class="text-center mb-8">
         <img src="/leaf64px.png" alt="Logo" class="h-12 w-12 mx-auto mb-4">
         <h2 class="text-3xl font-extrabold text-white">BOSS Timer</h2>
         <p class="mt-2 text-sm text-gray-400">Real-time boss tracking for your party.</p>

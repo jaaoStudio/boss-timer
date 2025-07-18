@@ -3,7 +3,7 @@
 </script>
 
 <template>
-    <footer class="w-full p-4 bg-gray-900 text-gray-300 text-center text-xs mt-auto">
+    <footer class="w-full p-4 bg-gray-900 text-gray-300 text-center text-xs ">
       <div class="space-y-2">
         <div class="flex justify-center space-x-4">
           <router-link to="/credits" class="text-gray-400 hover:text-white underline">Attributions & Credits</router-link>
