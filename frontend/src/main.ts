@@ -15,7 +15,6 @@ app.use(router);
 
 app.use(vue3GoogleLogin, {
   clientId: `${import.meta.env.VITE_GOOGLE_CLIENT_ID}`,
-  theme: 'dark',
 })
 
 app.use(createGtm({

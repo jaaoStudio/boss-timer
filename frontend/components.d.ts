@@ -18,6 +18,8 @@ declare module 'vue' {
     ChannelOverview: typeof import('./src/components/ChannelOverview.vue')['default']
     CountdownTimer: typeof import('./src/components/CountdownTimer.vue')['default']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
+    LegalDisclaimer: typeof import('./src/components/LegalDisclaimer.vue')['default']
+    PrivacyPolicy: typeof import('./src/components/PrivacyPolicy.vue')['default']
     RecommendedChannels: typeof import('./src/components/RecommendedChannels.vue')['default']
     RecommendedSection: typeof import('./src/components/RecommendedSection.vue')['default']
     RecordHistory: typeof import('./src/components/RecordHistory.vue')['default']
