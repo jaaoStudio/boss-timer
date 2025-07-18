@@ -90,8 +90,6 @@ const joinRoomError = ref('');
 const isCreating = ref(false);
 const isJoining = ref(false);
 
-// --- Auth Handlers ---
-const MAX_CONNECTIONS = 1000;
 
 // --- Auth Handlers ---
 const handleLoginSuccess = async (response) => {
