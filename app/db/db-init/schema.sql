@@ -83,7 +83,8 @@ CREATE INDEX IF NOT EXISTS idx_refresh_tokens_id ON refresh_tokens(id);
 INSERT INTO boss_types (boss_name, min_respawn_minutes, max_respawn_minutes, description) VALUES
 ('喵z怪客', 150, 300, '101'),
 ('雪毛怪人', 45, 68, '冰原雪域'),
-('黑輪王',780 , 1020, '西門町'),
+('黑輪王7',780 , 1020, '西門町'),
+('黑輪王7-1',780 , 1020, '西門町'),
 ('巴洛古', 405, 540, '維多利亞島'),
 ('肯得熊', 113, 128, '桃花仙境'),
 ('喵怪仙人', 150, 170, '桃花仙境'),
