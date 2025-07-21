@@ -6,9 +6,19 @@ import {showMessage} from "@/composables/useElementPlus.js";
 import apiService from "@/services/apiService.js";
 
 export const handleError = (axiosInstance, error) => {
+  // 如果沒有 response，表示是網路錯誤
+  if (!error.response) {
+    console.error("Network Error:", error);
+    router.push({ name: "Maintenance" });
+    return;
+  }
+
   switch (error.response.status) {
     case 401:
       handleUnauthorized(axiosInstance, error);
+      break;
+    case 503:
+      handleServiceUnavailable();
       break;
     default:
       if (error.response.status >= 500) handleServerError(error);
@@ -57,17 +67,12 @@ const callRefreshToken = async (axiosInstance, originalRequestConfig) => {
   return axiosInstance.request(originalRequestConfig);
 };
 
+// 503 Service Unavailable
+const handleServiceUnavailable = () => {
+  router.push({ name: "Maintenance" });
+};
+
 // 5xx Server Error
 const handleServerError = () => {
-  /**
-   * 若專案要實做 Error View，可以在此設定
-   * 若 status code >= 500，則導向 Error View
-   *
-   * 透過 store 設定 isServerError 為 true
-   */
-  const appInfoStore = useAppInfoStore();
-  const { isServerError } = storeToRefs(appInfoStore);
-  isServerError.value = true;
-  console.log("伺服器錯誤，請稍後再試！");
-  router.push({name: "ServerError"}).then(r =>{});
+  router.push({ name: "Error" });
 };

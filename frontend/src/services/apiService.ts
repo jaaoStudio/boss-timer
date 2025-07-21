@@ -89,6 +89,15 @@ class ApiService {
     // No need to manually attach a token.
     return new WebSocket(`${WS_URL}/ws/${roomId}`);
   }
+
+  async getMaintenanceInfo() {
+    const response = await this.client.get('/system/maintenance-info');
+    return response.data;
+  }
+
+  async updateMaintenanceConfig(updatedConfig: Dict<string, any>) {
+    return await this.client.post('/system/maintenance-config', updatedConfig);
+  }
 }
 
 export default new ApiService();

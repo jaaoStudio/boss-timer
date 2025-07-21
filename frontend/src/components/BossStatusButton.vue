@@ -15,9 +15,9 @@
 
 <script setup>
 import { computed } from 'vue'
-import SkullIcon from "/icons/SkullIcon.vue"
-import SearchIcon from "/icons/SearchIcon.vue";
-import QuestionIcon from "/icons/questionIcon.vue";
+import SkullIcon from "@icons/SkullIcon.vue"
+import SearchIcon from "@icons/SearchIcon.vue";
+import QuestionIcon from "@icons/questionIcon.vue";
 
 const props = defineProps({
   type: {

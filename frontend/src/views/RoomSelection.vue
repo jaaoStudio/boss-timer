@@ -1,8 +1,8 @@
-<template>
-  <div class="flex flex-col items-center justify-center h-full bg-gray-900 p-4">
-    <div class="flex flex-col justify-center gap-5 w-full h-full  max-w-md">
+'''<template>
+  <div class="flex flex-1 flex-col items-center justify-center h-full bg-gray-900 p-4">
+    <div class="flex flex-col justify-center gap-5 w-full  max-w-md">
       <!-- Header -->
-      <div class="text-center mb-8 mt-40">
+      <div class="text-center mb-8">
         <img src="/leaf64px.png" alt="Logo" class="h-12 w-12 mx-auto mb-4">
         <h2 class="text-3xl font-extrabold text-white">BOSS Timer</h2>
         <p class="mt-2 text-sm text-gray-400">Real-time boss tracking for your party.</p>
@@ -37,13 +37,25 @@
 
       <!-- Auth Section -->
       <div class="p-6 bg-gray-800 rounded-lg shadow-md">
-        <div v-if="!userStore.isLoggedIn" class="text-center">
-          <p class="text-gray-300 text-sm pb-3">Sign in to sync your settings and history.</p>
+        <div v-if="!userStore.isLoggedIn" class="text-center space-y-4">
+          <div>
+            <label for="anonymousName" class="block text-sm font-medium text-gray-300 mb-1">您的暱稱 (訪客)</label>
+            <input
+              id="anonymousName"
+              v-model="userStore.anonymousName"
+              @input="userStore.setAnonymousName($event.target.value)"
+              maxlength="20"
+              type="text"
+              placeholder="請輸入您的暱稱"
+              class="block w-full px-3 py-2 placeholder-gray-500 border border-gray-600 bg-gray-900 text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+            />
+          </div>
+          <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-400 bg-gray-800">或</span></div></div>
+          <p class="text-gray-300 text-sm">登入以同步您的設定與歷史紀錄</p>
           <GoogleLogin
             :callback="handleLoginSuccess"
             :error="handleLoginError"
             prompt
-
             class="google-login-custom"
           />
         </div>
@@ -78,11 +90,11 @@ const joinRoomError = ref('');
 const isCreating = ref(false);
 const isJoining = ref(false);
 
+
 // --- Auth Handlers ---
 const handleLoginSuccess = async (response) => {
   try {
     await userStore.loginWithGoogle(response.credential);
-    console.log(response);
     showMessage.success("Login successful!");
   } catch (error) {
     showMessage.error("Login failed. Please try again.");
@@ -100,9 +112,21 @@ const handleLogout = () => {
 
 // --- Room Handlers ---
 const createRoom = async () => {
+  if (!userStore.isLoggedIn && !userStore.anonymousName) {
+    showMessage.error("請先輸入您的暱稱，或登入後再創建房間。");
+    return;
+  }
   if (isCreating.value) return;
-  isCreating.value = true;
+
   try {
+    const canConnect = await userStore.canEstablishWebSocket();
+    if (!canConnect) {
+      showMessage.error("連線數已達上限，無法進入房間。請稍後再試。");
+      await router.push({name: 'RoomSelection'});
+      return;
+    }
+
+    isCreating.value = true;
     const newRoom = await apiService.createRoom();
     roomStore.setRoomId(newRoom.room_id);
     router.push({ name: 'BossTracker', params: { roomId: newRoom.room_id } });
@@ -115,6 +139,10 @@ const createRoom = async () => {
 };
 
 const joinRoom = async () => {
+  if (!userStore.isLoggedIn && !userStore.anonymousName) {
+    showMessage.error("請先輸入您的暱稱，或登入後再加入房間。");
+    return;
+  }
   const roomIdToJoin = joinRoomId.value.trim();
   if (!roomIdToJoin) {
     joinRoomError.value = 'Please enter a room code.';
@@ -122,12 +150,19 @@ const joinRoom = async () => {
   }
   if (isJoining.value) return;
 
-  isJoining.value = true;
-  joinRoomError.value = '';
-
   try {
+    const canConnect = await userStore.canEstablishWebSocket();
+    if (!canConnect) {
+      showMessage.error("連線數已達上限，無法進入房間。請稍後再試。");
+      await router.push({name: 'RoomSelection'});
+      return;
+    }
+
+    isJoining.value = true;
+    joinRoomError.value = '';
+
     const roomCheck = await apiService.checkRoomExists(roomIdToJoin);
-    if (roomCheck.detail.exists) {
+    if (roomCheck.exists) {
       roomStore.setRoomId(roomIdToJoin);
       await router.push({name: 'BossTracker', params: {roomId: roomIdToJoin}});
     }
@@ -148,4 +183,6 @@ const joinRoom = async () => {
     isJoining.value = false;
   }
 };
+
 </script>
+''

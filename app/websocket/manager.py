@@ -70,6 +70,19 @@ class ConnectionManager:
                 return_exceptions=True
             )
 
+    async def broadcast_to_all(self, message: dict):
+        """
+        向所有連接的 WebSocket 客戶端廣播訊息。
+        """
+        message_str = json.dumps(message, default=str)
+        # 獲取所有唯一的 WebSocket 連接
+        all_connections = set(self.connection_info.keys())
+        if all_connections:
+            await asyncio.gather(
+                *[conn.send_text(message_str) for conn in all_connections],
+                return_exceptions=True
+            )
+
     async def broadcast_user_count(self, room_id: str, db: Session):
         try:
             count = room_service.get_room_user_count(db, room_id)

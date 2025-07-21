@@ -3,12 +3,19 @@ import {storeToRefs} from 'pinia'
 import {useRoomStore} from '@/stores/roomStore.js'
 import {useBossStore} from '@/stores/bossStore.js'
 import ApiService from '@/services/apiService.ts'
-import router from "@/router/index.js";
+import {useRouter} from 'vue-router'
+import {showMessage} from "@/composables/useElementPlus.js";
+import {useUserStore} from "@/stores/userStore.js";
+import {useAppInfoStore} from "@/stores/appInfo.js"; // 引入 appInfoStore
 
 export function useWebSocket() {
   const roomStore = useRoomStore()
   const bossStore = useBossStore()
+  const userStore = useUserStore();
+  const appInfoStore = useAppInfoStore(); // 實例化 appInfoStore
+  const router = useRouter()
 
+  const { user, anonymousId } = storeToRefs(userStore)
   const { ws, isConnected, isManualDisconnect } = storeToRefs(roomStore)
 
   const reconnectAttempts = ref(0)
@@ -28,6 +35,10 @@ export function useWebSocket() {
     }
 
     try {
+      const userId = user.value ? user.value.id : anonymousId.value
+      const payload = {
+        user_id: userId,
+      }
       const newWs = ApiService.createWebSocket(roomId)
       roomStore.setWebSocket(newWs)
 
@@ -43,9 +54,13 @@ export function useWebSocket() {
         handleMessage(message)
       }
 
-      newWs.onclose = () => {
+      newWs.onclose = (event) => {
         roomStore.setConnected(false)
-        if (!isManualDisconnect.value) { // 只有在非手動斷開時才嘗試重連
+        if (event.code === 1013 && event.reason === "Connection limit reached") {
+          showMessage.error("連線數已達上限，請稍後再試。");
+          router.push("/");
+          roomStore.setManualDisconnect(true); // 設置為手動斷開，避免重連
+        } else if (!isManualDisconnect.value) { // 只有在非手動斷開時才嘗試重連
           attemptReconnect(roomId)
         } else {
           roomStore.setManualDisconnect(false) // 重置標誌
@@ -83,6 +98,18 @@ export function useWebSocket() {
       case 'user_count_update':
         roomStore.setUserCount(message.count)
         break
+      case 'maintenance_status_update': // 新增維護狀態更新處理
+        appInfoStore.maintenanceInfo = message.data;
+        if (message.data.is_maintenance) {
+          appInfoStore.isMaintenance = true;
+          router.push({ name: "Maintenance" });
+        }else if (message.data.is_ready_for_maintenance) {
+          appInfoStore.isReadyForMaintenance = true;
+        }else {
+          appInfoStore.isMaintenance = false;
+          appInfoStore.isReadyForMaintenance = false;
+        }
+        break;
       case 'pong':
         // 心跳回應
         break

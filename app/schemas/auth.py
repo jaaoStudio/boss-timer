@@ -36,6 +36,7 @@ class User(BaseModel):
     preferences: dict = {}
     created_at: datetime
     last_login_at: Optional[datetime] = None
+    is_admin: Optional[bool]
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -1,0 +1,68 @@
+services:
+  db:
+    image: postgres:latest
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+    networks:
+      - boss_network
+    ports:
+      - "4521:5432"
+    volumes:
+      - ./db-data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+
+  boss_service:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${VERSION}
+    platform: linux/arm64
+    container_name: boss_service
+    ports:
+      - "1254:1254"
+    command: uvicorn main:app --host 0.0.0.0 --port 1254 --root-path /api
+    env_file:
+      - .env
+    volumes:
+      - ./app/maintenance.json:/app/maintenance.json # 掛載維護公告設定檔
+    restart: always
+    networks:
+      - boss_network
+    environment:
+      - ENV=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  boss_timer_nginx:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${VERSION}
+    platform: linux/arm64
+    container_name: boss_timer_nginx
+    ports:
+      - "2255:80"
+    volumes:
+      - ./frontend/nginx/nginx.conf:/etc/nginx/nginx.conf:ro # 掛載 Nginx 設定檔 (唯讀)
+      - ./frontend/public:/usr/share/nginx/html # 掛載 public 目錄以控制維護頁面
+    restart: always
+    networks:
+      - boss_network
+    depends_on:
+      boss_service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  boss_network:
+    driver: bridge
+
+volumes:
+  boss_data:
+    driver: local

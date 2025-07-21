@@ -1,5 +1,5 @@
 # app/dependencies.py
-from fastapi import Depends, WebSocket, status
+from fastapi import Depends, WebSocket, status, HTTPException
 from fastapi.exceptions import WebSocketException
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
@@ -9,6 +9,7 @@ from app.config import settings
 from app.database import models
 from app.database.database import get_db
 from app.websocket.manager import ConnectionManager
+from app.services.auth_service import get_current_user # 引入 get_current_user
 
 
 _connection_manager = ConnectionManager()
@@ -16,6 +17,15 @@ _connection_manager = ConnectionManager()
 
 def get_connection_manager() -> ConnectionManager:
     return _connection_manager
+
+
+async def get_current_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:
+    """
+    驗證當前使用者是否為管理員。
+    """
+    if not current_user or not current_user.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to perform this action")
+    return current_user
 
 
 async def get_current_user_from_ws(

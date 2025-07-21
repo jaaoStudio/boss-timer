@@ -31,8 +31,9 @@ export default defineConfig((config: ConfigEnv) => {
     resolve: {
       alias: {
         '@': fileURLToPath(new URL('./src', import.meta.url)),
-        '/images': fileURLToPath(new URL('./src/assets/images', import.meta.url)),
-        '/icons': fileURLToPath(new URL('./src/assets/icons', import.meta.url)),
+        '@images': fileURLToPath(new URL('./src/assets/images', import.meta.url)),
+        '@icons': fileURLToPath(new URL('./src/assets/icons', import.meta.url)),
+        '@public': fileURLToPath(new URL('./public', import.meta.url)),
       },
     },
     css: {

@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     display_name VARCHAR(100),
     avatar_url TEXT,
     preferences JSONB DEFAULT '{}'::jsonb,
+    is_admin BOOLEAN NOT NULL DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
     last_login_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );
