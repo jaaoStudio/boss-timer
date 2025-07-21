@@ -15,6 +15,9 @@ class ConnectionManager:
         # WebSocket -> (room_id, user_id, anonymous_id)
         self.connection_info: Dict[WebSocket, Tuple[str, Optional[int], Optional[str]]] = {}
 
+    def get_total_connections(self) -> int:
+        return len(self.connection_info)
+
     async def connect(
         self,
         websocket: WebSocket,
@@ -23,8 +26,6 @@ class ConnectionManager:
         user_id: Optional[int],
         anonymous_id: Optional[str]
     ):
-        await websocket.accept()
-
         if room_id not in self.room_connections:
             self.room_connections[room_id] = set()
         self.room_connections[room_id].add(websocket)

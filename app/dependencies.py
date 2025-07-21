@@ -37,7 +37,6 @@ async def get_current_user_from_ws(
     如果 token 無效或不存在，則返回 None，代表匿名使用者。
     """
     token = websocket.cookies.get("access_token")
-
     if not token:
         return None # 匿名使用者
 

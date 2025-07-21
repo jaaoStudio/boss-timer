@@ -119,7 +119,7 @@ async def refresh_token(
         value=new_access_token,
         httponly=True,
         secure=settings.env == "production",
-        samesite="strict",
+        samesite="lax",
         max_age=settings.access_token_expire_minutes * 60
     )
 

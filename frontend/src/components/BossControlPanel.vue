@@ -61,12 +61,16 @@ import { useBossStore } from '@/stores/bossStore.js'
 import ApiService from '@/services/apiService.ts'
 import BossStatusButton from "@/components/BossStatusButton.vue";
 import {showMessage} from "@/composables/useElementPlus.js";
+import {useUserStore} from "@/stores/userStore.js";
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
+const userStore = useUserStore();
+
 
 const { roomId } = storeToRefs(roomStore)
 const { bossTypes, selectedChannel, selectedBossName } = storeToRefs(bossStore)
+const { isLoggedIn, anonymousId, anonymousName} = storeToRefs(userStore)
 
 const statuses = [
   { type: 'alive' },
@@ -109,15 +113,24 @@ const recordBoss = async () => {
 
   loading.value = true
   try {
-    const newRecord = await ApiService.recordBoss({
+    const payload = {
       room_id: roomId.value,
       channel: parseInt(form.value.channel),
       boss_name: form.value.boss_name,
-      status: form.value.status
-    })
+      status: form.value.status,
+      recorder_info: null // 預設為 null
+    }
+
+    if (!isLoggedIn.value && anonymousName.value) {
+      payload.recorder_info = {
+        anonymous_id: anonymousId.value,
+        anonymous_name: anonymousName.value,
+      };
+    }
+
+    const newRecord = await ApiService.recordBoss(payload);
 
     // 更新 Pinia store 中的 bossRecords 和 history
-    console.log(newRecord)
     await bossStore.updateBossRecord(newRecord)
 
     // 重置表單

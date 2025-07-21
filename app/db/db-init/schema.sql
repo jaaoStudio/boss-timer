@@ -2,7 +2,9 @@
 CREATE TABLE IF NOT EXISTS rooms (
     room_id VARCHAR(10) PRIMARY KEY,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
-    last_active TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+    last_active TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE
+
 );
 
 -- 使用者表
@@ -37,7 +39,8 @@ CREATE TABLE IF NOT EXISTS boss_records (
     respawn_min_time TIMESTAMPTZ,
     respawn_max_time TIMESTAMPTZ,
     recorder_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
-    recorder_info JSONB
+    recorder_info JSONB,
+    is_archived BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- 房間活動用戶表
@@ -53,6 +56,19 @@ CREATE TABLE IF NOT EXISTS room_users (
     UNIQUE (room_id, anonymous_session_id)
 );
 
+CREATE TABLE IF NOT EXISTS refresh_tokens (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL,
+    jti VARCHAR UNIQUE NOT NULL,
+    token TEXT NOT NULL,
+    expires_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT fk_user
+        FOREIGN KEY (user_id)
+        REFERENCES users (id)
+        ON DELETE CASCADE
+);
+
 -- 索引
 CREATE INDEX IF NOT EXISTS idx_users_google_id ON users(google_id);
 CREATE INDEX IF NOT EXISTS idx_boss_records_recorder_id ON boss_records(recorder_id);
@@ -61,11 +77,15 @@ CREATE INDEX IF NOT EXISTS idx_boss_records_room_boss ON boss_records(room_id, b
 CREATE INDEX IF NOT EXISTS idx_boss_records_time ON boss_records(recorded_at);
 CREATE INDEX IF NOT EXISTS idx_room_users_room_id ON room_users(room_id);
 CREATE INDEX IF NOT EXISTS idx_room_users_user_id ON room_users(user_id);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_jti ON refresh_tokens(jti);
+CREATE INDEX IF NOT EXISTS idx_refresh_tokens_id ON refresh_tokens(id);
 
 -- 預設 BOSS 類型
 INSERT INTO boss_types (boss_name, min_respawn_minutes, max_respawn_minutes, description) VALUES
+('喵z怪客', 150, 300, '101'),
 ('雪毛怪人', 45, 68, '冰原雪域'),
-('黑輪王',780 , 1020, '西門町'),
+('黑輪王7',780 , 1020, '西門町'),
+('黑輪王7-1',780 , 1020, '西門町'),
 ('巴洛古', 405, 540, '維多利亞島'),
 ('肯得熊', 113, 128, '桃花仙境'),
 ('喵怪仙人', 150, 170, '桃花仙境'),

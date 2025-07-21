@@ -17,15 +17,17 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 複製應用程式碼
-COPY boss_tracker.py ./main.py
-COPY db_config.py ./
+# 複製當前目錄所有內容到工作目錄中
+COPY . .
 
 # 暴露端口
 EXPOSE 1254
+
+WORKDIR /
 
 # 設置環境變量
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
 # 啟動命令
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "1254"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "1254"]

@@ -44,7 +44,6 @@ const handleUnauthorized = (axiosInstance, error) => {
     error.response.status === 401 &&
     originalRequestConfig.url !== "auth/refresh"
   ) {
-      console.log("401401401", originalRequestConfig)
       console.log("error", error)
       return callRefreshToken(axiosInstance, originalRequestConfig);
   }else{

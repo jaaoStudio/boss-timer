@@ -1,6 +1,6 @@
 # app/database/models.py
 from sqlalchemy import (
-    Column, String, Integer, DateTime, Text, ForeignKey, Index,
+    Column, String, Integer, DateTime, Text, ForeignKey, Index, Boolean,
     CheckConstraint, func, BigInteger
 )
 from sqlalchemy.orm import relationship
@@ -35,6 +35,7 @@ class Room(Base):
     room_id = Column(String(10), primary_key=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_active = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    is_active = Column(Boolean, default=True, nullable=False)
 
     boss_records = relationship("BossRecord", back_populates="room", cascade="all, delete-orphan")
     user_associations = relationship("RoomUser", back_populates="room", cascade="all, delete-orphan")
@@ -64,6 +65,7 @@ class BossRecord(Base):
     respawn_max_time = Column(DateTime(timezone=True))
     recorder_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     recorder_info = Column(JSONB)
+    is_archived = Column(Boolean, default=False, nullable=False)
 
     @property
     def current_status(self) -> str:
