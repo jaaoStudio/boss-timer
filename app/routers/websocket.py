@@ -15,6 +15,9 @@ import logging
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
+@router.get("/connections/count")
+async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
+    return {"count": manager.get_total_connections()}
 
 @router.websocket("/{room_id}")
 async def websocket_endpoint(
@@ -37,6 +40,14 @@ async def websocket_endpoint(
         anonymous_id = str(uuid.uuid4())
         logging.info(f"Anonymous user {anonymous_id} connected to room {room_id}")
 
+    # 連線前檢查
+    if manager.get_total_connections() >= 1000:
+        logging.warning("Connection limit reached. Rejecting new connection.")
+        await websocket.accept()
+        await websocket.close(code=1013, reason="Connection limit reached")
+        return
+
+    await websocket.accept()
     # 連線到管理器
     await manager.connect(websocket, room_id, db, user_id, anonymous_id)
 

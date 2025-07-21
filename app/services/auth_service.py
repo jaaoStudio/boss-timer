@@ -215,7 +215,17 @@ def update_user_preferences(db: Session, user: models.User, preferences: dict) -
     """
     更新使用者偏好設定。
     """
-    user.preferences = preferences
+    # 如果 user.preferences 是 None，初始化為一個空字典
+    if user.preferences is None:
+        user.preferences = {}
+
+    # 確保我們是在一個字典上操作，以防 user.preferences 不是字典
+    current_preferences = user.preferences.copy() if isinstance(user.preferences, dict) else {}
+
+    # 合併新的偏好設定
+    current_preferences.update(preferences)
+    user.preferences = current_preferences
+
     db.commit()
     db.refresh(user)
     return user

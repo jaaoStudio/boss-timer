@@ -8,7 +8,6 @@ import logging
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket
 from app.tasks.cleanup import cleanup_inactive_rooms
-from app.websocket.manager import ConnectionManager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -22,7 +21,7 @@ app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifes
 origin_list = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

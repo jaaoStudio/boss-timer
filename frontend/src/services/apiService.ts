@@ -10,7 +10,6 @@ class ApiService {
 
   // 設定認證 token
   setAuthToken(token) {
-    console.log(this.client);
     this.client.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`
   }
 
@@ -88,6 +87,11 @@ class ApiService {
     // The HttpOnly cookie will be sent automatically by the browser.
     // No need to manually attach a token.
     return new WebSocket(`${WS_URL}/ws/${roomId}`);
+  }
+
+  async getWebSocketConnectionsCount() {
+    const response = await this.client.get('/ws/connections/count');
+    return response.data.count;
   }
 }
 

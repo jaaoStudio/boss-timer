@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # 應用配置
     version: str = os.getenv("VERSION", "1.0.0")
 
-    remote_registry_ip: str
-    env: str
+    remote_registry_ip: str = os.getenv("REMOTE_REGISTRY_IP", "127.0.0.1")
+    env: str = os.getenv("ENV", "development")
 
     class Config:
         env_file = ".env"

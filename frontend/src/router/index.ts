@@ -21,6 +21,16 @@ const router: Router = createRouter({
       component: () => import('../views/Credits.vue'),
     },
     {
+      path: '/legal',
+      name: 'Legal',
+      component: () => import('../views/LegalDisclaimer.vue'),
+    },
+    {
+      path: '/privacy',
+      name: 'Privacy',
+      component: () => import('../views/PrivacyPolicy.vue'),
+    },
+    {
       // Redirect to home if no other route matches
       path: '/:pathMatch(.*)*',
       redirect: '/',

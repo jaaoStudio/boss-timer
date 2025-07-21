@@ -32,3 +32,14 @@ async def get_current_user_id(request: Request):
     except JWTError:
         raise credentials_exception
     return user_id
+async def get_optional_current_user_id(request: Request) -> Optional[str]:
+    token = request.cookies.get("access_token")
+    if token is None:
+        return None  # 沒有 token，視為匿名使用者
+
+    # 如果有 token，則嘗試驗證它
+    try:
+        return await get_current_user_id(request)
+    except HTTPException as e:
+        # 如果 get_current_user_id 拋出 HTTPException，表示 token 無效，重新拋出錯誤
+        raise e
