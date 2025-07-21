@@ -44,7 +44,7 @@ const config = ref({
 
 onMounted(async () => {
   // 載入當前配置
-  await appInfoStore.checkMaintenanceStatus();
+  await apiService.getMaintenanceStatus();
   config.value = { ...appInfoStore.maintenanceInfo };
 });
 

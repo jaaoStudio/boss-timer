@@ -30,7 +30,7 @@ export const useAppInfoStore = defineStore("AppInfo", {
   actions: {
     async checkMaintenanceStatus() {
       try {
-        const maintenanceInfo = await apiService.getMaintenanceInfo();
+        const maintenanceInfo = await apiService.getMaintenanceStatus();
         if (maintenanceInfo) {
           this.maintenanceInfo = maintenanceInfo;
         }

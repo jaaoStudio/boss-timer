@@ -90,13 +90,18 @@ class ApiService {
     return new WebSocket(`${WS_URL}/ws/${roomId}`);
   }
 
-  async getMaintenanceInfo() {
+  async getMaintenanceStatus() {
     const response = await this.client.get('/system/maintenance-info');
     return response.data;
   }
 
   async updateMaintenanceConfig(updatedConfig: Dict<string, any>) {
     return await this.client.post('/system/maintenance-config', updatedConfig);
+  }
+
+  async getWebSocketConnectionsCount() {
+    const response = await this.client.get('/ws/connections/count');
+    return response.data.count;
   }
 }
 
