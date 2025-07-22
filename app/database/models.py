@@ -18,6 +18,7 @@ class User(Base):
     display_name = Column(String(100))
     avatar_url = Column(Text)
     preferences = Column(JSONB, default={})
+    is_admin = Column(Boolean, default=False, nullable=False) # 新增管理員欄位
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_login_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

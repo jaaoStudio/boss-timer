@@ -167,3 +167,43 @@ class BossService:
         ).order_by(BossRecord.recorded_at.desc()).first()
 
         return last_killed_record.recorded_at if last_killed_record else None
+
+    @staticmethod
+    async def record_boss_from_websocket(db: Session, record: BossRecordCreate, user_id: Optional[str], manager: ConnectionManager):
+        """Handles boss recording initiated from a WebSocket message."""
+        try:
+            # Validation and calculation logic is reused from the original service
+            room = await BossService._validate_room_exists(db, record.room_id)
+            boss_type = await BossService._validate_boss_type_exists(db, record.boss_name)
+            respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
+            boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)
+
+            # Instead of calling the old broadcast method, we get the full record data
+            # and then use the manager passed from the websocket endpoint to broadcast.
+            record_with_recorder = db.query(BossRecord).options(
+                joinedload(BossRecord.recorder)
+            ).filter(BossRecord.id == boss_record.id).first()
+
+            if not record_with_recorder:
+                logging.error(f"Could not find boss_record with id {boss_record.id} to broadcast update.")
+                return
+
+            response_data = BossRecordResponse.model_validate(record_with_recorder)
+
+            await manager.broadcast_to_room(
+                room_id=record.room_id,
+                message={
+                    "type": "boss_update",
+                    "data": response_data.model_dump(mode='json')
+                }
+            )
+            logging.info(f"Broadcasted boss_update from websocket for room {record.room_id}")
+
+        except HTTPException as e:
+            # Re-raise HTTP exceptions to be potentially caught and sent to the client
+            raise e
+        except Exception as e:
+            logging.error(f"Error in record_boss_from_websocket: {e}")
+            # In a websocket context, we might not be able to raise HTTPException,
+            # so we just log the error.
+            raise e

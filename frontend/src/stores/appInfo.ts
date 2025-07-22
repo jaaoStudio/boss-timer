@@ -1,54 +1,48 @@
 import { defineStore } from "pinia";
+import apiService from "@/services/apiService";
+
+interface MaintenanceInfo {
+  is_maintenance: boolean;
+  is_ready_for_maintenance: boolean;
+  title: string;
+  message: string;
+}
 
 export const useAppInfoStore = defineStore("AppInfo", {
   state: () => ({
     isServerError: false,
-    surveyCreatorCurrentJson: {},
-    haveSurveyCreatorCurrentJson: false,
+    maintenanceInfo: {
+      is_maintenance: false,
+      is_ready_for_maintenance: false,
+      title: "",
+      message: "",
+    } as MaintenanceInfo,
   }),
   getters: {
-    appTitle() {
-      return import.meta.env.VITE_APP_TITLE;
+    appTitle(): string {
+      return import.meta.env.VITE_APP_TITLE || "Boss Timing";
+    },
+    isMaintenanceActive(): boolean {
+      // 當 is_maintenance 或 is_ready_for_maintenance 為 true 時顯示橫幅
+      return this.maintenanceInfo.is_maintenance || this.maintenanceInfo.is_ready_for_maintenance;
     },
   },
   actions: {
-    setSurveyCreatorCurrentJson(json) {
-      this.surveyCreatorCurrentJson = this.moveElementsToLast(json);
-    },
-    moveElementsToLast(obj) {
-      // 如果是陣列，遞迴處理每個元素
-      if (Array.isArray(obj)) {
-        return obj.map((item) => this.moveElementsToLast(item));
-      }
-
-      // 如果不是物件或是 null，直接返回
-      if (typeof obj !== "object" || obj === null) {
-        return obj;
-      }
-
-      // 創建新物件來存放結果
-      const result = {};
-      let elementsValue = null;
-      let hasElements = false;
-
-      // 遍歷物件的所有鍵值對
-      for (const [key, value] of Object.entries(obj)) {
-        if (key === "elements") {
-          // 如果是 elements 鍵，先暫時儲存起來
-          elementsValue = value;
-          hasElements = true;
-        } else {
-          // 遞迴處理其他屬性的值
-          result[key] = this.moveElementsToLast(value);
+    async checkMaintenanceStatus() {
+      try {
+        const maintenanceInfo = await apiService.getMaintenanceStatus();
+        if (maintenanceInfo) {
+          this.maintenanceInfo = maintenanceInfo;
         }
+      } catch (error) {
+        console.error("Failed to fetch maintenance info:", error);
+        // 如果API請求失敗，確保我們不會意外地顯示維護橫幅
+        this.maintenanceInfo.is_maintenance = false;
+        this.maintenanceInfo.is_ready_for_maintenance = false;
       }
-
-      // 如果有 elements 鍵，將它放在最後
-      if (hasElements) {
-        result.elements = this.moveElementsToLast(elementsValue);
-      }
-
-      return result;
+    },
+    setMaintenanceInfo(newInfo: MaintenanceInfo) {
+      this.maintenanceInfo = newInfo;
     },
   },
 });

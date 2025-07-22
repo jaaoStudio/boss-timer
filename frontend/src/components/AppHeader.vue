@@ -1,7 +1,7 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-4 mb-6">
-    <div class="flex items-center justify-between">
-      <div class="flex flex-col items-center">
+    <div class="flex items-center justify-between gap-2.5">
+      <div class="flex flex-col items-center gap-2.5">
         <div class="flex items-center">
           <img src="/leaf24px.png" alt="Logo" class="h-8 w-8 mr-3">
           <h1 class="text-2xl font-bold text-white">BOSS Timer</h1>

@@ -13,6 +13,7 @@
           pattern="\d*"
           class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
+          maxlength="5"
           @input="onChannelInput"
         >
       </div>
@@ -62,10 +63,12 @@ import ApiService from '@/services/apiService.ts'
 import BossStatusButton from "@/components/BossStatusButton.vue";
 import {showMessage} from "@/composables/useElementPlus.js";
 import {useUserStore} from "@/stores/userStore.js";
+import { useWebSocketStore} from "@/stores/websocketStore.js";
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
 const userStore = useUserStore();
+const websocketStore = useWebSocketStore();
 
 
 const { roomId } = storeToRefs(roomStore)
@@ -128,20 +131,21 @@ const recordBoss = async () => {
       };
     }
 
-    const newRecord = await ApiService.recordBoss(payload);
+    websocketStore.sendMessage({
+      type: 'record_boss',
+      payload: payload,
+    });
 
     // 更新 Pinia store 中的 bossRecords 和 history
-    await bossStore.updateBossRecord(newRecord)
+    // await bossStore.updateBossRecord(newRecord)
 
     // 重置表單
     form.value.channel = ''
 
   } catch (error) {
-    if(error.status !== 401){
-      console.error('Failed to record boss:', error)
-      showMessage.error("紀錄失敗，請重試。");
-    }
-
+    // WebSocket 錯誤處理將在 websocketStore 中進行
+    console.error('Failed to send record boss message via WebSocket:', error);
+    showMessage.error("發送紀錄失敗，請重試。");
   } finally {
     loading.value = false
   }

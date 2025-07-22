@@ -183,5 +183,6 @@ const joinRoom = async () => {
     isJoining.value = false;
   }
 };
+
 </script>
 ''

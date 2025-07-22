@@ -9,6 +9,7 @@ interface User {
   display_name: string | null;
   avatar_url: string | null;
   preferences: { [key: string]: any };
+  is_admin: boolean;
   anonymousId: string | null;
   anonymousName: string | null;
 }
@@ -31,6 +32,11 @@ export const useUserStore = defineStore('user', {
     anonymousId: null,
     anonymousName: null,
   }),
+  getters: {
+    isAdmin(): boolean {
+      return this.user ? this.user.is_admin : false;
+    },
+  },
 
   actions: {
     // 初始化 Broadcast Channel

@@ -19,6 +19,7 @@ declare module 'vue' {
     CountdownTimer: typeof import('./src/components/CountdownTimer.vue')['default']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     LegalDisclaimer: typeof import('./src/components/LegalDisclaimer.vue')['default']
+    MaintenanceBanner: typeof import('./src/components/MaintenanceBanner.vue')['default']
     PrivacyPolicy: typeof import('./src/components/PrivacyPolicy.vue')['default']
     RecommendedChannels: typeof import('./src/components/RecommendedChannels.vue')['default']
     RecommendedSection: typeof import('./src/components/RecommendedSection.vue')['default']
