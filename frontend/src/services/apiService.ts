@@ -84,10 +84,10 @@ class ApiService {
   }
 
   // --- WebSocket ---
-  createWebSocket(roomId: string) {
+  createWebSocket() {
     // The HttpOnly cookie will be sent automatically by the browser.
     // No need to manually attach a token.
-    return new WebSocket(`${WS_URL}/ws/${roomId}`);
+    return new WebSocket(`${WS_URL}/ws/`);
   }
 
   async getMaintenanceStatus() {

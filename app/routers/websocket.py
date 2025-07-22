@@ -1,6 +1,6 @@
 # app/routers/websocket.py
 import json
-import uuid
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.database import models
 from app.database.database import get_db
-from app.services import room_service
+from app.services import room_service, boss_service
 from app.dependencies import get_current_user_from_ws, get_connection_manager
 from app.websocket.manager import ConnectionManager
-import logging
+from app.schemas.boss import BossRecordCreate
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
 
@@ -19,63 +19,70 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
     return {"count": manager.get_total_connections()}
 
-@router.websocket("/{room_id}")
+async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager, user_id: Optional[str]):
+    msg_type = message.get("type")
+    payload = message.get("payload", {})
+    room_id = payload.get("room_id")
+
+    if not msg_type:
+        logging.warning("Received message without type")
+        return
+
+    if msg_type == "ping":
+        await websocket.send_text(json.dumps({"type": "pong"}))
+        return
+
+    if not room_id:
+        logging.warning(f"Received message type '{msg_type}' without room_id")
+        return
+
+    # Room-specific messages
+    if msg_type == "join_room":
+        if not room_service.get_room_by_id(db, room_id):
+            await websocket.send_text(json.dumps({"type": "error", "message": "Room not found"}))
+            return
+        manager.subscribe_to_room(websocket, room_id)
+        initial_state = room_service.get_room_state(db, room_id)
+        await websocket.send_text(json.dumps(initial_state, default=str))
+        await manager.broadcast_user_count(room_id)
+
+    elif msg_type == "leave_room":
+        manager.unsubscribe_from_room(websocket)
+        await manager.broadcast_user_count(room_id)
+
+    elif msg_type == "record_boss":
+        try:
+            record_create = BossRecordCreate(**payload)
+            await boss_service.BossService.record_boss_from_websocket(db, record_create, user_id, manager)
+        except Exception as e:
+            logging.error(f"Error processing record_boss message: {e}", exc_info=True)
+            await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
+
+@router.websocket("/")
 async def websocket_endpoint(
     websocket: WebSocket,
-    room_id: str,
     db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    """
-    處理 WebSocket 連線，支援已登入和匿名使用者。
-    """
-    # 確定使用者身份
-    if current_user:
-        user_id = current_user.id
-        anonymous_id = None
-        logging.info(f"User {user_id} connected to room {room_id}")
-    else:
-        user_id = None
-        anonymous_id = str(uuid.uuid4())
-        logging.info(f"Anonymous user {anonymous_id} connected to room {room_id}")
-
-    # 連線前檢查
-    if manager.get_total_connections() >= 1000:
-        logging.warning("Connection limit reached. Rejecting new connection.")
-        await websocket.accept()
-        await websocket.close(code=1013, reason="Connection limit reached")
-        return
-
-    await websocket.accept()
-    # 連線到管理器
-    await manager.connect(websocket, room_id, db, user_id, anonymous_id)
+    await manager.connect(websocket)
+    user_id = current_user.id if current_user else None
 
     try:
-        # 驗證房間是否存在
-        if not room_service.get_room_by_id(db, room_id):
-            await websocket.close(code=1008, reason="Room not found")
-            return
-
-        # 發送初始房間狀態
-        initial_state = room_service.get_room_state(db, room_id)
-        await websocket.send_text(json.dumps(initial_state, default=str))
-
-        # 廣播更新後的用戶數
-        await manager.broadcast_user_count(room_id, db)
-
-        # 監聽訊息
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
-            if message.get("type") == "ping":
-                await websocket.send_text(json.dumps({"type": "pong"}))
+            await handle_message(websocket, message, db, manager, user_id)
 
     except WebSocketDisconnect:
-        logging.info(f"Client disconnected from room {room_id}")
+        logging.info(f"Client disconnected.")
     except Exception as e:
-        logging.error(f"WebSocket error in room {room_id}: {e}", exc_info=True)
+        logging.error(f"WebSocket error: {e}", exc_info=True)
     finally:
-        # 確保無論如何都執行斷線邏輯
-        await manager.disconnect(websocket, room_id, db, user_id, anonymous_id)
-        await manager.broadcast_user_count(room_id, db)
+        # On disconnect, unsubscribe from the room and broadcast the new user count
+        if websocket in manager.socket_to_room:
+            room_id = manager.socket_to_room[websocket]
+            manager.disconnect(websocket) # This also handles unsubscribe
+            await manager.broadcast_user_count(room_id)
+        else:
+            manager.disconnect(websocket)

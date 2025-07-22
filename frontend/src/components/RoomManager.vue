@@ -30,9 +30,9 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore.js'
-import { useWebSocket } from '@/composables/useWebSocket'
 import { useDark, useToggle } from '@vueuse/core'
 import { useUserStore } from '@/stores/userStore.js'
+import { useWebSocketStore } from '@/stores/websocketStore';
 
 const isDark = useDark({
   selector: 'html',
@@ -45,7 +45,7 @@ const toggleDark = useToggle(isDark)
 const router = useRouter()
 const roomStore = useRoomStore()
 const userStore = useUserStore()
-const { disconnect } = useWebSocket()
+const websocketStore = useWebSocketStore()
 
 const { roomId } = storeToRefs(roomStore)
 const { user, isLoggedIn } = storeToRefs(userStore)
@@ -75,8 +75,13 @@ const copyRoomId = () => {
 }
 
 const leaveRoom = () => {
-  disconnect()
-  roomStore.clearRoomId()
-  router.push({ name: 'RoomSelection' })
-}
+  if (roomStore.roomId) {
+    websocketStore.sendMessage({
+      type: 'leave_room',
+      payload: { room_id: roomStore.roomId },
+    });
+  }
+  roomStore.clearRoomId();
+  router.push({ name: 'RoomSelection' });
+};
 </script>

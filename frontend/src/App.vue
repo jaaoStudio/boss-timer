@@ -5,9 +5,11 @@ import AppFooter from "@/components/AppFooter.vue";
 import MaintenanceBanner from "@/components/MaintenanceBanner.vue"; // 引入元件
 import { useUserStore } from '@/stores/userStore';
 import { useAppInfoStore } from '@/stores/appInfo'; // 引入 store
+import { useWebSocketStore } from '@/stores/websocketStore'; // 引入 websocket store
 
 const userStore = useUserStore();
 const appInfoStore = useAppInfoStore(); // 實例化 store
+const websocketStore = useWebSocketStore(); // 實例化 websocket store
 
 // When the component is mounted, try to fetch the user data
 onMounted(async () => {
@@ -15,6 +17,8 @@ onMounted(async () => {
   await userStore.initializeAuth();
   // 檢查維護狀態 (首次載入時)
   await appInfoStore.checkMaintenanceStatus();
+  // 建立全域 WebSocket 連線
+  websocketStore.connect();
 });
 </script>
 

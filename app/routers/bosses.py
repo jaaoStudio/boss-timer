@@ -37,8 +37,8 @@ async def record_boss(
         # 更新房間最後活躍時間
         update_room_last_active(db, record.room_id)
 
-        # 廣播更新
-        await BossService._broadcast_boss_update(db=db, room_id=record.room_id, boss_record_id=boss_record.id)
+        # The broadcast is now handled via WebSocket messages, so we remove it from the HTTP endpoint.
+        # await BossService._broadcast_boss_update(db=db, room_id=record.room_id, boss_record_id=boss_record.id)
 
         # 返回響應
         return BossRecordResponse.model_validate(boss_record)

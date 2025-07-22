@@ -41,5 +41,8 @@ export const useAppInfoStore = defineStore("AppInfo", {
         this.maintenanceInfo.is_ready_for_maintenance = false;
       }
     },
+    setMaintenanceInfo(newInfo: MaintenanceInfo) {
+      this.maintenanceInfo = newInfo;
+    },
   },
 });
