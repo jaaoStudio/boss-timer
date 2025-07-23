@@ -14,17 +14,22 @@ class ConnectionManager:
         self.room_subscriptions: Dict[str, Set[WebSocket]] = defaultdict(set)
         # A dictionary to map WebSocket to its subscribed room_id
         self.socket_to_room: Dict[WebSocket, str] = {}
+        # A dictionary to map WebSocket to its user_id
+        self.socket_to_user: Dict[WebSocket, int] = {}
 
     def get_total_connections(self) -> int:
         return len(self.active_connections)
 
-    async def connect(self, websocket: WebSocket):
+    async def connect(self, websocket: WebSocket, user_id: Optional[int] = None):
         await websocket.accept()
         self.active_connections.add(websocket)
-        logging.info(f"New connection accepted. Total connections: {self.get_total_connections()}")
+        if user_id:
+            self.socket_to_user[websocket] = user_id
+        logging.info(f"New connection accepted. User ID: {user_id}. Total connections: {self.get_total_connections()}")
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.discard(websocket)
+        self.socket_to_user.pop(websocket, None) # Remove user mapping on disconnect
         logging.info(f"Connection closed. Total connections: {self.get_total_connections()}")
         # Also remove from any room subscriptions
         if websocket in self.socket_to_room:
@@ -34,6 +39,15 @@ class ConnectionManager:
                 del self.room_subscriptions[room_id]
             del self.socket_to_room[websocket]
             logging.info(f"Connection removed from room {room_id}")
+
+    def update_user_id(self, websocket: WebSocket, user_id: Optional[int]):
+        if user_id is not None:
+            self.socket_to_user[websocket] = user_id
+            logging.info(f"Updated user ID for connection to {user_id}")
+        else:
+            if websocket in self.socket_to_user:
+                del self.socket_to_user[websocket]
+                logging.info(f"Removed user ID for connection")
 
     def subscribe_to_room(self, websocket: WebSocket, room_id: str):
         # Unsubscribe from any previous room first

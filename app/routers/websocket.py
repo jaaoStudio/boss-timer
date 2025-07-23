@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.database import models
 from app.database.database import get_db
-from app.services import room_service, boss_service
+from app.services import room_service, boss_service, auth_service
 from app.dependencies import get_current_user_from_ws, get_connection_manager
 from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
@@ -65,13 +65,34 @@ async def websocket_endpoint(
     current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    await manager.connect(websocket)
     user_id = current_user.id if current_user else None
+    await manager.connect(websocket, user_id)
 
     try:
         while True:
             data = await websocket.receive_text()
             message = json.loads(data)
+            message_type = message.get("type")
+
+            if message_type == "authenticate":
+                token = message.get("token")
+                if token:
+                    try:
+                        new_user = auth_service.get_current_user_from_token(token, db)
+                        if new_user:
+                            user_id = new_user.id
+                            manager.update_user_id(websocket, user_id)
+                            logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
+                    except Exception as e:
+                        logging.warning(f"WebSocket authentication failed: {e}")
+                continue
+
+            elif message_type == "deauthenticate":
+                user_id = None
+                manager.update_user_id(websocket, None)
+                logging.info("WebSocket de-authenticated.")
+                continue
+
             await handle_message(websocket, message, db, manager, user_id)
 
     except WebSocketDisconnect:
@@ -79,10 +100,9 @@ async def websocket_endpoint(
     except Exception as e:
         logging.error(f"WebSocket error: {e}", exc_info=True)
     finally:
-        # On disconnect, unsubscribe from the room and broadcast the new user count
         if websocket in manager.socket_to_room:
             room_id = manager.socket_to_room[websocket]
-            manager.disconnect(websocket) # This also handles unsubscribe
+            manager.disconnect(websocket)
             await manager.broadcast_user_count(room_id)
         else:
             manager.disconnect(websocket)

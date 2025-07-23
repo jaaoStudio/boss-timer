@@ -17,8 +17,6 @@ onMounted(async () => {
   await userStore.initializeAuth();
   // 檢查維護狀態 (首次載入時)
   await appInfoStore.checkMaintenanceStatus();
-  // 建立全域 WebSocket 連線
-  websocketStore.connect();
 });
 </script>
 
