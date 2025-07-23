@@ -2,7 +2,7 @@ services:
   boss_service:
     build:
       context: app
-    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${VERSION}
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
     platform: linux/arm64  # 構建適配 ARM 的镜像
     container_name: boss_service
     ports:
@@ -16,7 +16,7 @@ services:
     build:
       context: ./frontend
     platform: linux/arm64  # 構建適配 ARM 的镜像
-    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${VERSION}
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${FRONTEND_VERSION}
     container_name: boss_timer_nginx
     ports:
       - "2255:80"

@@ -8,34 +8,13 @@ class ApiService {
     this.client = bossService;
   }
 
-  // 設定認證 token
-  setAuthToken(token) {
-    console.log(this.client);
-    this.client.axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`
-  }
-
-  // 移除認證 token
-  removeAuthToken() {
-    delete this.client.axiosInstance.defaults.headers.common['Authorization']
-  }
-
-  // 處理 token 過期
-  handleTokenExpired() {
-    // 清除本地儲存
-    localStorage.removeItem('auth_token')
-    localStorage.removeItem('user_info')
-
-    // 重定向到登入頁面
-    window.location.href = '/'
-  }
-
-  // 驗證 token
-  async validateToken(token) {
+  // 驗證 token (現在依賴 cookie，不需傳遞 token)
+  async validateToken() {
     try {
-      const response = await this.client.post('/auth/validate')
-      return response.data
+      const response = await this.client.post('/auth/validate');
+      return response.data;
     } catch (error) {
-      return { valid: false }
+      return { valid: false };
     }
   }
 

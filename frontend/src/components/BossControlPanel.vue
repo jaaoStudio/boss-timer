@@ -131,6 +131,13 @@ const recordBoss = async () => {
       };
     }
 
+    // if (isLoggedIn.value) {
+    //   payload.recorder_info = {
+    //     user_id: userStore.userId,
+    //     display_name: userStore.displayName,
+    //   };
+    // }
+
     websocketStore.sendMessage({
       type: 'record_boss',
       payload: payload,
