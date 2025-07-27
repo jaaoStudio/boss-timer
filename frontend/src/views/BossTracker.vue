@@ -45,7 +45,6 @@ const roomStore = useRoomStore();
 const bossStore = useBossStore();
 const userStore = useUserStore();
 const websocketStore = useWebSocketStore();
-const { roomId } = storeToRefs(roomStore);
 
 const props = defineProps({
   roomId: {
@@ -56,22 +55,19 @@ const props = defineProps({
 
 onMounted(async () => {
   try {
-    // The global WebSocket connection is already established by App.vue
-    // We just need to join the room.
-
-    // Set room ID in the store
     roomStore.setRoomId(props.roomId);
 
-    const roomExistResponse = await ApiService.checkRoomExists(roomId.value);
+    const roomExistResponse = await ApiService.checkRoomExists(props.roomId);
     if (roomExistResponse.exists) {
       // Load boss types
       const types = await ApiService.getBossTypes();
       bossStore.setBossTypes(types);
 
       // Join the room via WebSocket message
+      // The message will be queued if the connection is not ready yet.
       websocketStore.sendMessage({
         type: 'join_room',
-        payload: { room_id: roomId.value },
+        payload: { room_id: props.roomId },
       });
 
     } else {
@@ -94,5 +90,8 @@ onUnmounted(() => {
       });
   }
   // The global WebSocket connection is NOT disconnected here.
+  // Reset room-specific data
+  roomStore.setRoomId(null);
+  bossStore.setBossRecords([]);
 });
 </script>

@@ -7,6 +7,7 @@ import { useRoomStore } from './roomStore';
 
 export const useWebSocketStore = defineStore('websocket', () => {
     const socket = ref(null);
+    const messageQueue = ref([]); // A queue for messages sent before connection is open
 
     const isManualDisconnect = ref(false);
     const reconnectAttempts = ref(0);
@@ -19,20 +20,37 @@ export const useWebSocketStore = defineStore('websocket', () => {
     const roomStore = useRoomStore();
     const { isConnected } = storeToRefs(roomStore);
 
+    // This function sends all queued messages.
+    // It should only be called when the connection is confirmed to be open.
+    function processMessageQueue() {
+        while (messageQueue.value.length > 0) {
+            const message = messageQueue.value.shift();
+            console.log("Sending queued message:", message);
+            socket.value.send(JSON.stringify(message));
+        }
+    }
+
     function connect() {
+        // Prevent multiple connection attempts
         if (socket.value && socket.value.readyState === WebSocket.OPEN) {
             console.log("WebSocket already connected.");
             return;
         }
+        if (socket.value && socket.value.readyState === WebSocket.CONNECTING) {
+            console.log("WebSocket connection already in progress.");
+            return;
+        }
 
         try {
-            socket.value = apiService.createWebSocket(); // This now creates a global WebSocket
+            socket.value = apiService.createWebSocket();
 
             socket.value.onopen = () => {
                 console.log("WebSocket connected.");
                 isConnected.value = true;
                 reconnectAttempts.value = 0;
                 isManualDisconnect.value = false;
+                // Connection is open, process any messages that were queued
+                processMessageQueue();
             };
 
             socket.value.onmessage = (event) => {
@@ -43,6 +61,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
             socket.value.onclose = () => {
                 console.log("WebSocket disconnected.");
                 isConnected.value = false;
+                socket.value = null; // Clear the socket ref on close
                 if (!isManualDisconnect.value) {
                     attemptReconnect();
                 }
@@ -50,6 +69,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
             socket.value.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                // Errors will likely be followed by an onclose event, which will trigger reconnect logic.
             };
 
         } catch (error) {
@@ -61,15 +81,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
         if (socket.value) {
             isManualDisconnect.value = true;
             socket.value.close();
-            socket.value = null;
         }
     }
 
     function sendMessage(message) {
+        // If the socket is open, send immediately.
         if (socket.value && socket.value.readyState === WebSocket.OPEN) {
             socket.value.send(JSON.stringify(message));
         } else {
-            console.error('WebSocket is not connected.');
+            // Otherwise, queue the message.
+            console.log('WebSocket not open. Queuing message.');
+            messageQueue.value.push(message);
+            // And if we're not already connecting, start the connection process.
+            if (!socket.value || socket.value.readyState === WebSocket.CLOSED) {
+                connect();
+            }
         }
     }
 
@@ -83,6 +109,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 break;
             case 'room_state':
                 bossStore.setBossRecords(message.boss_records);
+                roomStore.setUserCount(message.user_count);
                 break;
             case 'boss_update':
                 bossStore.updateBossRecord(message.data);
@@ -92,7 +119,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 break;
             case 'error':
                 console.error('Received error from server:', message.message);
-                // Optionally, show a message to the user
                 break;
             default:
                 console.warn('Received unknown message type:', message.type);
@@ -106,7 +132,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 reconnectAttempts.value++;
                 console.log(`WebSocket reconnecting... attempt ${reconnectAttempts.value}`);
                 connect();
-            }, 2000 * reconnectAttempts.value);
+            }, 2000 * (reconnectAttempts.value + 1)); // increase delay
         } else {
             console.error('WebSocket max reconnect attempts reached.');
         }
@@ -115,12 +141,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
     // Heartbeat
     setInterval(() => {
         if (isConnected.value) {
-            sendMessage({ type: 'ping' });
+            // Use a raw ping message that doesn't get queued.
+            // This avoids filling the queue with pings if connection is temporarily lost.
+            if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+                sendMessage({ type: 'ping' });
+            }
         }
     }, 30000);
 
     return {
-        socket,
         isConnected,
         connect,
         disconnect,
