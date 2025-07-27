@@ -23,6 +23,7 @@ const maintenanceInfo = computed(() => appInfoStore.maintenanceInfo);
   padding: 0.5rem 0; /* 最小化垂直空間 */
   position: fixed;
   top: 0;
+  left: 0;
   z-index: 1050;
   width: 100%;
   overflow: hidden; /* 隱藏超出範圍的內容，跑馬燈效果的關鍵 */

@@ -1,6 +1,6 @@
 {
   "is_maintenance": false,
-  "is_ready_for_maintenance": false,
+  "is_ready_for_maintenance": true,
   "title": "系統維護公告",
   "message": "本系統將於稍後進行停機維護，以提升系統效能。預計中斷時間為(UTC+8)晚間 6 - 8點 ，造成不便，敬請見諒。"
 }
