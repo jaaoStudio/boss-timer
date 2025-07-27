@@ -13,6 +13,8 @@ const websocketStore = useWebSocketStore(); // 實例化 websocket store
 
 // When the component is mounted, try to fetch the user data
 onMounted(async () => {
+  // 初始化 WebSocket 連線
+  websocketStore.connect();
   // 初始化認證狀態
   await userStore.initializeAuth();
   // 檢查維護狀態 (首次載入時)

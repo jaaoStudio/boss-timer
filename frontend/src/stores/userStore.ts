@@ -195,12 +195,7 @@ export const useUserStore = defineStore('user', {
         localStorage.setItem('anonymous_id', storedId);
       }
       this.anonymousId = storedId;
-      const storedName = localStorage.getItem('anonymous_name');
-      if (this.validateNickname(storedName)) {
-        this.anonymousName = storedName;
-      } else {
-        this.anonymousName = storedName ? storedName.slice(0, 20) : '別搞QQ';
-      }
+      this.anonymousName = this.getAnonymousName();
     },
 
     setAnonymousName(name: string) {
@@ -215,8 +210,17 @@ export const useUserStore = defineStore('user', {
       localStorage.removeItem('anonymous_name');
     },
 
+    getAnonymousName(): string {
+      const storedName = localStorage.getItem('anonymous_name');
+      if (storedName === null) return '';
+      if (this.validateNickname(storedName)) return storedName;
+      return '別搞QQ';
+    },
+
     validateNickname(name: string | null): boolean {
-      return !!name && name.length <= 20;
+      if (!name) return false; // 空字串或null都不合法
+      if (name.length > 20) return false;
+      return true;
     },
 
     isValidUUID(id: string | null): boolean {
