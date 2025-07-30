@@ -10,11 +10,13 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libpq-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install uv
 
-# 複製 requirements.txt 並安裝 Python 依賴
 COPY requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+
+# --system 參數會將套件安裝到全域環境中，這是在 Docker 中的標準作法
+RUN uv pip install --no-cache-dir -r requirements.txt --system
 
 # 複製應用程式碼
 # 複製當前目錄所有內容到工作目錄中
