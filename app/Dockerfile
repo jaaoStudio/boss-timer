@@ -10,12 +10,8 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     libpq-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# 複製 requirements.txt 並安裝 Python 依賴
-RUN pip install --no-cache-dir -r requirements.txt
-# 安裝 uv
-RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+    && rm -rf /var/lib/apt/lists/* \
+    && pip install uv
 
 COPY requirements.txt ./requirements.txt
 
