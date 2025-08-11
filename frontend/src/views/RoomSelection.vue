@@ -4,7 +4,7 @@
       <!-- Header -->
       <div class="text-center mb-8">
         <img src="/leaf64px.png" alt="Logo" class="h-12 w-12 mx-auto mb-4">
-        <h2 class="text-3xl font-extrabold text-white">BOSS Timer</h2>
+        <h2 class="text-3xl font-extrabold text-white">Artale BOSS Timer</h2>
         <p class="mt-2 text-sm text-gray-400">Real-time boss tracking for your party.</p>
       </div>
 
