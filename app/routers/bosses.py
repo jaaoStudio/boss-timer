@@ -1,12 +1,13 @@
 # app/routers/auth.py
 import uuid
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Response, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Set, Any, Coroutine, Type
 from app.config import settings
 from app.database.database import get_db
 from app.database.models import BossRecord, BossType
+from app.dependencies import limiter
 from app.services.room_service import update_room_last_active
 from app.services.boss_service import BossService
 from app.schemas.boss import BossTypeResponse, BossRecordCreate, BossRecordResponse
@@ -17,7 +18,9 @@ router = APIRouter(prefix="/boss", tags=["boss"])
 
 
 @router.post("/record-boss")
+@limiter.limit("20/minute")
 async def record_boss(
+        request: Request,
         record: BossRecordCreate,
         db: Session = Depends(get_db),
         user_id: Optional[str] = Depends(get_optional_current_user_id)
@@ -51,6 +54,7 @@ async def record_boss(
 
 
 @router.get("/boss-types", response_model=List[BossTypeResponse])
-async def get_boss_types(db: Session = Depends(get_db)):
+@limiter.limit("5/minute")
+async def get_boss_types(request: Request, db: Session = Depends(get_db)):
     return db.query(BossType).all()
 

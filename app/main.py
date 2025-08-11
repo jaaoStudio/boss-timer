@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
@@ -6,6 +6,9 @@ import logging
 import json
 import os
 
+from slowapi.errors import RateLimitExceeded
+
+from app.dependencies import limiter, rate_limit_exceeded_handler
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket, system # 引入 admin
 from app.tasks.cleanup import cleanup_inactive_rooms
@@ -58,6 +61,9 @@ async def lifespan(app: FastAPI):
     cleanup_task.cancel()
 
 app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifespan)
+
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 # CORS 設定
 origin_list = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]

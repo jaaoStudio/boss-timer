@@ -51,3 +51,8 @@ class UserCreate(BaseModel):
 
 class TokenData(BaseModel):
     user_id: int
+
+
+class SessionResponse(BaseModel):
+    status: str
+    anonymous_user_id: Optional[str] = None

@@ -1,7 +1,9 @@
 # app/routers/rooms.py
-from fastapi import APIRouter, Depends, HTTPException, Path
+from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
+
 from app.database.database import get_db
+from app.dependencies import limiter, verify_user_session
 from app.services.room_service import create_room as room_service_create_room, get_room_by_id
 from app.services.boss_service import BossService
 from app.schemas.room import RoomResponse, RoomExists
@@ -14,9 +16,12 @@ router = APIRouter(prefix="/room", tags=["rooms"])
 
 
 @router.post("/", response_model=RoomResponse)
+@limiter.limit("5/minute")
 async def create_room(
+        request: Request,
         db: Session = Depends(get_db),
-        user_id: Optional[str] = Depends(get_optional_current_user_id)):
+        _ = Depends(verify_user_session)
+):
     """創建新房間"""
     try:
         room = room_service_create_room(db)
@@ -29,7 +34,8 @@ async def create_room(
 
 
 @router.get("/{room_id}/exists", response_model=RoomExists)
-async def check_room_exists(room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
+@limiter.limit("5/minute")
+async def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
                             db: Session = Depends(get_db)):
     """檢查房間是否存在"""
     try:

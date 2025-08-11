@@ -1,7 +1,8 @@
 # app/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Header, Cookie
 from sqlalchemy.orm import Session
-from typing import Dict, Any
+from typing import Dict, Any, Optional
+import uuid
 
 from app.database import models
 from app.database.database import get_db
@@ -201,3 +202,37 @@ async def update_preferences(
         db=db, user=current_user, preferences=preferences
     )
     return updated_user
+
+
+@router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
+async def init_session(
+        response: Response,
+        access_token: Optional[str] = Cookie(None),
+        anonymous_user_id: Optional[str] = Cookie(None)
+):
+    """
+    初始化使用者工作階段。
+    如果使用者未登入（沒有 access_token）且沒有匿名ID，則創建一個新的匿名ID。
+    永遠返回當前有效的匿名ID（如果存在）。
+    """
+    session_id = anonymous_user_id
+
+    if access_token:
+        # 如果使用者已登入，我們不需要匿名ID
+        return {"status": "authenticated", "anonymous_user_id": None}
+
+    if not session_id:
+        # 如果沒有匿名ID，創建一個新的
+        session_id = str(uuid.uuid4())
+        response.set_cookie(
+            key="anonymous_user_id",
+            value=session_id,
+            httponly=False,  # 允許前端JS讀取
+            samesite='lax',
+            secure=settings.env == "production",
+            max_age=365 * 24 * 60 * 60  # 一年
+        )
+        return {"status": "anonymous_session_created", "anonymous_user_id": session_id}
+    
+    # 如果已有匿名ID，直接返回
+    return {"status": "session_ok", "anonymous_user_id": session_id}
