@@ -42,7 +42,10 @@ async def get_maintenance_info():
             data = json.load(f)
             # 確保所有必要的鍵都存在
             if all(key in data for key in ["is_maintenance", "is_ready_for_maintenance", "title", "message"]):
-                return data
+                if data["is_maintenance"] or data["is_ready_for_maintenance"]:
+                    return data
+                else:
+                    return {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": "everything all good."}
             else:
                 return default_info
     except (json.JSONDecodeError, IOError):

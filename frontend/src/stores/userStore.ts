@@ -1,8 +1,5 @@
 import {defineStore} from 'pinia';
 import apiService from '@/services/apiService';
-import ApiService from "@/services/apiService";
-import {showMessage} from "@/composables/useElementPlus";
-import { useAppInfoStore} from "@/stores/appInfo";
 import { useWebSocketStore } from '@/stores/websocketStore';
 
 interface User {
@@ -11,27 +8,25 @@ interface User {
   avatar_url: string | null;
   preferences: { [key: string]: any };
   is_admin: boolean;
-  anonymousId: string | null;
-  anonymousName: string | null;
 }
 
 interface UserState {
   user: User | null;
-  token: string | null;
   isLoggedIn: boolean;
   isLoading?: boolean;
+  anonymousId: string | null; // Add anonymousId to the state
+  anonymousName: string | null;
   _channel?: BroadcastChannel;
 }
 
 export const useUserStore = defineStore('user', {
   state: (): UserState => ({
     user: null,
-    token: null,
     isLoggedIn: false,
     isLoading: false,
-    _channel: undefined,
     anonymousId: null,
     anonymousName: null,
+    _channel: undefined,
   }),
   getters: {
     isAdmin(): boolean {
@@ -71,6 +66,16 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
+        // 1. 確保後端 session 已建立並取得 session data
+        const session = await apiService.initSession();
+
+        // 2. 將後端給予的 anonymous_user_id 存起來
+        if (session.anonymous_user_id) {
+          this.anonymousId = session.anonymous_user_id;
+          localStorage.setItem('anonymous_id', session.anonymous_user_id);
+        }
+
+        // 3. 嘗試驗證登入 token
         const res = await apiService.validateToken();
         if (res.valid) {
           this.user = res.user;
@@ -78,24 +83,18 @@ export const useUserStore = defineStore('user', {
           localStorage.setItem('user_info', JSON.stringify(res.user));
         } else {
           this.clearAuth();
+          // 如果未登入，則載入匿名使用者的名稱
+          this.anonymousName = this.getAnonymousName();
         }
-        this.loadAnonymousUser();
       } catch (error) {
         console.error('Auth initialization failed:', error);
         this.clearAuth();
-        this.loadAnonymousUser();
+        // 即使API出錯，也嘗試讀取本地的匿名名稱
+        this.anonymousName = this.getAnonymousName();
       } finally {
         this.isLoading = false;
         const websocketStore = useWebSocketStore();
         websocketStore.connect();
-      }
-    },
-
-    async validateToken() {
-      try {
-        return await apiService.validateToken();
-      } catch (error) {
-        return { valid: false };
       }
     },
 
@@ -107,8 +106,8 @@ export const useUserStore = defineStore('user', {
         await apiService.logout(); 
         this.notifyLogout();
 
-        // 建立匿名身份
-        this.loadAnonymousUser();
+        // 登出後，使用者恢復匿名身份，我們需要載入他的匿名名稱
+        this.anonymousName = this.getAnonymousName();
 
         // 發送 deauthenticate 訊息通知 WebSocket 連線身份變更
         websocketStore.sendMessage({ type: 'deauthenticate' });
@@ -121,7 +120,6 @@ export const useUserStore = defineStore('user', {
     async loginWithGoogle(credential: string) {
       const websocketStore = useWebSocketStore();
       try {
-        // 如果已登入，先登出但不發送 deauthenticate 訊息
         if (this.isLoggedIn) {
           this.clearAuth();
           await apiService.logout();
@@ -133,7 +131,6 @@ export const useUserStore = defineStore('user', {
         this.isLoggedIn = true;
         localStorage.setItem('user_info', JSON.stringify(response.user));
         
-        // 發送 authenticate 訊息，並附上新的 token
         websocketStore.sendMessage({ 
           type: 'authenticate', 
           token: response.access_token 
@@ -143,15 +140,8 @@ export const useUserStore = defineStore('user', {
 
       } catch (error) {
         console.error('Google login failed:', error);
-        await this.logout(); // 如果登入失敗，執行完整的登出流程
+        await this.logout();
         throw error;
-      }
-    },
-
-    saveAuthToStorage() {
-      // This function is no longer needed for tokens, but can be kept for user_info if necessary.
-      if (this.user) {
-        localStorage.setItem('user_info', JSON.stringify(this.user));
       }
     },
 
@@ -172,61 +162,36 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    checkAuthConsistency() {
-      // This logic might need to be re-evaluated based on the cookie-only approach.
-      return true;
-    },
-
     clearAuth() {
       this.user = null;
-      this.token = null;
       this.isLoggedIn = false;
       localStorage.removeItem('user_info');
-      // No need to remove auth_token from local storage anymore
     },
 
-    loadAnonymousUser() {
-      if (this.isLoggedIn) {
-        return;
-      }
-      let storedId = localStorage.getItem('anonymous_id');
-      if (!this.isValidUUID(storedId)) {
-        storedId = crypto.randomUUID();
-        localStorage.setItem('anonymous_id', storedId);
-      }
-      this.anonymousId = storedId;
-      this.anonymousName = this.getAnonymousName();
-    },
-
+    // --- Anonymous User Name Logic ---
     setAnonymousName(name: string) {
-      this.anonymousName = name;
-      localStorage.setItem('anonymous_name', name);
-    },
-
-    clearAnonymousUser() {
-      this.anonymousId = null;
-      this.anonymousName = null;
-      localStorage.removeItem('anonymous_id');
-      localStorage.removeItem('anonymous_name');
+      if (this.validateNickname(name)) {
+        this.anonymousName = name;
+        localStorage.setItem('anonymous_name', name);
+      } else {
+        // 或者可以拋出錯誤或顯示提示
+        console.warn("Invalid anonymous name provided.");
+      }
     },
 
     getAnonymousName(): string {
       const storedName = localStorage.getItem('anonymous_name');
-      if (storedName === null) return '';
-      if (this.validateNickname(storedName)) return storedName;
-      return '別搞QQ';
+      if (this.validateNickname(storedName)) {
+        return storedName!;
+      }
+      localStorage.setItem('anonymous_name', '一個路人');
+      return '一個路人'; // 預設匿名名稱
     },
 
     validateNickname(name: string | null): boolean {
-      if (!name) return false; // 空字串或null都不合法
+      if (!name) return false;
       if (name.length > 20) return false;
       return true;
-    },
-
-    isValidUUID(id: string | null): boolean {
-      if (!id) return false;
-      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-      return uuidRegex.test(id);
     },
 
     async canEstablishWebSocket() {

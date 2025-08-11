@@ -30,6 +30,11 @@ class ApiService {
     return response.data;
   }
 
+  async initSession() {
+    const response = await this.client.post('/auth/session');
+    return response.data;
+  }
+
   async getMe() {
     const response = await this.client.get('/auth/me');
     return response.data;
