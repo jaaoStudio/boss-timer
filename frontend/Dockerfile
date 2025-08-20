@@ -29,6 +29,9 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # 複製 public 目錄下的內容 (例如維護頁面)
 COPY ./public/ /usr/share/nginx/html/
 
+# 複製 ads.txt
+COPY ./ads.txt /usr/share/nginx/html/ads.txt
+
 
 # 暴露端口
 EXPOSE 80
