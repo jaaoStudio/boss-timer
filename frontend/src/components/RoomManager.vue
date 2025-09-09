@@ -1,26 +1,27 @@
 <template>
   <div class="relative">
     <button @click="toggleDropdown" class="flex items-center space-x-2 px-3 py-2 bg-gray-700 text-gray-200 rounded-md hover:bg-gray-600 focus:outline-none">
-      <span class="text-sm font-medium">Room Actions</span>
+      <span class="text-sm font-medium">{{ t('roomManager.roomActions') }}</span>
       <svg class="w-4 h-4 text-gray-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
     </button>
 
     <div v-if="isDropdownOpen" class="absolute right-0 mt-2 w-48 bg-gray-700 rounded-md shadow-lg z-10 text-left">
-      <a @click.prevent="copyRoomId" href="#" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">Copy Room ID</a>
-      <a @click.prevent="toggleDark()" href="#" class="block px-4 py-2 text-sm text-red-400 hover:bg-gray-600">toggle theme</a>
+      <a @click.prevent="copyRoomId" href="#" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">{{ t('roomManager.copyRoomId') }}</a>
+      <a @click.prevent="switchLanguage" href="#" class="block px-4 py-2 text-sm text-gray-200 hover:bg-gray-600">{{ t('roomManager.toggleLanguage') }}</a>
+      <a @click.prevent="toggleDark()" href="#" class="block px-4 py-2 text-sm text-red-400 hover:bg-gray-600">{{ t('roomManager.toggleTheme') }}</a>
       <a class="flex items-center justify-between px-4 py-2 text-sm text-red-400 hover:bg-gray-600" v-show="isLoggedIn">
-        <div class="cursor-default">Record History</div>
+        <div class="cursor-default">{{ t('roomManager.recordHistory') }}</div>
         <el-switch
           v-model="showRecordHistory"
           @change="toggleRecordHistory"
           style="--el-switch-on-color: #3b82f6;"
         />
       </a>
-      <a @click.prevent="leaveRoom" href="#" class="block px-4 py-2 text-sm text-red-400 hover:bg-gray-600">Leave Room</a>
+      <a @click.prevent="leaveRoom" href="#" class="block px-4 py-2 text-sm text-red-400 hover:bg-gray-600">{{ t('roomManager.leaveRoom') }}</a>
 
     </div>
     <div v-if="showCopySuccess" class="absolute right-0 -bottom-8 px-3 py-1 bg-green-500 text-white text-xs rounded-md">
-      Copied!
+      {{ t('roomManager.copied') }}
     </div>
   </div>
 </template>
@@ -33,6 +34,9 @@ import { useRoomStore } from '@/stores/roomStore.js'
 import { useDark, useToggle } from '@vueuse/core'
 import { useUserStore } from '@/stores/userStore.js'
 import { useWebSocketStore } from '@/stores/websocketStore';
+import { useI18n } from 'vue-i18n';
+
+const { t, locale } = useI18n();
 
 const isDark = useDark({
   selector: 'html',
@@ -54,6 +58,13 @@ const isDropdownOpen = ref(false)
 const showCopySuccess = ref(false)
 
 const showRecordHistory = ref(user.value?.preferences?.showRecordHistory ?? true)
+
+const switchLanguage = () => {
+  const newLocale = locale.value === 'en' ? 'zh' : 'en';
+  locale.value = newLocale;
+  localStorage.setItem('language', newLocale);
+  isDropdownOpen.value = false; // Close dropdown after selection
+};
 
 const toggleRecordHistory = async () => {
   if (!user.value) return;

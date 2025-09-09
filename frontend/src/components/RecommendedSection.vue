@@ -11,7 +11,7 @@
       </div>
     </div>
     <div v-else class="text-sm" :class="emptyStateClass">
-      No channels to display.
+      {{ t('recommendedChannels.noChannels') }}
     </div>
   </div>
 </template>
@@ -20,6 +20,9 @@
 import { computed } from 'vue'
 import CountdownTimer from './CountdownTimer.vue'
 import { useBossStore } from '@/stores/bossStore.js'
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   title: {

@@ -6,25 +6,28 @@
 
 <script setup>
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   status: String
 })
 
-const statusConfig = {
-  alive: { text: 'Alive', class: 'bg-green-700 text-white' },
-  killed: { text: 'Killed', class: 'bg-red-700 text-white' },
-  not_found: { text: 'Not Found', class: 'bg-gray-700 text-white' },
-  respawning: { text: 'Respawning', class: 'bg-yellow-700 text-white' },
-  may_respawn: { text: 'May Respawn', class: 'bg-blue-700 text-white' },
-  unknown: { text: 'Unknown', class: 'bg-gray-700 text-white' }
-}
+const statusConfig = computed(() => ({
+  alive: { text: t('status.alive'), class: 'bg-green-700 text-white' },
+  killed: { text: t('status.killed'), class: 'bg-red-700 text-white' },
+  not_found: { text: t('status.notFound'), class: 'bg-gray-700 text-white' },
+  respawning: { text: t('status.respawning'), class: 'bg-yellow-700 text-white' },
+  may_respawn: { text: t('status.mayRespawn'), class: 'bg-blue-700 text-white' },
+  unknown: { text: t('status.unknown'), class: 'bg-gray-700 text-white' }
+}))
 
 const statusText = computed(() => {
-  return statusConfig[props.status]?.text || 'Unknown'
+  return statusConfig.value[props.status]?.text || t('status.unknown')
 })
 
 const badgeClass = computed(() => {
-  return statusConfig[props.status]?.class || 'bg-gray-700 text-white'
+  return statusConfig.value[props.status]?.class || 'bg-gray-700 text-white'
 })
 </script>

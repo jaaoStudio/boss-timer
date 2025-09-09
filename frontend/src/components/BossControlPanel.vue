@@ -5,7 +5,7 @@
     <form @submit.prevent="recordBoss" class="grid grid-cols-1 md:grid-cols-3 gap-4">
       <!-- 頻道選擇 -->
       <div>
-        <label class="block text-sm font-medium text-gray-300 mb-1">頻道</label>
+        <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.channel') }}</label>
         <input
           v-model.number="form.channel"
           type="text"
@@ -20,14 +20,14 @@
 
       <!-- BOSS選擇 -->
       <div>
-        <label class="block text-sm font-medium text-gray-300 mb-1">BOSS</label>
+        <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.boss') }}</label>
         <select
           v-model="form.boss_name"
           @change="bossStore.setSelectedBossName(form.boss_name)"
           class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
-          <option value="">選擇 BOSS</option>
+          <option value="">{{ t('bossControlPanel.selectBoss') }}</option>
           <option v-for="boss in bossTypes" :key="boss.boss_name" :value="boss.boss_name">
             {{ boss.boss_name }}
           </option>
@@ -36,7 +36,7 @@
 
       <!-- 狀態選擇 -->
       <div>
-        <label class="block text-sm font-medium text-gray-300 mb-1">狀態</label>
+        <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.status') }}</label>
         <div class="flex gap-2">
           <BossStatusButton
             v-for="status in statuses"
@@ -64,6 +64,9 @@ import BossStatusButton from "@/components/BossStatusButton.vue";
 import {showMessage} from "@/composables/useElementPlus.js";
 import {useUserStore} from "@/stores/userStore.js";
 import { useWebSocketStore} from "@/stores/websocketStore.js";
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
@@ -152,7 +155,7 @@ const recordBoss = async () => {
   } catch (error) {
     // WebSocket 錯誤處理將在 websocketStore 中進行
     console.error('Failed to send record boss message via WebSocket:', error);
-    showMessage.error("發送紀錄失敗，請重試。");
+    showMessage.error(t('bossControlPanel.sendRecordFailed'));
   } finally {
     loading.value = false
   }

@@ -1,22 +1,22 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-4 mb-6">
-    <div class="flex items-center justify-between gap-2.5">
-      <div class="flex flex-col items-center gap-2.5">
+    <div class="flex flex-col sm:flex-row items-center sm:justify-between gap-y-4 sm:gap-x-2.5">
+      <div class="flex flex-row sm:flex-col items-center gap-2.5 sm:gap-x-4">
         <div class="flex items-center">
           <img src="/leaf24px.png" alt="Logo" class="h-8 w-8 mr-3">
-          <h1 class="text-2xl font-bold text-white">BOSS Timer</h1>
+          <h1 class=" text-2xl sm:block hidden font-bold text-white">{{ t('appHeader.title') }}</h1>
         </div>
-        <div>
-          <p v-if="roomId" class="text-gray-400 text-sm">Room: <span class="font-mono bg-gray-700 px-2 py-1 rounded">{{ roomId }}</span></p>
+        <div v-if="roomId">
+          <p class="text-gray-400 text-sm">{{ t('appHeader.room') }} <span class="font-mono bg-gray-700 px-2 py-1 rounded">{{ roomId }}</span></p>
         </div>
       </div>
 
-      <div class="flex items-center space-x-4">
+      <div class="flex flex-wrap items-center justify-center sm:justify-end gap-2 sm:gap-x-4">
         <!-- Connection Status & User Count -->
         <div v-if="roomId" class="flex items-center space-x-4">
           <div class="flex items-center space-x-2">
             <div :class="['w-3 h-3 rounded-full', isConnected ? 'bg-green-400' : 'bg-red-500']"></div>
-            <span class="text-sm font-medium text-gray-300">{{ isConnected ? 'Live' : 'Offline' }}</span>
+            <span class="text-sm font-medium text-gray-300">{{ isConnected ? t('appHeader.live') : t('appHeader.offline') }}</span>
           </div>
           <div class="flex items-center space-x-2">
             <UsersIcon class="w-4 h-4 text-gray-400" />
@@ -25,15 +25,13 @@
         </div>
 
         <!-- Spacer -->
-        <div class="w-px h-8 bg-gray-600" v-if="roomId"></div>
+<!--        <div class="w-px h-8 bg-gray-600 sm:hidden" v-if="roomId"></div>-->
 
         <!-- Auth Section -->
         <div v-if="!isLoggedIn">
           <GoogleLogin
             :callback="handleLoginSuccess"
             :error="handleLoginError"
-            class="items-center"
-            style="display: flex; justify-content: center;"
             :buttonConfig="{
               type: 'standard',
               size: 'medium',}"
@@ -60,6 +58,9 @@ import { UsersIcon } from '@heroicons/vue/24/outline';
 import RoomManager from '@/components/RoomManager.vue';
 import {GoogleLogin} from "vue3-google-login";
 import {showMessage} from "@/composables/useElementPlus.js";
+import { useI18n } from "vue-i18n";
+
+const { t } = useI18n();
 
 const roomStore = useRoomStore();
 const { roomId, isConnected, userCount } = storeToRefs(roomStore);
@@ -79,7 +80,7 @@ const handleLoginSuccess = async (response) => {
 
 const handleLoginError = (error) => {
   console.error("Google sign-in error:", error);
-  showMessage.error("Login failed")
+  showMessage.error(t('appHeader.loginFailed'))
 };
 
 const handleLogout = () => {

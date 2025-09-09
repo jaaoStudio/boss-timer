@@ -1,6 +1,6 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-white mb-4">Channel Overview</h2>
+    <h2 class="text-xl font-semibold text-white mb-4">{{ t('channelOverview.title') }}</h2>
     <div class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-auto">
       <ChannelCard
         v-for="channel in recordedChannels"
@@ -16,7 +16,9 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore.js'
 import ChannelCard from './ChannelCard.vue'
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const bossStore = useBossStore()
 const { selectedBossName } = storeToRefs(bossStore)
 

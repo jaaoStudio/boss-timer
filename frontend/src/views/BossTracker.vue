@@ -38,7 +38,9 @@ import RecommendedChannels from '@/components/RecommendedChannels.vue';
 import RecordHistory from '@/components/RecordHistory.vue';
 import { storeToRefs } from "pinia";
 import { showMessage } from "@/composables/useElementPlus.js";
+import { useI18n } from "vue-i18n";
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const roomStore = useRoomStore();
@@ -72,12 +74,12 @@ onMounted(async () => {
 
     } else {
         await router.push({ name: 'RoomSelection' });
-        showMessage.error("房間不存在");
+        showMessage.error(t('bossTracker.roomNotFound'));
     }
   } catch (error) {
     console.error('Failed to initialize BossTracker:', error);
     await router.push({ name: 'RoomSelection' });
-    showMessage.error("進入房間失敗，請重新嘗試");
+    showMessage.error(t('bossTracker.failedToEnter'));
   }
 });
 

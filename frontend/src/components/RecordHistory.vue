@@ -1,10 +1,10 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-6">
-    <h2 class="text-xl font-semibold text-white mb-4">Record History</h2>
+    <h2 class="text-xl font-semibold text-white mb-4">{{ t('recordHistory.title') }}</h2>
     <div class="flex justify-end mb-4">
       <select v-model="selectedBossFilter"
               class="px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-        <option value="">All Bosses</option>
+        <option value="">{{ t('recordHistory.allBosses') }}</option>
         <option v-for="boss in bossTypes" :key="boss.boss_name" :value="boss.boss_name">
           {{ boss.boss_name }}
         </option>
@@ -17,7 +17,7 @@
           :record="record"
       />
     </div>
-    <div v-if="historyOnLoading" class="text-center mt-4">Loading...</div>
+    <div v-if="historyOnLoading" class="text-center mt-4">{{ t('recordHistory.loading') }}</div>
   </div>
 </template>
 
@@ -27,7 +27,9 @@ import {storeToRefs} from 'pinia'
 import {useBossStore} from '@/stores/bossStore.js'
 import {useRoomStore} from '@/stores/roomStore.js'
 import RecordItem from './RecordItem.vue'
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const bossStore = useBossStore()
 const roomStore = useRoomStore()
 

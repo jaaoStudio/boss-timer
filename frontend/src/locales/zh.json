@@ -1,0 +1,152 @@
+{
+  "roomSelection": {
+    "title": "Artale BOSS 計時器",
+    "subtitle": "為您的團隊提供即時的BOSS追蹤。",
+    "creatingRoom": "正在建立房間...",
+    "createRoom": "建立新房間",
+    "joinRoom": "加入",
+    "enterRoomCode": "輸入房間代碼",
+    "or": "或",
+    "anonymousNicknameLabel": "您的暱稱 (訪客)",
+    "anonymousNicknamePlaceholder": "請輸入您的暱稱",
+    "loginPrompt": "登入以同步您的設定與歷史紀錄",
+    "welcome": "歡迎，{name}！",
+    "signOut": "不是您？登出",
+    "errors": {
+      "enterRoomCode": "請輸入房間代碼。",
+      "roomNotFound": "找不到房間，請檢查代碼。",
+      "invalidCode": "房間代碼無效，請檢查代碼。",
+      "joinFailed": "加入房間失敗，請再試一次。",
+      "createFailed": "建立房間失敗，請再試一次。",
+      "nicknameRequiredCreate": "請先輸入您的暱稱，或登入後再創建房間。",
+      "nicknameRequiredJoin": "請先輸入您的暱稱，或登入後再加入房間。",
+      "connectionLimit": "連線數已達上限，無法進入房間。請稍後再試。"
+    },
+    "toasts": {
+      "loginSuccess": "登入成功！",
+      "loginFailed": "登入失敗，請再試一次。",
+      "googleSignInFailed": "Google 登入失敗。",
+      "logoutSuccess": "您已經登出。"
+    }
+  },
+  "roomManager": {
+    "roomActions": "房間操作",
+    "copyRoomId": "複製房間ID",
+    "toggleLanguage": "切換語言",
+    "toggleTheme": "切換主題",
+    "recordHistory": "擊殺紀錄",
+    "leaveRoom": "離開房間",
+    "copied": "已複製！"
+  },
+  "appHeader": {
+    "title": "Artale BOSS 計時器",
+    "room": "房間：",
+    "live": "線上",
+    "offline": "離線",
+    "loginFailed": "登入失敗"
+  },
+  "bossTracker": {
+    "roomNotFound": "房間不存在",
+    "failedToEnter": "進入房間失敗，請重新嘗試"
+  },
+  "appFooter": {
+    "credits": "貢獻者 & 致謝",
+    "legal": "法律聲明",
+    "privacy": "隱私權政策",
+    "copyright": "Copyright © 2025 boss-timer.jaao.tw. All Rights Reserved."
+  },
+  "bossControlPanel": {
+    "channel": "頻道",
+    "boss": "BOSS",
+    "status": "狀態",
+    "selectBoss": "選擇 BOSS",
+    "sendRecordFailed": "發送紀錄失敗，請重試。"
+  },
+  "bossInfo": {
+    "details": "詳細資訊",
+    "basicInfo": "基本資訊",
+    "respawnTime": "重生時間：",
+    "minutes": "分鐘",
+    "description": "描述：",
+    "none": "無",
+    "currentStatus": "當前狀態",
+    "channel": "頻道：",
+    "status": "狀態：",
+    "recordTime": "記錄時間：",
+    "respawnCountdown": "重生倒數",
+    "earliestRespawn": "最早重生：",
+    "latestRespawn": "最遲重生：",
+    "notAvailable": "無"
+  },
+  "bossStatusButton": {
+    "alive": "發現活著的BOSS",
+    "killed": "剛擊殺BOSS",
+    "notFound": "沒有發現BOSS"
+  },
+  "channelOverview": {
+    "title": "頻道總覽"
+  },
+  "recommendedChannels": {
+    "title": "推薦頻道",
+    "priorityTitle": "🎯 優先頻道 (可能重生)",
+    "avoidTitle": "❌ 避免頻道 (重生中)",
+    "noChannels": "沒有可顯示的頻道。"
+  },
+  "recordHistory": {
+    "title": "擊殺紀錄",
+    "allBosses": "所有 BOSS",
+    "loading": "載入中..."
+  },
+  "recordItem": {
+    "by": "by",
+    "anonymous": "匿名",
+    "respawnWindow": "重生時間："
+  },
+  "status": {
+    "alive": "存活",
+    "killed": "已擊殺",
+    "notFound": "未發現",
+    "respawning": "重生中",
+    "mayRespawn": "可能重生",
+    "unknown": "未知"
+  },
+  "credits": {
+    "title": "致謝 & 貢獻者",
+    "iconsTitle": "圖示",
+    "iconsDescription": "本專案使用的圖示來自 Flaticon。我們衷心感謝這些才華橫溢的藝術家們提供他們的作品。",
+    "iconMadeBy": "圖示製作",
+    "from": "來自",
+    "technologyTitle": "技術棧",
+    "technologyDescription": "本專案的建構，得益於以下這些優秀的開源技術。",
+    "manyOtherLibraries": "以及許多其他優秀的函式庫。",
+    "dataSourcesTitle": "資料來源",
+    "backToHome": "返回首頁"
+  },
+  "legal": {
+    "title": "法律免責聲明",
+    "content": "本軟體依「現況」提供，不含任何明示或暗示的保證，包括但不限於可銷售性、特定用途適用性及未侵權的保證。在任何情況下，作者或版權持有人均不對任何因本軟體、使用本軟體或與本軟體相關的其他交易而產生之任何索賠、損害或其他責任負責，無論是因合約、侵權行為或其他原因而引起。本服務提供的資料僅供參考，不應視為專業建議。"
+  },
+  "privacy": {
+    "title": "隱私權政策",
+    "introduction": "非常歡迎您光臨「Boss Timer」(以下簡稱本網站)，為了讓您能夠安心的使用本網站的各項服務與資訊，特此向您說明本網站的隱私權保護政策，以保障您的權益，請您詳閱下列內容：",
+    "section1Title": "一、隱私權保護政策的適用範圍",
+    "section1Content": "隱私權保護政策內容，包括本網站如何處理在您使用網站服務時收集到的個人識別資料。隱私權保護政策不適用於本網站以外的相關連結網站，也不適用於非本網站所委託或參與管理的人員。",
+    "section2Title": "二、個人資料的蒐集、處理及利用方式",
+    "section2Content1": "當您透過 Google 登入或參與本網站活動時，我們會請您提供必要的個人資料，並在該特定目的範圍內處理及利用您的個人資料。本網站蒐集的個人資料包括：",
+    "section2ListItem1": "來自 Google 的公開資料： 您的姓名、電子郵件地址、以及頭像 URL。",
+    "section2ListItem2": "您產生的資料： 您在應用程式中建立的房間資訊、Boss 計時紀錄等。",
+    "section2Content2": "這些資料僅供本網站於其內部、依照蒐集之目的進行處理和利用（例如用於身份驗證、個人化您的體驗、顯示您的使用者名稱與頭像），或為完成提供服務或履行合約義務之必要。除非取得您的同意、或依據相關法令規定，否則本網站不會將您的個人資料提供給第三方、或移作蒐集目的以外之使用。",
+    "section3Title": "三、資料之保護",
+    "section3Content": "本網站主機均設有防火牆、防毒系統等相關的各項資訊安全設備及必要的安全防護措施，加以保護網站及您的個人資料。我們採取嚴格的保護措施，只由經過授權的人員才能接觸您的個人資料。",
+    "section4Title": "四、網站對外的相關連結",
+    "section4Content": "本網站的網頁提供其他網站的網路連結。當您經由本網站所提供的連結，點選進入其他網站時，該連結網站不適用本網站的隱私權保護政策，您必須參考該連結網站中的隱私權保護政策。",
+    "section5Title": "五、與第三人共用個人資料之政策",
+    "section5Content": "本網站絕不會提供、交換、出租或出售任何您的個人資料給其他個人、團體、私人企業或公務機關，但有法律依據或合約義務者，不在此限。",
+    "section6Title": "六、Cookie 之使用",
+    "section6Content": "為了提供您最佳的服務，本網站會在您的電腦中放置並取用我們的 Cookie。若您不願接受 Cookie 的寫入，您可在您使用的瀏覽器功能項中設定隱私權等級為高，即可拒絕 Cookie 的寫入，但可能會導致網站某些功能無法正常執行。",
+    "section7Title": "七、隱私權保護政策之修正",
+    "section7Content": "本網站隱私權保護政策將因應需求隨時進行修正，修正後的條款將更新於本網站上。",
+    "section8Title": "八、聯絡我們",
+    "section8Content": "若您對於您的個人資料有任何疑問、或希望請求刪除，請透過電子郵件聯繫我們：boss-timer@jaao.tw。"
+  }
+}

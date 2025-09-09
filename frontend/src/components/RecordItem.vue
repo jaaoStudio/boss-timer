@@ -6,13 +6,13 @@
         <div>
           <span class="font-semibold text-white">{{ record.boss_name }}</span>
           <span class="text-gray-300 font-mono">- CH{{ record.channel }}</span>
-          <span class="text-xs text-gray-500 ml-2">by {{ recorderDisplayName }}</span>
+          <span class="text-xs text-gray-500 ml-2">{{ t('recordItem.by') }} {{ recorderDisplayName }}</span>
         </div>
       </div>
       <div class="text-sm text-gray-400">{{ formattedTime }}</div>
     </div>
     <div v-if="record.respawn_min_time" class="text-xs text-gray-400 mt-1 pl-10">
-      Respawn Window: {{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}
+      {{ t('recordItem.respawnWindow') }} {{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}
     </div>
   </div>
 </template>
@@ -20,6 +20,9 @@
 <script setup>
 import { computed } from 'vue'
 import StatusBadge from './StatusBadge.vue'
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   record: {
@@ -38,7 +41,7 @@ const recorderDisplayName = computed(() => {
     return props.record.recorder_info.anonymous_name;
   }
   // 最後的備用選項
-  return '匿名';
+  return t('recordItem.anonymous');
 });
 
 

@@ -18,6 +18,9 @@ import { computed } from 'vue'
 import SkullIcon from "@icons/SkullIcon.vue"
 import SearchIcon from "@icons/SearchIcon.vue";
 import QuestionIcon from "@icons/questionIcon.vue";
+import { useI18n } from 'vue-i18n';
+
+const { t } = useI18n();
 
 const props = defineProps({
   type: {
@@ -30,25 +33,25 @@ const props = defineProps({
 
 defineEmits(['click'])
 
-const buttonConfigs = {
+const buttonConfigs = computed(() => ({
   alive: {
-    title: '發現活著的BOSS',
+    title: t('bossStatusButton.alive'),
     icon: SearchIcon,
     baseClass: 'bg-green-600 hover:bg-green-700'
   },
   killed: {
-    title: '剛擊殺BOSS',
+    title: t('bossStatusButton.killed'),
     icon: SkullIcon,
     baseClass: 'bg-red-600 hover:bg-red-700'
   },
   not_found: {
-    title: '沒有發現BOSS',
+    title: t('bossStatusButton.notFound'),
     icon: QuestionIcon,
     baseClass: 'bg-gray-600 hover:bg-gray-700'
   }
-}
+}))
 
-const buttonConfig = computed(() => buttonConfigs[props.type])
+const buttonConfig = computed(() => buttonConfigs.value[props.type])
 
 const buttonClass = computed(() => {
   return buttonConfig.value.baseClass

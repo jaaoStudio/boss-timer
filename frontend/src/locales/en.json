@@ -1,0 +1,152 @@
+{
+  "roomSelection": {
+    "title": "Artale BOSS Timer",
+    "subtitle": "Real-time boss tracking for your party.",
+    "creatingRoom": "Creating Room...",
+    "createRoom": "Create a New Room",
+    "joinRoom": "Join",
+    "enterRoomCode": "Enter room code",
+    "or": "or",
+    "anonymousNicknameLabel": "Your Nickname (Guest)",
+    "anonymousNicknamePlaceholder": "Please enter your nickname",
+    "loginPrompt": "Log in to sync your settings and history",
+    "welcome": "Welcome, {name}!",
+    "signOut": "Not you? Sign out",
+    "errors": {
+      "enterRoomCode": "Please enter a room code.",
+      "roomNotFound": "Room not found. Please check the code.",
+      "invalidCode": "Room code is invalid. Please check the code.",
+      "joinFailed": "Failed to join room. Please try again.",
+      "createFailed": "Failed to create room. Please try again.",
+      "nicknameRequiredCreate": "Please enter a nickname or log in to create a room.",
+      "nicknameRequiredJoin": "Please enter a nickname or log in to join a room.",
+      "connectionLimit": "Connection limit reached. Please try again later."
+    },
+    "toasts": {
+      "loginSuccess": "Login successful!",
+      "loginFailed": "Login failed. Please try again.",
+      "googleSignInFailed": "Google sign-in failed.",
+      "logoutSuccess": "You have been logged out."
+    }
+  },
+  "roomManager": {
+    "roomActions": "Room Actions",
+    "copyRoomId": "Copy Room ID",
+    "toggleLanguage": "Toggle Language",
+    "toggleTheme": "Toggle Theme",
+    "recordHistory": "Record History",
+    "leaveRoom": "Leave Room",
+    "copied": "Copied!"
+  },
+  "appHeader": {
+    "title": "Artale BOSS Timer",
+    "room": "Room:",
+    "live": "Live",
+    "offline": "Offline",
+    "loginFailed": "Login failed"
+  },
+  "bossTracker": {
+    "roomNotFound": "Room does not exist",
+    "failedToEnter": "Failed to enter room, please try again"
+  },
+  "appFooter": {
+    "credits": "Attributions & Credits",
+    "legal": "Legal Disclaimer",
+    "privacy": "Privacy Policy",
+    "copyright": "Copyright © 2025 boss-timer.jaao.tw. All Rights Reserved."
+  },
+  "bossControlPanel": {
+    "channel": "Channel",
+    "boss": "BOSS",
+    "status": "Status",
+    "selectBoss": "Select BOSS",
+    "sendRecordFailed": "Failed to send record, please try again."
+  },
+  "bossInfo": {
+    "details": "Details",
+    "basicInfo": "Basic Info",
+    "respawnTime": "Respawn Time:",
+    "minutes": "minutes",
+    "description": "Description:",
+    "none": "None",
+    "currentStatus": "Current Status",
+    "channel": "Channel:",
+    "status": "Status:",
+    "recordTime": "Record Time:",
+    "respawnCountdown": "Respawn Countdown",
+    "earliestRespawn": "Earliest Respawn:",
+    "latestRespawn": "Latest Respawn:",
+    "notAvailable": "N/A"
+  },
+  "bossStatusButton": {
+    "alive": "Found alive BOSS",
+    "killed": "Just killed BOSS",
+    "notFound": "Did not find BOSS"
+  },
+  "channelOverview": {
+    "title": "Channel Overview"
+  },
+  "recommendedChannels": {
+    "title": "Recommended Channels",
+    "priorityTitle": "🎯 Priority Channels (May Respawn)",
+    "avoidTitle": "❌ Avoid Channels (Respawning)",
+    "noChannels": "No channels to display."
+  },
+  "recordHistory": {
+    "title": "Record History",
+    "allBosses": "All Bosses",
+    "loading": "Loading..."
+  },
+  "recordItem": {
+    "by": "by",
+    "anonymous": "Anonymous",
+    "respawnWindow": "Respawn Window:"
+  },
+  "status": {
+    "alive": "Alive",
+    "killed": "Killed",
+    "notFound": "Not Found",
+    "respawning": "Respawning",
+    "mayRespawn": "May Respawn",
+    "unknown": "Unknown"
+  },
+  "credits": {
+    "title": "Attributions & Credits",
+    "iconsTitle": "Icons",
+    "iconsDescription": "The icons used in this project are sourced from Flaticon. We are grateful to the talented artists who make their work available.",
+    "iconMadeBy": "icon made by",
+    "from": "from",
+    "technologyTitle": "Technology",
+    "technologyDescription": "This project is built with the help of amazing open-source technologies.",
+    "manyOtherLibraries": "And many other great libraries.",
+    "dataSourcesTitle": "Data Sources",
+    "backToHome": "Back to Home"
+  },
+  "legal": {
+    "title": "Legal Disclaimer",
+    "content": "This software is provided \"as is\", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages or other liability, whether in an action of contract, tort or otherwise, arising from, out of or in connection with the software or the use or other dealings in the software. The information provided by this service is for reference only and should not be considered as professional advice."
+  },
+  "privacy": {
+    "title": "Privacy Policy",
+    "introduction": "Welcome to \"Boss Timer\" (hereinafter referred to as this website). To ensure you can use the services and information of this website with peace of mind, we hereby explain our privacy policy to protect your rights. Please read the following content carefully:",
+    "section1Title": "I. Scope of Application",
+    "section1Content": "The privacy policy covers how this website handles personally identifiable information collected when you use the website services. The privacy policy does not apply to related linked websites outside of this website, nor to personnel not commissioned or involved in the management of this website.",
+    "section2Title": "II. Collection, Processing, and Use of Personal Data",
+    "section2Content1": "When you log in via Google or participate in activities on this website, we will ask you to provide necessary personal data, and we will process and use your personal data within that specific purpose. The personal data collected by this website includes:",
+    "section2ListItem1": "Public data from Google: Your name, email address, and avatar URL.",
+    "section2ListItem2": "Data you generate: Room information, Boss timing records, etc., that you create within the application.",
+    "section2Content2": "This data is used by this website internally and for the purpose of collection (e.g., for identity verification, personalizing your experience, displaying your username and avatar), or as necessary to provide services or fulfill contractual obligations. Unless we obtain your consent or as required by relevant laws, this website will not provide your personal data to third parties or use it for purposes other than collection.",
+    "section3Title": "III. Data Protection",
+    "section3Content": "The host servers of this website are equipped with firewalls, anti-virus systems, and other related information security equipment and necessary security measures to protect the website and your personal data. We adopt strict protection measures, and only authorized personnel can access your personal data.",
+    "section4Title": "IV. External Links on the Website",
+    "section4Content": "The web pages of this website provide network links to other websites. When you click on links provided by this website to enter other websites, the privacy policy of this website does not apply. You must refer to the privacy policy of the linked website.",
+    "section5Title": "V. Policy on Sharing Personal Data with Third Parties",
+    "section5Content": "This website will never provide, exchange, rent, or sell any of your personal data to other individuals, groups, private enterprises, or public agencies, except where there is a legal basis or contractual obligation.",
+    "section6Title": "VI. Use of Cookies",
+    "section6Content": "To provide you with the best service, this website will place and access our cookies on your computer. If you do not wish to accept the writing of cookies, you can set the privacy level in your browser functions to high to refuse the writing of cookies, but this may cause some functions of the website to not perform normally.",
+    "section7Title": "VII. Amendment of the Privacy Policy",
+    "section7Content": "The privacy policy of this website will be amended at any time in response to needs, and the revised terms will be updated on the website.",
+    "section8Title": "VIII. Contact Us",
+    "section8Content": "If you have any questions about your personal data or wish to request its deletion, please contact us via email at: boss-timer@jaao.tw."
+  }
+}
