@@ -28,8 +28,8 @@ async def record_boss(
     """記錄 BOSS 狀態"""
     try:
         # 驗證房間和 BOSS 類型
-        room = await BossService._validate_room_exists(db, record.room_id)
-        boss_type = await BossService._validate_boss_type_exists(db, record.boss_name)
+        await BossService._validate_room_exists(db, record.room_id)
+        boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
 
         # 計算重生時間
         respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)

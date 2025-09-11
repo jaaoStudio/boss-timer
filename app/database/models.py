@@ -3,10 +3,11 @@ from sqlalchemy import (
     Column, String, Integer, DateTime, Text, ForeignKey, Index, Boolean,
     CheckConstraint, func, BigInteger
 )
+from sqlalchemy.sql.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timezone
-from app.database.database import Base
+from .database import Base
 
 
 class User(Base):
@@ -43,8 +44,9 @@ class Room(Base):
 
 class BossType(Base):
     __tablename__ = "boss_types"
-
-    boss_name = Column(String(50), primary_key=True)
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name_en = Column(String(50), unique=True, nullable=False)
+    name_zh = Column(String(50), nullable=False)
     min_respawn_minutes = Column(Integer, nullable=False)
     max_respawn_minutes = Column(Integer, nullable=False)
     description = Column(Text)
@@ -58,7 +60,7 @@ class BossRecord(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=False)
     channel = Column(Integer, nullable=False)
-    boss_name = Column(String(50), ForeignKey("boss_types.boss_name"), nullable=False)
+    boss_type_id = Column(Integer, ForeignKey("boss_types.id"), nullable=False)
     status = Column(String(20), nullable=False)
     recorded_at = Column(DateTime(timezone=True), server_default=func.now())
     respawn_min_time = Column(DateTime(timezone=True))
@@ -82,7 +84,7 @@ class BossRecord(Base):
         CheckConstraint('channel >= 1', name='check_channel_range'),
         CheckConstraint("status IN ('alive', 'killed', 'not_found')", name='check_status_values'),
         Index('idx_boss_records_room_channel', 'room_id', 'channel'),
-        Index('idx_boss_records_room_boss', 'room_id', 'boss_name'),
+        Index('idx_boss_records_room_boss_type', 'room_id', 'boss_type_id'),
         Index('idx_boss_records_time', 'recorded_at'),
         Index('idx_boss_records_recorder_id', 'recorder_id'),
     )
@@ -103,6 +105,8 @@ class RoomUser(Base):
     last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     __table_args__ = (
+        UniqueConstraint('room_id', 'user_id', name='room_users_room_user_unique'),
+        UniqueConstraint('room_id', 'anonymous_session_id', name='room_users_room_anonymous_unique'),
         CheckConstraint('user_id IS NOT NULL OR anonymous_session_id IS NOT NULL', name='chk_user_or_anonymous'),
         Index('idx_room_users_room_id', 'room_id'),
         Index('idx_room_users_user_id', 'user_id'),

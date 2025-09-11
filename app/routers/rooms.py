@@ -63,15 +63,15 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
 @router.get("/{room_id}/history")
 async def get_room_history(
         room_id: str,
-        boss_name: Optional[str] = None,
+        boss_type_id: Optional[int] = None,
         limit: int = 50,
         db: Session = Depends(get_db)
 ):
     try:
         query = db.query(BossRecord, BossType).join(BossType).filter(BossRecord.room_id == room_id)
 
-        if boss_name:
-            query = query.filter(BossRecord.boss_name == boss_name)
+        if boss_type_id:
+            query = query.filter(BossRecord.boss_type_id == boss_type_id)
 
         results = query.order_by(BossRecord.recorded_at.desc()).limit(limit).all()
 

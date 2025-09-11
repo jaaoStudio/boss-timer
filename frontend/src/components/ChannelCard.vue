@@ -21,11 +21,11 @@ const props = defineProps({
 })
 
 const bossStore = useBossStore()
-const { bossRecords, selectedBossName } = storeToRefs(bossStore)
+const { bossRecords, selectedBossTypeId } = storeToRefs(bossStore)
 
 const record = computed(() => {
   const foundRecord = bossRecords.value.find(
-    r => r.channel === props.channelNumber && r.boss_name === selectedBossName.value
+    r => r.channel === props.channelNumber && r.boss_type_id === selectedBossTypeId.value
   )
   return foundRecord
 })

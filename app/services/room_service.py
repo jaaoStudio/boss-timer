@@ -87,19 +87,19 @@ def get_room_state(db: Session, room_id: str) -> dict:
     latest_records_query = db.query(models.BossRecord).options(
         joinedload(models.BossRecord.recorder),
         joinedload(models.BossRecord.boss_type)
-    ).filter(
+    ).join(models.BossType).filter(
         models.BossRecord.room_id == room_id,
         models.BossRecord.is_archived == False  # 只獲取未歸檔的紀錄
     ).order_by(
         models.BossRecord.channel,
-        models.BossRecord.boss_name,
+        models.BossType.name_en,
         models.BossRecord.recorded_at.desc()
     ).all()
 
     # 在 Python 中過濾出每個 (channel, boss_name) 的最新記錄
     unique_records: Dict[tuple, models.BossRecord] = {}
     for record in latest_records_query:
-        key = (record.channel, record.boss_name)
+        key = (record.channel, record.boss_type.name_en)
         if key not in unique_records:
             unique_records[key] = record
 

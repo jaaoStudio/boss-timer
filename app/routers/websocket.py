@@ -33,8 +33,9 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         return
 
     if not room_id:
-        logging.warning(f"Received message type '{msg_type}' without room_id")
-        return
+        if msg_type not in ["authenticate", "deauthenticate"]:
+             logging.warning(f"Received message type '{msg_type}' without room_id")
+             return
 
     # Room-specific messages
     if msg_type == "join_room":
@@ -52,6 +53,7 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
 
     elif msg_type == "record_boss":
         try:
+            # The payload now contains boss_type_id directly from the frontend
             record_create = BossRecordCreate(**payload)
             await boss_service.BossService.record_boss_from_websocket(db, record_create, user_id, manager)
         except Exception as e:

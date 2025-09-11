@@ -5,8 +5,8 @@
       <select v-model="selectedBossFilter"
               class="px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
         <option value="">{{ t('recordHistory.allBosses') }}</option>
-        <option v-for="boss in bossTypes" :key="boss.boss_name" :value="boss.boss_name">
-          {{ boss.boss_name }}
+        <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
+          {{ locale.value === 'zh' ? boss.name_zh : boss.name_en }}
         </option>
       </select>
     </div>
@@ -29,7 +29,7 @@ import {useRoomStore} from '@/stores/roomStore.js'
 import RecordItem from './RecordItem.vue'
 import { useI18n } from 'vue-i18n';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const bossStore = useBossStore()
 const roomStore = useRoomStore()
 
@@ -43,7 +43,7 @@ const filteredBossRecords = computed(() => {
   if (!selectedBossFilter.value) {
     return bossRecords.value
   }
-  return bossRecords.value.filter(record => record.boss_name === selectedBossFilter.value)
+  return bossRecords.value.filter(record => record.boss_type_id === selectedBossFilter.value)
 })
 
 </script>

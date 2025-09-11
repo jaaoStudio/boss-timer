@@ -112,7 +112,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 roomStore.setUserCount(message.user_count);
                 break;
             case 'boss_update':
-                bossStore.updateBossRecord(message.data);
+                bossStore.updateBossRecord(message.data).then();
                 break;
             case 'user_count_update':
                 roomStore.setUserCount(message.count);

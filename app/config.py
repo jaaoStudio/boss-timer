@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 from typing import ClassVar
 
@@ -32,8 +32,7 @@ class Settings(BaseSettings):
     remote_registry_ip: str = os.getenv("REMOTE_REGISTRY_IP", "127.0.0.1")
     env: str = os.getenv("ENV", "development")
 
-    class Config:
-        env_file = ".env"
+    model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 
     @property
     def database_url(self) -> str:

@@ -45,9 +45,9 @@ class BossService:
         return room  # type: ignore
 
     @staticmethod
-    async def _validate_boss_type_exists(db: Session, boss_name: str) -> BossType:
+    async def _get_boss_type_by_id(db: Session, boss_type_id: int) -> BossType:
         """驗證 BOSS 類型是否存在"""
-        boss_type = db.query(BossType).filter(BossType.boss_name == boss_name).first()
+        boss_type = db.query(BossType).filter(BossType.id == boss_type_id).first()
         if not boss_type:
             raise HTTPException(status_code=400, detail="Invalid boss type")
         return boss_type  # type: ignore
@@ -98,7 +98,7 @@ class BossService:
         boss_record = BossRecord(
             room_id=record.room_id,
             channel=record.channel,
-            boss_name=record.boss_name,
+            boss_type_id=record.boss_type_id,
             status=record.status,
             recorded_at=respawn_times["base_time"],
             respawn_min_time=respawn_times["respawn_min_time"],
@@ -122,33 +122,25 @@ class BossService:
         會重新查詢資料庫以確保包含完整的關聯資料 (如 recorder)。
         """
 
-        # 1. 根據 ID 重新查詢，並使用 joinedload 預先載入 recorder 關聯
-
-        record_with_recorder = db.query(BossRecord).options(
-
-            joinedload(BossRecord.recorder)
+        # 1. 根據 ID 重新查詢，並使用 joinedload 預先載入 recorder 和 boss_type 關聯
+        record_with_details = db.query(BossRecord).options(
+            joinedload(BossRecord.recorder),
+            joinedload(BossRecord.boss_type)  # 預先載入 boss_type
         ).filter(BossRecord.id == boss_record_id).first()
 
-        if not record_with_recorder:
+        if not record_with_details:
             logging.error(f"Could not find boss_record with id {boss_record_id} to broadcast update.")
             return
 
-        # 2. 使用 Pydantic 模型進行序列化，它會自動處理 recorder 和 recorder_info
-        # model_validate 會自動呼叫 @property 來計算 current_status
-
-        response_data = BossRecordResponse.model_validate(record_with_recorder)
+        # 2. 使用 Pydantic 模型進行序列化
+        # model_validate 會自動處理 recorder, recorder_info 和 boss_type
+        response_data = BossRecordResponse.model_validate(record_with_details)
 
         # 3. 廣播序列化後的 JSON 資料
-
         await get_connection_manager().broadcast_to_room(
-
             room_id=room_id,
-
             message={
-
                 "type": "boss_update",
-                # 使用 .model_dump(mode='json') 來確保 datetime 等物件被正確轉換為字串
-
                 "data": response_data.model_dump(mode='json')
             }
         )
@@ -161,7 +153,7 @@ class BossService:
         last_killed_record = db.query(BossRecord).filter(
             BossRecord.room_id == record.room_id,
             BossRecord.channel == record.channel,
-            BossRecord.boss_name == record.boss_name,
+            BossRecord.boss_type_id == record.boss_type_id,
             BossRecord.status == "killed",
             BossRecord.is_archived == False  # 只考慮未歸檔的紀錄
         ).order_by(BossRecord.recorded_at.desc()).first()
@@ -173,15 +165,16 @@ class BossService:
         """Handles boss recording initiated from a WebSocket message."""
         try:
             # Validation and calculation logic is reused from the original service
-            room = await BossService._validate_room_exists(db, record.room_id)
-            boss_type = await BossService._validate_boss_type_exists(db, record.boss_name)
+            await BossService._validate_room_exists(db, record.room_id)
+            boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
             respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
             boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)
 
             # Instead of calling the old broadcast method, we get the full record data
             # and then use the manager passed from the websocket endpoint to broadcast.
             record_with_recorder = db.query(BossRecord).options(
-                joinedload(BossRecord.recorder)
+                joinedload(BossRecord.recorder),
+                joinedload(BossRecord.boss_type)
             ).filter(BossRecord.id == boss_record.id).first()
 
             if not record_with_recorder:

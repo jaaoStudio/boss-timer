@@ -22,14 +22,14 @@
       <div>
         <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.boss') }}</label>
         <select
-          v-model="form.boss_name"
-          @change="bossStore.setSelectedBossName(form.boss_name)"
+          v-model="form.boss_type_id"
+          @change="bossStore.setSelectedBossTypeId(form.boss_type_id)"
           class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
           required
         >
-          <option value="">{{ t('bossControlPanel.selectBoss') }}</option>
-          <option v-for="boss in bossTypes" :key="boss.boss_name" :value="boss.boss_name">
-            {{ boss.boss_name }}
+          <option :value="null">{{ t('bossControlPanel.selectBoss') }}</option>
+          <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
+            {{ locale.value === 'zh' ? boss.name_zh : boss.name_en }}
           </option>
         </select>
       </div>
@@ -59,14 +59,13 @@ import {ref, computed, watch, onMounted} from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore.js'
 import { useBossStore } from '@/stores/bossStore.js'
-import ApiService from '@/services/apiService.ts'
 import BossStatusButton from "@/components/BossStatusButton.vue";
 import {showMessage} from "@/composables/useElementPlus.js";
 import {useUserStore} from "@/stores/userStore.js";
 import { useWebSocketStore} from "@/stores/websocketStore.js";
 import { useI18n } from 'vue-i18n';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
@@ -75,7 +74,8 @@ const websocketStore = useWebSocketStore();
 
 
 const { roomId } = storeToRefs(roomStore)
-const { bossTypes, selectedChannel, selectedBossName } = storeToRefs(bossStore)
+// Updated to use selectedBossTypeId
+const { bossTypes, selectedChannel, selectedBossTypeId } = storeToRefs(bossStore)
 const { isLoggedIn, anonymousId, anonymousName} = storeToRefs(userStore)
 
 const statuses = [
@@ -86,7 +86,7 @@ const statuses = [
 
 const form = ref({
   channel: selectedChannel.value || '',
-  boss_name: '',
+  boss_type_id: null, // Changed from boss_name
   status: ''
 })
 
@@ -101,8 +101,9 @@ watch(selectedChannel, (newVal) => {
   form.value.channel = newVal
 })
 
-watch(selectedBossName, (newVal) => {
-  form.value.boss_name = newVal
+// Watch selectedBossTypeId instead of selectedBossName
+watch(selectedBossTypeId, (newVal) => {
+  form.value.boss_type_id = newVal
 })
 
 const loading = ref(false)
@@ -110,7 +111,7 @@ const loading = ref(false)
 const canSubmit = computed(() => {
   return roomId.value &&
          form.value.channel &&
-         form.value.boss_name &&
+         form.value.boss_type_id !== null && // Check for null
          form.value.status
 })
 
@@ -122,7 +123,7 @@ const recordBoss = async () => {
     const payload = {
       room_id: roomId.value,
       channel: parseInt(form.value.channel),
-      boss_name: form.value.boss_name,
+      boss_type_id: form.value.boss_type_id, // Send boss_type_id
       status: form.value.status,
       recorder_info: null // 預設為 null
     }
@@ -134,26 +135,15 @@ const recordBoss = async () => {
       };
     }
 
-    // if (isLoggedIn.value) {
-    //   payload.recorder_info = {
-    //     user_id: userStore.userId,
-    //     display_name: userStore.displayName,
-    //   };
-    // }
-
     websocketStore.sendMessage({
       type: 'record_boss',
       payload: payload,
     });
 
-    // 更新 Pinia store 中的 bossRecords 和 history
-    // await bossStore.updateBossRecord(newRecord)
-
-    // 重置表單
+    // Reset form field
     form.value.channel = ''
 
   } catch (error) {
-    // WebSocket 錯誤處理將在 websocketStore 中進行
     console.error('Failed to send record boss message via WebSocket:', error);
     showMessage.error(t('bossControlPanel.sendRecordFailed'));
   } finally {
@@ -162,12 +152,12 @@ const recordBoss = async () => {
 }
 
 const onChannelInput = (e) => {
-    // 移除非數字字元
     e.target.value = e.target.value.replace(/\D/g, '');
     form.value.channel = e.target.value ? parseInt(e.target.value, 10) : null;
   }
 
 onMounted(() => {
-  form.value.boss_name = selectedBossName.value
+  // Set initial value from store
+  form.value.boss_type_id = selectedBossTypeId.value
 })
 </script>

@@ -6,68 +6,51 @@ export const useBossStore = defineStore('boss', {
     bossRecords: [],
     history: new Map(),
     loading: false,
-    selectedBossName: '',
-    selectedChannel: null, // 新增 selectedChannel 狀態
+    selectedBossTypeId: null, // Changed from selectedBossName
+    selectedChannel: null,
   }),
   getters: {
     priorityChannels: (state) => {
       return state.bossRecords
-          .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'may_respawn')
+          .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'may_respawn')
           .sort((a, b) => new Date(a.respawn_min_time) - new Date(b.respawn_min_time))
     },
     avoidChannels: (state) => {
       return state.bossRecords
-          .filter(record => record.boss_name === state.selectedBossName && record.current_status === 'respawning')
+          .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'respawning')
           .sort((a, b) => new Date(a.respawn_max_time) - new Date(b.respawn_max_time))
     }
   },
   actions: {
     setBossTypes(types) {
       this.bossTypes = types
-      if (!this.selectedBossName && types.length > 0) {
-        this.selectedBossName = types[0].boss_name
+      if (this.selectedBossTypeId === null && types.length > 0) { // check for null
+        this.selectedBossTypeId = types[0].id // use id
       }
     },
-    setSelectedBossName(name) {
-      this.selectedBossName = name
+    setSelectedBossTypeId(id) { // Renamed and takes id
+      this.selectedBossTypeId = id
     },
     setBossRecords(records) {
       this.bossRecords = records
     },
     async updateBossRecord(record) {
       const index = this.bossRecords.findIndex(
-          r => r.channel === record.channel && r.boss_name === record.boss_name
+          r => ((r.channel === record.channel) && (r.boss_type_id === record.boss_type_id))
       )
       if (index >= 0) {
-        this.bossRecords[index] = record
+        this.bossRecords.splice(index, 1, record);
       } else {
         this.bossRecords.push(record)
       }
 
-      this.bossRecords = this.bossRecords.sort((a, b) => {
-        if (a.boss_name === b.boss_name) {
+      this.bossRecords.sort((a, b) => {
+        if (a.boss_type_id === b.boss_type_id) {
           return new Date(a.respawn_min_time) - new Date(b.respawn_min_time)
         }
-        return a.boss_name.localeCompare(b.boss_name)
+        // Sort by boss_type_id as a fallback
+        return a.boss_type_id - b.boss_type_id;
       })
-
-      // const historyData = await ApiService.getRoomHistory(
-      //     record.room_id,
-      //     record.boss_name || null
-      // )
-
-      // this.setHistory(record.room_id, historyData)
-      // 將新記錄添加到歷史記錄的開頭
-      // console.log(this.history,'aaa')
-      // if (!this.history.has(record.roomId)) {
-      //   this.history.set(record.roomId, []);
-      // }
-      // this.history.get(record.roomId).unshift(record);
-
-      // 可以選擇限制歷史記錄的長度，例如只保留最新的 50 條
-      // if (this.history.length > 50) {
-      //   this.history.pop()
-      // }
     },
     setHistory(roomId, historyData) {
       this.history.set(roomId, historyData)
@@ -75,7 +58,7 @@ export const useBossStore = defineStore('boss', {
     setLoading(status) {
       this.loading = status
     },
-    setSelectedChannel(channel) { // 新增 setSelectedChannel action
+    setSelectedChannel(channel) {
       this.selectedChannel = channel
     },
     calculateCurrentStatus(record) {
@@ -96,12 +79,13 @@ export const useBossStore = defineStore('boss', {
     },
     updateBossStatusOnTimerEnd(record) {
       const index = this.bossRecords.findIndex(
-          r => r.channel === record.channel && r.boss_name === record.boss_name
+          r => r.channel === record.channel && r.boss_type_id === record.boss_type_id
       );
 
       if (index !== -1) {
-        const currentRecord = this.bossRecords[index];
+        const currentRecord = { ...this.bossRecords[index] };
         currentRecord.current_status = this.calculateCurrentStatus(currentRecord);
+        this.bossRecords.splice(index, 1, currentRecord);
       }
     },
   }

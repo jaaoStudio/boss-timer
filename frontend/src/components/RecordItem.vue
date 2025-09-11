@@ -4,7 +4,7 @@
       <div class="flex items-center space-x-3">
         <StatusBadge :status="record.status" />
         <div>
-          <span class="font-semibold text-white">{{ record.boss_name }}</span>
+          <span class="font-semibold text-white">{{ locale.value === 'zh' ? record.boss_type.name_zh : record.boss_type.name_en }}</span>
           <span class="text-gray-300 font-mono">- CH{{ record.channel }}</span>
           <span class="text-xs text-gray-500 ml-2">{{ t('recordItem.by') }} {{ recorderDisplayName }}</span>
         </div>
@@ -22,7 +22,7 @@ import { computed } from 'vue'
 import StatusBadge from './StatusBadge.vue'
 import { useI18n } from 'vue-i18n';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const props = defineProps({
   record: {

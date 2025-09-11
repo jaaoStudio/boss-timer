@@ -1,6 +1,6 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6" v-if="selectedBoss">
-    <h2 class="text-xl font-semibold text-white mb-4">{{ selectedBoss.boss_name }} {{ t('bossInfo.details') }}</h2>
+    <h2 class="text-xl font-semibold text-white mb-4">{{ locale.value === 'zh' ? selectedBoss.name_zh : selectedBoss.name_en }}</h2>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <!-- 基本資訊 -->
@@ -63,18 +63,18 @@ import StatusBadge from './StatusBadge.vue'
 import CountdownTimer from './CountdownTimer.vue'
 import { useI18n } from 'vue-i18n';
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const bossStore = useBossStore()
-const { bossTypes, bossRecords, selectedBossName, selectedChannel } = storeToRefs(bossStore)
+const { bossTypes, bossRecords, selectedBossTypeId, selectedChannel } = storeToRefs(bossStore)
 
 const selectedBoss = computed(() => {
-  return bossTypes.value.find(b => b.boss_name === selectedBossName.value)
+  return bossTypes.value.find(b => b.id === selectedBossTypeId.value)
 })
 
 
 
 const selectedRecord = computed(() => {
-  return bossRecords.value.find(r => r.boss_name === selectedBossName.value && r.channel === selectedChannel.value)
+  return bossRecords.value.find(r => r.id === selectedBossTypeId.value && r.channel === selectedChannel.value)
 })
 
 import { format } from 'date-fns'
