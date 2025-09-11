@@ -6,7 +6,7 @@
               class="px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
         <option value="">{{ t('recordHistory.allBosses') }}</option>
         <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
-          {{ locale.value === 'zh' ? boss.name_zh : boss.name_en }}
+          {{ locale === 'zh' ? boss.name_zh : boss.name_en }}
         </option>
       </select>
     </div>

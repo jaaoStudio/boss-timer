@@ -1,6 +1,6 @@
 <template>
   <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6" v-if="selectedBoss">
-    <h2 class="text-xl font-semibold text-white mb-4">{{ locale.value === 'zh' ? selectedBoss.name_zh : selectedBoss.name_en }}</h2>
+    <h2 class="text-xl font-semibold text-white mb-4">{{ locale === 'zh' ? selectedBoss.name_zh : selectedBoss.name_en }}</h2>
 
     <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
       <!-- 基本資訊 -->

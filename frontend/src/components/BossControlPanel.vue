@@ -29,7 +29,7 @@
         >
           <option :value="null">{{ t('bossControlPanel.selectBoss') }}</option>
           <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
-            {{ locale.value === 'zh' ? boss.name_zh : boss.name_en }}
+            {{ locale === 'zh' ? boss.name_zh : boss.name_en }}
           </option>
         </select>
       </div>
