@@ -36,6 +36,7 @@
     "toggleTheme": "切換主題",
     "recordHistory": "擊殺紀錄",
     "leaveRoom": "離開房間",
+    "leavingRoom": "正在離開房間...",
     "copied": "已複製！"
   },
   "appHeader": {

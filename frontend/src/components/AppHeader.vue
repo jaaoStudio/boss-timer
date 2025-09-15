@@ -6,7 +6,7 @@
           <img src="/leaf24px.png" alt="Logo" class="h-8 w-8 mr-3">
           <h1 class=" text-2xl sm:block hidden font-bold text-white">{{ t('appHeader.title') }}</h1>
         </div>
-        <div v-if="roomId">
+        <div v-if="roomId" class="cursor-pointer" @click="copyRoomId">
           <p class="text-gray-400 text-sm">{{ t('appHeader.room') }} <span class="font-mono bg-gray-700 px-2 py-1 rounded">{{ roomId }}</span></p>
         </div>
       </div>
@@ -82,6 +82,13 @@ const handleLoginError = (error) => {
   console.error("Google sign-in error:", error);
   showMessage.error(t('appHeader.loginFailed'))
 };
+
+const copyRoomId = () => {
+  navigator.clipboard.writeText(roomId.value).then(() => {
+    showMessage.success(t('roomManager.copied'));
+  })
+}
+
 
 const handleLogout = () => {
   userStore.logout();
