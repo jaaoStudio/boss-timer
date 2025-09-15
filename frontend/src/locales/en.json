@@ -36,6 +36,7 @@
     "toggleTheme": "Toggle Theme",
     "recordHistory": "Record History",
     "leaveRoom": "Leave Room",
+    "leavingRoom": "Leaving room...",
     "copied": "Copied!"
   },
   "appHeader": {

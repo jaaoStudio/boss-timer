@@ -35,6 +35,8 @@ import { useDark, useToggle } from '@vueuse/core'
 import { useUserStore } from '@/stores/userStore.js'
 import { useWebSocketStore } from '@/stores/websocketStore';
 import { useI18n } from 'vue-i18n';
+import { ElLoading } from 'element-plus';
+import {showMessage} from "@/composables/useElementPlus.js";
 
 const { t, locale } = useI18n();
 
@@ -77,15 +79,21 @@ const toggleDropdown = () => {
 
 const copyRoomId = () => {
   navigator.clipboard.writeText(roomId.value).then(() => {
-    showCopySuccess.value = true
-    setTimeout(() => {
-      showCopySuccess.value = false
-    }, 2000)
-  })
+  showMessage.success(t('roomManager.copied'))
   isDropdownOpen.value = false
+  })
 }
 
-const leaveRoom = () => {
+const leaveRoom = async () => {
+  const loadingInstance = ElLoading.service({
+    lock: true,
+    text: t('roomManager.leavingRoom'),
+    background: 'rgba(0, 0, 0, 0.7)',
+  });
+
+  // Simulate a delay to ensure the user sees the loading state
+  await new Promise(resolve => setTimeout(resolve, 500));
+
   if (roomStore.roomId) {
     websocketStore.sendMessage({
       type: 'leave_room',
@@ -93,6 +101,8 @@ const leaveRoom = () => {
     });
   }
   roomStore.clearRoomId();
-  router.push({ name: 'RoomSelection' });
+  router.push({ name: 'RoomSelection' }).finally(() => {
+    loadingInstance.close();
+  });
 };
 </script>
