@@ -24,58 +24,104 @@
 | **前端** | Vue.js 3, Vite, Pinia, Vue Router, Tailwind CSS, Element Plus |
 | **部署** | Docker, Docker Compose, Nginx |
 
-## 🚀 快速開始
+## 🚀 快速開始 (本地開發)
 
-您可以透過 Docker 快速在本地端啟動整個專案。
+本指南將引導您在本地開發環境中，完整地設定並執行此專案。
 
-### 先決條件
+### 第 1 步：設定環境變數
 
-- [Docker](https://www.docker.com/get-started)
-- [Docker Compose](https://docs.docker.com/compose/install/)
+專案的設定被拆分成三個獨立的 `.env` 檔案。請依照以下步驟，從範本建立您自己的設定檔。
 
-### 安裝與啟動
+#### a) 資料庫初始化設定
 
-1.  **Clone 專案**
-    ```bash
-    git clone https://your-repository-url.git
-    cd boss-timing
-    ```
+此設定檔用於**首次建立**資料庫容器時，設定 PostgreSQL 的超級使用者。
 
-2.  **設定環境變數**
-    專案後端需要一些環境變數來設定資料庫連線、JWT 金鑰和 Google OAuth。請在專案根目錄建立一個 `.env` 檔案，並填入以下內容：
+```bash
+# 進入資料庫設定目錄
+cd app/db
 
-    ```env
-    # .env
+# 從範本複製設定檔
+cp .env.example .env
+```
+> `app/db/.env` 內的帳號密碼是資料庫容器的最高權限帳密，通常在本地開發外不需要修改。
 
-    # FastAPI 應用程式設定
-    APP_VERSION="1.0.0"
-    ALLOWED_ORIGINS="http://localhost:2255,http://your-frontend-domain.com"
+#### b) 後端應用程式設定
 
-    # 資料庫連線資訊
-    POSTGRES_USER=your_db_user
-    POSTGRES_PASSWORD=your_db_password
-    POSTGRES_SERVER=db
-    POSTGRES_PORT=5432
-    POSTGRES_DB=boss_tracker_db
+此設定檔告知 FastAPI 後端應用程式如何**連線到資料庫**，以及 Google OAuth 和 JWT 的金鑰。
 
-    # JWT 相關設定
-    SECRET_KEY=your_super_secret_key_for_jwt
-    ALGORITHM=HS256
-    ACCESS_TOKEN_EXPIRE_MINUTES=30
+```bash
+# 回到專案根目錄
+cd ../..
 
-    # Google OAuth 2.0 設定
-    GOOGLE_CLIENT_ID="your-google-client-id.apps.googleusercontent.com"
-    ```
-    > **重要**: `SECRET_KEY` 務必更換為一個複雜且隨機的字串。
+# 進入後端應用程式目錄
+cd app
 
-3.  **啟動服務**
-    在專案根目錄執行以下指令來建置並啟動 Docker 容器：
-    ```bash
-    docker-compose up -d --build
-    ```
+# 從範本複製設定檔
+cp .env.example .env
+```
+**請務必編輯 `app/.env`**，將 `POSTGRES_SERVER` 改為 `localhost` (如果資料庫在本機)，並填入您自己的 `SECRET_KEY` 和 `GOOGLE_CLIENT_ID`。
 
-4.  **瀏覽網站**
-    啟動成功後，您可以在瀏覽器中開啟 `http://localhost:2255` 來查看網站。
+#### c) 前端應用程式設定
+
+此設定檔告知 Vue.js 前端應用程式後端 API 的位址和 Google 相關的 ID。
+
+```bash
+# 回到專案根目錄
+cd ..
+
+# 進入前端目錄
+cd frontend
+
+# 從範本複製設定檔
+cp .env.example .env
+```
+編輯 `frontend/.env` 並填入您自己的 Google 服務 ID。
+
+### 第 2 步：啟動服務與資料庫遷移
+
+完成所有設定後，請回到專案根目錄，並依照以下順序啟動服務。
+
+#### a) 啟動資料庫服務
+
+```bash
+# 進入資料庫目錄
+cd app/db
+
+# 在背景啟動資料庫容器
+docker-compose up -d
+```
+
+#### b) 執行資料庫遷移
+
+資料庫啟動後，我們需要使用 Alembic 工具建立所需的資料表。
+
+```bash
+# 回到專案根目錄
+cd ../..
+
+# 執行遷移指令 (此指令會建立/更新資料庫中的資料表)
+alembic upgrade head
+```
+> **注意**: 您需要在本地端安裝 `alembic` 和專案所需的 Python 套件才能執行此指令。或者，您也可以進入 `boss_service` 容器中執行此指令。
+
+#### c) 啟動主應用程式
+
+最後，建置並啟動後端和前端服務。
+
+```bash
+# 確認您在專案根目錄
+
+# 使用您的參數建置並啟動服務
+REMOTE_REGISTRY_IP=harbor.jaao.tw \
+BACKEND_VERSION=2.4.3 \
+FRONTEND_VERSION=2.2.5 \
+docker-compose up -d --build
+```
+
+### 第 3 步：瀏覽網站
+
+所有服務都成功啟動後，您可以在瀏覽器中開啟 `http://localhost:2255` 來查看網站。
+
 
 ## 📁 專案結構
 
