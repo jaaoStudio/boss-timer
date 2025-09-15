@@ -1,8 +1,8 @@
 <template>
   <div class="relative flex flex-1 flex-col items-center justify-center h-full bg-gray-900 p-4">
     <!-- Language Switcher -->
-    <div class="absolute top-4 right-4">
-      <TranslateIcon @click="switchLanguage" class="w-6 h-6 text-gray-400 hover:text-white transition-colors duration-200" />
+    <div class="absolute top-4 right-4 cursor-pointer">
+      <LanguageIcon @click="switchLanguage" class="w-6 h-6 text-gray-400 hover:text-white transition-colors duration-200" />
     </div>
 
     <div class="flex flex-col justify-center gap-5 w-full  max-w-md">
@@ -86,7 +86,7 @@ import apiService from '@/services/apiService';
 import { showMessage } from "@/composables/useElementPlus.js";
 import { GoogleLogin } from "vue3-google-login";
 import { useI18n } from 'vue-i18n';
-import TranslateIcon from '@/assets/icons/TranslateIcon.vue';
+import LanguageIcon from "@/assets/icons/LanguageIcon.vue";
 
 const { t, locale } = useI18n();
 const router = useRouter();
