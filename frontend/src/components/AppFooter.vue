@@ -1,15 +1,23 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router'; // Import useRouter
+
 const { t } = useI18n();
+const router = useRouter(); // Initialize useRouter
+
+const navigateTo = (name: string) => {
+  router.push({ name });
+};
 </script>
 
 <template>
     <footer class="w-full p-4 bg-gray-900 text-gray-300 text-center text-xs ">
       <div class="space-y-2">
         <div class="flex justify-center space-x-4">
-          <router-link to="/credits" class="text-gray-400 hover:text-white underline">{{ t('appFooter.credits') }}</router-link>
-          <router-link to="/legal" class="text-gray-400 hover:text-white underline">{{ t('appFooter.legal') }}</router-link>
-          <router-link to="/privacy" class="text-gray-400 hover:text-white underline">{{ t('appFooter.privacy') }}</router-link>
+          <a @click="navigateTo('Credits')" class="text-gray-400 hover:text-white underline cursor-pointer">{{ t('appFooter.credits') }}</a>
+          <a @click="navigateTo('Legal')" class="text-gray-400 hover:text-white underline cursor-pointer">{{ t('appFooter.legal') }}</a>
+          <a @click="navigateTo('Privacy')" class="text-gray-400 hover:text-white underline cursor-pointer">{{ t('appFooter.privacy') }}</a>
+          <a href="mailto:boss-timer@jaao.tw" class="text-gray-400 hover:text-white underline cursor-pointer">{{ t('appFooter.contactUs') }}</a>
         </div>
         <p>{{ t('appFooter.copyright') }}</p>
       </div>

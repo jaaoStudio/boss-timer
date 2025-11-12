@@ -27,7 +27,7 @@ const router: Router = createRouter({
       component: () => import('../views/LegalDisclaimer.vue'),
     },
     {
-      path: '/privacy',
+      path: '/privacy-policy',
       name: 'Privacy',
       component: () => import('../views/PrivacyPolicy.vue'),
     },
