@@ -54,6 +54,7 @@
     "credits": "貢獻者 & 致謝",
     "legal": "法律聲明",
     "privacy": "隱私權政策",
+    "contactUs": "聯絡我們",
     "copyright": "Copyright © 2025 boss-timer.jaao.tw. All Rights Reserved."
   },
   "bossControlPanel": {
@@ -148,6 +149,6 @@
     "section7Title": "七、隱私權保護政策之修正",
     "section7Content": "本網站隱私權保護政策將因應需求隨時進行修正，修正後的條款將更新於本網站上。",
     "section8Title": "八、聯絡我們",
-    "section8Content": "若您對於您的個人資料有任何疑問、或希望請求刪除，請透過電子郵件聯繫我們：boss-timer@jaao.tw。"
+    "section8Content": "若您對於您的個人資料有任何疑問、或希望請求刪除，請透過電子郵件聯繫我們："
   }
 }
