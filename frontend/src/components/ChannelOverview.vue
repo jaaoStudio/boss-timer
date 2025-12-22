@@ -24,7 +24,7 @@ const { selectedBossTypeId } = storeToRefs(bossStore)
 const recordedChannels = computed(() => {
   if (bossStore.bossRecords.length === 0)  return []
   const channels = new Set(bossStore.bossRecords.filter(r => r.boss_type_id === selectedBossTypeId.value).map(r => r.channel))
-  console.log(Array.from(channels).sort((a, b) => a - b))
+  // console.log(Array.from(channels).sort((a, b) => a - b))
   return Array.from(channels).sort((a, b) => a - b)
 })
 </script>

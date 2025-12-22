@@ -74,7 +74,7 @@ const selectedBoss = computed(() => {
 
 
 const selectedRecord = computed(() => {
-  return bossRecords.value.find(r => r.id === selectedBossTypeId.value && r.channel === selectedChannel.value)
+  return bossRecords.value.find(r => r.boss_type_id === selectedBossTypeId.value && r.channel === selectedChannel.value)
 })
 
 import { format } from 'date-fns'
