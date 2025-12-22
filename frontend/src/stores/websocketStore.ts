@@ -25,7 +25,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     function processMessageQueue() {
         while (messageQueue.value.length > 0) {
             const message = messageQueue.value.shift();
-            console.log("Sending queued message:", message);
+            // console.log("Sending queued message:", message);
             socket.value.send(JSON.stringify(message));
         }
     }
@@ -130,7 +130,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
             if (reconnectTimeout) clearTimeout(reconnectTimeout);
             reconnectTimeout = setTimeout(() => {
                 reconnectAttempts.value++;
-                console.log(`WebSocket reconnecting... attempt ${reconnectAttempts.value}`);
+                // console.log(`WebSocket reconnecting... attempt ${reconnectAttempts.value}`);
                 connect();
             }, 2000 * (reconnectAttempts.value + 1)); // increase delay
         } else {
