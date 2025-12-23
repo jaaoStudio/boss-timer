@@ -1,6 +1,6 @@
 <template>
-  <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-white mb-4">{{ t('channelOverview.title') }}</h2>
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">{{ t('channelOverview.title') }}</h2>
     <div class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-auto">
       <ChannelCard
         v-for="channel in recordedChannels"

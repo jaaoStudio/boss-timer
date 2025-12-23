@@ -48,16 +48,16 @@ const handleTimerEnd = (record) => {
 
 const typeClasses = {
   priority: {
-    container: 'bg-green-800',
-    title: 'text-white',
-    item: 'bg-green-700',
-    empty: 'text-green-200',
+    container: 'bg-green-100 dark:bg-green-800',
+    title: 'text-green-900 dark:text-white',
+    item: 'bg-green-200 dark:bg-green-700',
+    empty: 'text-green-700 dark:text-green-200',
   },
   avoid: {
-    container: 'bg-red-800',
-    title: 'text-white',
-    item: 'bg-red-700',
-    empty: 'text-red-200',
+    container: 'bg-red-100 dark:bg-red-800',
+    title: 'text-red-900 dark:text-white',
+    item: 'bg-red-200 dark:bg-red-700',
+    empty: 'text-red-700 dark:text-red-200',
   },
 }
 

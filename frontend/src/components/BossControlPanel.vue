@@ -1,43 +1,45 @@
 <template>
-  <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-white mb-4"></h2>
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4"></h2>
 
-    <form @submit.prevent="recordBoss" class="grid grid-cols-1 md:grid-cols-3 gap-4">
-      <!-- 頻道選擇 -->
-      <div>
-        <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.channel') }}</label>
-        <input
-          v-model.number="form.channel"
-          type="text"
-          inputmode="numeric"
-          pattern="\d*"
-          class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          required
-          maxlength="5"
+    <el-form
+      :model="form"
+      @submit.prevent="recordBoss"
+      label-position="top"
+      class="grid grid-cols-1 md:grid-cols-3 gap-4"
+    >
+
+      <el-form-item :label="t('bossControlPanel.channel')">
+        <el-input
+          v-model="form.channel"
+          :placeholder="t('bossControlPanel.channel')"
           @input="onChannelInput"
+          clearable
+          :maxlength="5"
         >
-      </div>
+          </el-input>
+      </el-form-item>
 
-      <!-- BOSS選擇 -->
-      <div>
-        <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.boss') }}</label>
-        <select
+      <el-form-item :label="t('bossControlPanel.boss')">
+        <el-select
           v-model="form.boss_type_id"
+          :placeholder="t('bossControlPanel.selectBoss')"
           @change="bossStore.setSelectedBossTypeId(form.boss_type_id)"
-          class="w-full h-9 px-3 py-2 border border-gray-700 bg-gray-900 text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          required
+          filterable
+          clearable
+          class="w-full"
         >
-          <option :value="null">{{ t('bossControlPanel.selectBoss') }}</option>
-          <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
-            {{ locale === 'zh' ? boss.name_zh : boss.name_en }}
-          </option>
-        </select>
-      </div>
+          <el-option
+            v-for="boss in bossTypes"
+            :key="boss.id"
+            :label="locale === 'zh' ? boss.name_zh : boss.name_en"
+            :value="boss.id"
+          />
+        </el-select>
+      </el-form-item>
 
-      <!-- 狀態選擇 -->
-      <div>
-        <label class="block text-sm font-medium text-gray-300 mb-1">{{ t('bossControlPanel.status') }}</label>
-        <div class="flex gap-2">
+      <el-form-item :label="t('bossControlPanel.status')">
+        <div class="flex gap-2 w-full">
           <BossStatusButton
             v-for="status in statuses"
             :key="status.type"
@@ -49,8 +51,9 @@
             @click="() => onSelectStatus(status.type)"
           />
         </div>
-      </div>
-    </form>
+      </el-form-item>
+
+    </el-form>
   </div>
 </template>
 
@@ -72,9 +75,7 @@ const bossStore = useBossStore()
 const userStore = useUserStore();
 const websocketStore = useWebSocketStore();
 
-
 const { roomId } = storeToRefs(roomStore)
-// Updated to use selectedBossTypeId
 const { bossTypes, selectedChannel, selectedBossTypeId } = storeToRefs(bossStore)
 const { isLoggedIn, anonymousId, anonymousName} = storeToRefs(userStore)
 
@@ -86,7 +87,7 @@ const statuses = [
 
 const form = ref({
   channel: selectedChannel.value || '',
-  boss_type_id: null, // Changed from boss_name
+  boss_type_id: null,
   status: ''
 })
 
@@ -96,12 +97,10 @@ const onSelectStatus = async (statusType) => {
   await recordBoss();
 }
 
-// 監聽 selectedChannel 的變化並更新 form.channel
 watch(selectedChannel, (newVal) => {
   form.value.channel = newVal
 })
 
-// Watch selectedBossTypeId instead of selectedBossName
 watch(selectedBossTypeId, (newVal) => {
   form.value.boss_type_id = newVal
 })
@@ -111,7 +110,7 @@ const loading = ref(false)
 const canSubmit = computed(() => {
   return roomId.value &&
          form.value.channel &&
-         form.value.boss_type_id !== null && // Check for null
+         form.value.boss_type_id !== null &&
          form.value.status
 })
 
@@ -123,9 +122,9 @@ const recordBoss = async () => {
     const payload = {
       room_id: roomId.value,
       channel: parseInt(form.value.channel),
-      boss_type_id: form.value.boss_type_id, // Send boss_type_id
+      boss_type_id: form.value.boss_type_id,
       status: form.value.status,
-      recorder_info: null // 預設為 null
+      recorder_info: null
     }
 
     if (!isLoggedIn.value && anonymousName.value) {
@@ -140,7 +139,7 @@ const recordBoss = async () => {
       payload: payload,
     });
 
-    // Reset form field
+    // Reset form field (channel) only if desired, or keep logic as is
     form.value.channel = ''
 
   } catch (error) {
@@ -151,13 +150,21 @@ const recordBoss = async () => {
   }
 }
 
-const onChannelInput = (e) => {
-    e.target.value = e.target.value.replace(/\D/g, '');
-    form.value.channel = e.target.value ? parseInt(e.target.value, 10) : null;
-  }
+// 修改: Element Plus 的 @input 傳遞的是 value 字串，不是 event 物件
+const onChannelInput = (value) => {
+    // 確保 value 是字串再進行 replace，避免 null/undefined 報錯
+    if (!value) {
+        form.value.channel = '';
+        return;
+    }
+    const sanitized = value.toString().replace(/\D/g, '');
+    form.value.channel = sanitized ? parseInt(sanitized, 10) : '';
+}
 
 onMounted(() => {
-  // Set initial value from store
   form.value.boss_type_id = selectedBossTypeId.value
 })
 </script>
+
+<style scoped>
+</style>
