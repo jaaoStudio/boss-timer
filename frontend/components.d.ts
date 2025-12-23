@@ -28,9 +28,7 @@ declare module 'vue' {
     ElOption: typeof import('element-plus/es')['ElOption']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
-    LegalDisclaimer: typeof import('./src/components/LegalDisclaimer.vue')['default']
     MaintenanceBanner: typeof import('./src/components/MaintenanceBanner.vue')['default']
-    PrivacyPolicy: typeof import('./src/components/PrivacyPolicy.vue')['default']
     RecommendedChannels: typeof import('./src/components/RecommendedChannels.vue')['default']
     RecommendedSection: typeof import('./src/components/RecommendedSection.vue')['default']
     RecordHistory: typeof import('./src/components/RecordHistory.vue')['default']
@@ -39,6 +37,5 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
-    ToggleDarkThemeButton: typeof import('./src/components/ToggleDarkThemeButton.vue')['default']
   }
 }

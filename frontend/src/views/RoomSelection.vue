@@ -64,10 +64,11 @@
           <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300 dark:border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800">{{ t('roomSelection.or') }}</span></div></div>
           <p class="text-gray-600 dark:text-gray-300 text-sm">{{ t('roomSelection.loginPrompt') }}</p>
           <GoogleLogin
+            v-if="showGoogleButton"
             :callback="handleLoginSuccess"
             :error="handleLoginError"
-            prompt
-            class="google-login-custom"
+            :buttonConfig="googleButtonConfig"
+            class="dark:dark:rounded-[4px] dark:border border-gray-600 flex items-center"
           />
         </div>
         <div v-else class="flex items-center justify-center space-x-4">
@@ -84,7 +85,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import {computed, nextTick, ref, watch} from 'vue';
 import { useRouter } from 'vue-router';
 import { useRoomStore } from '@/stores/roomStore';
 import { useUserStore } from '@/stores/userStore';
@@ -94,7 +95,7 @@ import { GoogleLogin } from "vue3-google-login";
 import { useI18n } from 'vue-i18n';
 import LanguageIcon from "@/assets/icons/LanguageIcon.vue";
 import {Moon, Sunny} from "@element-plus/icons-vue";
-import {useDark, useToggle} from "@vueuse/core";
+import { isDark, toggleDark } from '@/composables/useTheme.js';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -105,18 +106,26 @@ const joinRoomId = ref('');
 const joinRoomError = ref('');
 const isCreating = ref(false);
 const isJoining = ref(false);
-const isDark = useDark({
-  selector: 'html',
-  attribute: 'class',
-  valueDark: 'dark',
-  valueLight: 'light',
-  onChanged(dark) {
-    const html = document.documentElement
-    html.setAttribute('class', dark ? 'dark' : 'light')
-    html.style.colorScheme = dark ? 'dark' : 'light'
-  }
-})
-const toggleDark = useToggle(isDark)
+const showGoogleButton = ref(true);
+
+const googleButtonConfig = computed(() => ({
+  type: 'standard',
+  size: 'medium',
+  theme: isDark.value ? 'filled_blue' : 'outline',
+}));
+
+
+watch(isDark, async () => {
+  // 1. 先把按鈕移除 (銷毀 DOM)
+  showGoogleButton.value = false;
+
+  // 2. 等待 Vue 完成 DOM 更新 (這時候按鈕是真的消失了)
+  await nextTick();
+
+  // 3. 再次把按鈕加回來 (這時候會讀取最新的 googleButtonConfig 並重新向 Google 請求 iframe)
+  showGoogleButton.value = true;
+});
+
 
 const switchLanguage = () => {
   const newLocale = locale.value === 'en' ? 'zh' : 'en';

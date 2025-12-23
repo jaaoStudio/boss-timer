@@ -58,16 +58,10 @@ import RoomManager from '@/components/RoomManager.vue';
 import {GoogleLogin} from "vue3-google-login";
 import {showMessage} from "@/composables/useElementPlus.js";
 import { useI18n } from "vue-i18n";
-import { useDark } from '@vueuse/core';
 import { computed, ref, watch, nextTick } from 'vue';
+import { isDark, toggleDark } from '@/composables/useTheme.js';
 
 const { t } = useI18n();
-const isDark = useDark({
-  selector: 'html',
-  attribute: 'class',
-  valueDark: 'dark',
-  valueLight: 'light',
-});
 
 const showGoogleButton = ref(true);
 

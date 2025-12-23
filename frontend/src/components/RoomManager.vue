@@ -52,7 +52,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore.js'
-import { useDark, useToggle } from '@vueuse/core'
+import { isDark, toggleDark } from '@/composables/useTheme.js'
 import { useUserStore } from '@/stores/userStore.js'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { useI18n } from 'vue-i18n'
@@ -68,18 +68,7 @@ const websocketStore = useWebSocketStore()
 const { roomId } = storeToRefs(roomStore)
 const { user, isLoggedIn } = storeToRefs(userStore)
 
-const isDark = useDark({
-  selector: 'html',
-  attribute: 'class',
-  valueDark: 'dark',
-  valueLight: 'light',
-  onChanged(dark) {
-    const html = document.documentElement
-    html.setAttribute('class', dark ? 'dark' : 'light')
-    html.style.colorScheme = dark ? 'dark' : 'light'
-  }
-})
-const toggleDark = useToggle(isDark)
+
 
 const showRecordHistory = ref(user.value?.preferences?.showRecordHistory ?? true)
 
