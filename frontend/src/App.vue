@@ -24,7 +24,7 @@ onMounted(async () => {
 
 <template>
   <MaintenanceBanner /> <!-- 在頂部顯示橫幅 -->
-  <div class="flex flex-col min-h-screen items-centerbg-gray-900 text-gray-200">
+  <div class="flex flex-col min-h-screen items-center bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200">
     <RouterView />
     <AppFooter/>
   </div>

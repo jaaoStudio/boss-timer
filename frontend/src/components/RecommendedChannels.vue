@@ -1,6 +1,6 @@
 <template>
-  <div class="bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-white mb-4">{{ t('recommendedChannels.title') }}</h2>
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">{{ t('recommendedChannels.title') }}</h2>
     <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
       <RecommendedSection
         :title="t('recommendedChannels.priorityTitle')"

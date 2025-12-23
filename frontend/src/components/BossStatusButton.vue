@@ -4,7 +4,7 @@
     :disabled="disabled"
     :title="buttonConfig.title"
     @click="$emit('click')"
-    class="flex-1 p-3 rounded transition-colors group relative disabled:bg-gray-600 disabled:cursor-not-allowed"
+    class="flex-1 p-3 rounded transition-colors group relative disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed hover:!bg-gray-100 dark:hover:!bg-gray-600"
   >
     <component :is="buttonConfig.icon" class="w-5 h-5 mx-auto" fill="currentColor"/>
     <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-black text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
@@ -47,7 +47,7 @@ const buttonConfigs = computed(() => ({
   not_found: {
     title: t('bossStatusButton.notFound'),
     icon: QuestionIcon,
-    baseClass: 'bg-gray-600 hover:bg-gray-700'
+    baseClass: 'bg-gray-400 dark:bg-gray-600 hover:bg-gray-500 dark:hover:bg-gray-700'
   }
 }))
 
