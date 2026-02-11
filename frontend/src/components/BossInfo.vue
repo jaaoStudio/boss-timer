@@ -55,15 +55,16 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '../stores/bossStore.js'
+import { useBossStore } from '@/stores/bossStore'
 import StatusBadge from './StatusBadge.vue'
 import CountdownTimer from './CountdownTimer.vue'
-import { useI18n } from 'vue-i18n';
+import { useI18n } from 'vue-i18n'
+import { format } from 'date-fns'
 
-const { t, locale } = useI18n();
+const { t, locale } = useI18n()
 const bossStore = useBossStore()
 const { bossTypes, bossRecords, selectedBossTypeId, selectedChannel } = storeToRefs(bossStore)
 
@@ -71,15 +72,11 @@ const selectedBoss = computed(() => {
   return bossTypes.value.find(b => b.id === selectedBossTypeId.value)
 })
 
-
-
 const selectedRecord = computed(() => {
   return bossRecords.value.find(r => r.boss_type_id === selectedBossTypeId.value && r.channel === selectedChannel.value)
 })
 
-import { format } from 'date-fns'
-
-const formatTime = (timeString) => {
+const formatTime = (timeString: string | null | undefined) => {
   if (!timeString) return t('bossInfo.notAvailable')
   return format(new Date(timeString), 'yyyy-MM-dd HH:mm:ss')
 }

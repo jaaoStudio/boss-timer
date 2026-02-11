@@ -17,27 +17,23 @@
           :record="record"
       />
     </div>
-    <div v-if="historyOnLoading" class="text-center mt-4">{{ t('recordHistory.loading') }}</div>
+    <!-- Loading state removed as it was unused -->
   </div>
 </template>
 
-<script setup>
-import {ref, onMounted, watch, computed} from 'vue'
-import {storeToRefs} from 'pinia'
-import {useBossStore} from '@/stores/bossStore.js'
-import {useRoomStore} from '@/stores/roomStore.js'
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useBossStore } from '@/stores/bossStore'
 import RecordItem from './RecordItem.vue'
-import { useI18n } from 'vue-i18n';
+import { useI18n } from 'vue-i18n'
 
-const { t, locale } = useI18n();
+const { t, locale } = useI18n()
 const bossStore = useBossStore()
-const roomStore = useRoomStore()
 
-const {bossTypes, bossRecords} = storeToRefs(bossStore)
-const {roomId} = storeToRefs(roomStore)
+const { bossTypes, bossRecords } = storeToRefs(bossStore)
 
-const historyOnLoading = ref(false)
-const selectedBossFilter = ref('')
+const selectedBossFilter = ref<number | ''>('')
 
 const filteredBossRecords = computed(() => {
   if (!selectedBossFilter.value) {
@@ -45,5 +41,4 @@ const filteredBossRecords = computed(() => {
   }
   return bossRecords.value.filter(record => record.boss_type_id === selectedBossFilter.value)
 })
-
 </script>

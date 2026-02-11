@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useWebSocketStore } from './websocketStore'
 
 export const useRoomStore = defineStore('room', {
   state: () => ({
@@ -26,6 +27,16 @@ export const useRoomStore = defineStore('room', {
     },
     setManualDisconnect(status) { // 新增設定手動斷開標誌的 action
       this.isManualDisconnect = status
+    },
+    leaveRoomAction() {
+      const websocketStore = useWebSocketStore()
+      if (this.roomId) {
+        websocketStore.sendMessage({
+          type: 'leave_room',
+          payload: { room_id: this.roomId },
+        })
+      }
+      this.clearRoomId()
     },
   },
 })

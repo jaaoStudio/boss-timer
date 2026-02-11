@@ -17,37 +17,51 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import StatusBadge from './StatusBadge.vue'
-import { useI18n } from 'vue-i18n';
+import { useI18n } from 'vue-i18n'
 
-const { t, locale } = useI18n();
+const { t, locale } = useI18n()
 
-const props = defineProps({
-  record: {
-    type: Object,
-    required: true,
-  },
-})
+interface Record {
+  status: string
+  boss_type: {
+    name_zh: string
+    name_en: string
+  }
+  channel: number
+  recorded_at: string
+  respawn_min_time?: string
+  respawn_max_time?: string
+  recorder?: {
+    display_name: string
+  }
+  recorder_info?: {
+    anonymous_name: string
+  }
+}
+
+const props = defineProps<{
+  record: Record
+}>()
 
 const recorderDisplayName = computed(() => {
   // 優先顯示已登入的使用者資訊 (recorder 是關聯的 User 物件)
   if (props.record.recorder && props.record.recorder.display_name) {
-    return props.record.recorder.display_name;
+    return props.record.recorder.display_name
   }
   // 其次顯示匿名的 recorder_info
   if (props.record.recorder_info && props.record.recorder_info.anonymous_name) {
-    return props.record.recorder_info.anonymous_name;
+    return props.record.recorder_info.anonymous_name
   }
   // 最後的備用選項
-  return t('recordItem.anonymous');
-});
+  return t('recordItem.anonymous')
+})
 
 
-const formatTime = (time) => new Date(time).toLocaleString('en-US')
-const formatRespawnTime = (time) => new Date(time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
+const formatTime = (time: string) => new Date(time).toLocaleString('en-US')
+const formatRespawnTime = (time: string) => new Date(time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })
 
 const formattedTime = computed(() => formatTime(props.record.recorded_at))
-
 </script>
