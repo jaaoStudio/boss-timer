@@ -1,4 +1,4 @@
-import {defineStore} from 'pinia';
+import { defineStore } from 'pinia';
 import apiService from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 
@@ -103,7 +103,7 @@ export const useUserStore = defineStore('user', {
       try {
         // 清理本地和後端的認證狀態
         this.clearAuth();
-        await apiService.logout(); 
+        await apiService.logout();
         this.notifyLogout();
 
         // 登出後，使用者恢復匿名身份，我們需要載入他的匿名名稱
@@ -117,7 +117,7 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async loginWithGoogle(credential: string) {
+    async loginWithGoogle(payload: string | { credential?: string; code?: string }) {
       const websocketStore = useWebSocketStore();
       try {
         if (this.isLoggedIn) {
@@ -126,14 +126,15 @@ export const useUserStore = defineStore('user', {
           this.notifyLogout();
         }
 
-        const response = await apiService.loginWithGoogle(credential);
+        const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
+        const response = await apiService.loginWithGoogle(requestPayload);
         this.user = response.user;
         this.isLoggedIn = true;
         localStorage.setItem('user_info', JSON.stringify(response.user));
-        
-        websocketStore.sendMessage({ 
-          type: 'authenticate', 
-          token: response.access_token 
+
+        websocketStore.sendMessage({
+          type: 'authenticate',
+          token: response.access_token
         });
 
         this.notifyLogin();

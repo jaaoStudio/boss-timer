@@ -66,9 +66,10 @@ const userStore = useUserStore()
 const { isLoggedIn } = storeToRefs(userStore)
 
 const handleLoginSuccess = async (response: any) => {
-  // console.log("Google sign-in success:", response);
+  console.log("Google sign-in success full response:", response);
   try {
-    await userStore.loginWithGoogle(response.credential)
+    const payload = response.code ? { code: response.code } : { credential: response.credential };
+    await userStore.loginWithGoogle(payload)
   } catch (error) {
     console.error("Backend login failed:", error)
   }

@@ -111,10 +111,20 @@ const switchLanguage = () => {
 
 // --- Auth Handlers ---
 const handleLoginSuccess = async (response) => {
+  console.log("Google sign-in success full response:", response);
+  
+  if (!response || (!response.credential && !response.code)) {
+     console.error("Missing credential or code in Google Login response!", response);
+     showMessage.error(t('roomSelection.errors.loginFailed'));
+     return;
+  }
+
   try {
-    await userStore.loginWithGoogle(response.credential);
+    const payload = response.code ? { code: response.code } : { credential: response.credential };
+    await userStore.loginWithGoogle(payload);
     showMessage.success(t('roomSelection.toasts.loginSuccess'));
   } catch (error) {
+    console.error("Login error:", error);
     showMessage.error(t('roomSelection.toasts.loginFailed'));
   }
 };
