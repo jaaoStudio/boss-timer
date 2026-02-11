@@ -5,7 +5,7 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <footer class="w-full p-4 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 text-center text-xs ">
+  <footer class="w-full p-4 text-gray-600 dark:text-gray-300 text-center text-xs ">
     <div class="space-y-2">
       <div class="flex justify-center space-x-4">
         <router-link :to="{ name: 'Credits' }" class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white underline cursor-pointer">{{ t('appFooter.credits') }}</router-link>
