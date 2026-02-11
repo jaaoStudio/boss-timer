@@ -25,12 +25,10 @@
         </div>
 
         <!-- Auth Section -->
-        <div v-if="!isLoggedIn" class="dark:p-[1px] dark:rounded-[4px] dark:border border-gray-600 flex items-center min-h-[40px]">
-          <GoogleLogin
-            v-if="showGoogleButton"
+        <div v-if="!isLoggedIn" class="flex items-center min-h-[40px]">
+          <GoogleLoginButton
             :callback="handleLoginSuccess"
             :error="handleLoginError"
-            :buttonConfig="googleButtonConfig"
           />
         </div>
         <div v-else class="flex items-center space-x-3">
@@ -51,7 +49,7 @@ import { useRoomStore } from '@/stores/roomStore'
 import { useUserStore } from '@/stores/userStore'
 import { UsersIcon } from '@heroicons/vue/24/outline'
 import RoomManager from '@/components/RoomManager.vue'
-import { GoogleLogin } from "vue3-google-login"
+import GoogleLoginButton from "@/components/GoogleLoginButton.vue"
 import { showMessage } from "@/composables/useElementPlus"
 import { useI18n } from "vue-i18n"
 import { computed, ref, watch, nextTick, onMounted } from 'vue'
@@ -59,25 +57,7 @@ import { isDark } from '@/composables/useTheme'
 
 const { t } = useI18n()
 
-// Initialize as false to prevent rendering before theme is ready (avoids white flash in prod)
-const showGoogleButton = ref(false)
 
-const googleButtonConfig = computed(() => ({
-  type: 'standard',
-  size: 'medium',
-  theme: isDark.value ? 'filled_black' : 'outline',
-}))
-
-watch(isDark, async () => {
-  // 1. Remove button to force re-render with new theme config
-  showGoogleButton.value = false
-
-  // 2. Wait for DOM update
-  await nextTick()
-
-  // 3. Add button back
-  showGoogleButton.value = true
-})
 
 const roomStore = useRoomStore()
 const { roomId, isConnected, userCount } = storeToRefs(roomStore)
@@ -106,11 +86,5 @@ const copyRoomId = () => {
   })
 }
 
-onMounted(() => {
-  // Delay showing the button slightly to ensure 'isDark' and hydration are settled
-  // This helps avoid the case where isDark is undefined/false initially in prod
-  nextTick(() => {
-     showGoogleButton.value = true
-  })
-})
+
 </script>

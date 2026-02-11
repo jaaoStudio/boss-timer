@@ -1,4 +1,7 @@
 {
+  "login": {
+    "google": "Sign in with Google"
+  },
   "roomSelection": {
     "title": "Artale BOSS Timer",
     "subtitle": "Real-time boss tracking for your party.",

@@ -28,6 +28,7 @@ declare module 'vue' {
     ElOption: typeof import('element-plus/es')['ElOption']
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
+    GoogleLoginButton: typeof import('./src/components/GoogleLoginButton.vue')['default']
     MaintenanceBanner: typeof import('./src/components/MaintenanceBanner.vue')['default']
     RecommendedChannels: typeof import('./src/components/RecommendedChannels.vue')['default']
     RecommendedSection: typeof import('./src/components/RecommendedSection.vue')['default']

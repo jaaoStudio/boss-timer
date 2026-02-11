@@ -1,4 +1,7 @@
 {
+  "login": {
+    "google": "使用 Google 帳戶登入"
+  },
   "roomSelection": {
     "title": "Artale BOSS 計時器",
     "subtitle": "為您的團隊提供即時的BOSS追蹤。",
