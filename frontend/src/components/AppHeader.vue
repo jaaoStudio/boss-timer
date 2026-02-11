@@ -24,11 +24,8 @@
           </div>
         </div>
 
-        <!-- Spacer -->
-<!--        <div class="w-px h-8 bg-gray-600 sm:hidden" v-if="roomId"></div>-->
-
         <!-- Auth Section -->
-        <div v-if="!isLoggedIn" class="dark:p-[1px] dark:rounded-[4px] dark:border border-gray-600 flex items-center">
+        <div v-if="!isLoggedIn" class="dark:p-[1px] dark:rounded-[4px] dark:border border-gray-600 flex items-center min-h-[40px]">
           <GoogleLogin
             v-if="showGoogleButton"
             :callback="handleLoginSuccess"
@@ -37,9 +34,8 @@
           />
         </div>
         <div v-else class="flex items-center space-x-3">
-          <img :src="userStore.user.avatar_url" alt="User Avatar" class="w-8 h-8 rounded-full" v-if="userStore.user && userStore.user.avatar_url"/>
-          <span class="text-gray-900 dark:text-white font-medium text-sm">{{ userStore.user.display_name }}</span>
-<!--          <button @click="handleLogout" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1.5 rounded-md text-sm font-medium">Logout</button>-->
+          <img :src="userStore.user?.avatar_url" alt="User Avatar" class="w-8 h-8 rounded-full" v-if="userStore.user && userStore.user.avatar_url"/>
+          <span class="text-gray-900 dark:text-white font-medium text-sm">{{ userStore.user?.display_name }}</span>
         </div>
 
         <!-- Room Manager -->
@@ -49,68 +45,72 @@
   </div>
 </template>
 
-<script setup>
-import { storeToRefs } from 'pinia';
-import { useRoomStore } from '@/stores/roomStore';
-import { useUserStore } from '@/stores/userStore';
-import { UsersIcon } from '@heroicons/vue/24/outline';
-import RoomManager from '@/components/RoomManager.vue';
-import {GoogleLogin} from "vue3-google-login";
-import {showMessage} from "@/composables/useElementPlus.js";
-import { useI18n } from "vue-i18n";
-import { computed, ref, watch, nextTick } from 'vue';
-import { isDark, toggleDark } from '@/composables/useTheme.js';
+<script setup lang="ts">
+import { storeToRefs } from 'pinia'
+import { useRoomStore } from '@/stores/roomStore'
+import { useUserStore } from '@/stores/userStore'
+import { UsersIcon } from '@heroicons/vue/24/outline'
+import RoomManager from '@/components/RoomManager.vue'
+import { GoogleLogin } from "vue3-google-login"
+import { showMessage } from "@/composables/useElementPlus"
+import { useI18n } from "vue-i18n"
+import { computed, ref, watch, nextTick, onMounted } from 'vue'
+import { isDark } from '@/composables/useTheme'
 
-const { t } = useI18n();
+const { t } = useI18n()
 
-const showGoogleButton = ref(true);
+// Initialize as false to prevent rendering before theme is ready (avoids white flash in prod)
+const showGoogleButton = ref(false)
 
 const googleButtonConfig = computed(() => ({
   type: 'standard',
   size: 'medium',
-  theme: isDark.value ? 'filled_blue' : 'outline',
-}));
+  theme: isDark.value ? 'filled_black' : 'outline',
+}))
 
 watch(isDark, async () => {
-  // 1. 先把按鈕移除 (銷毀 DOM)
-  showGoogleButton.value = false;
+  // 1. Remove button to force re-render with new theme config
+  showGoogleButton.value = false
 
-  // 2. 等待 Vue 完成 DOM 更新 (這時候按鈕是真的消失了)
-  await nextTick();
+  // 2. Wait for DOM update
+  await nextTick()
 
-  // 3. 再次把按鈕加回來 (這時候會讀取最新的 googleButtonConfig 並重新向 Google 請求 iframe)
-  showGoogleButton.value = true;
-});
+  // 3. Add button back
+  showGoogleButton.value = true
+})
 
-const roomStore = useRoomStore();
-const { roomId, isConnected, userCount } = storeToRefs(roomStore);
+const roomStore = useRoomStore()
+const { roomId, isConnected, userCount } = storeToRefs(roomStore)
 
-const userStore = useUserStore();
+const userStore = useUserStore()
 const { isLoggedIn } = storeToRefs(userStore)
 
-const handleLoginSuccess = async (response) => {
+const handleLoginSuccess = async (response: any) => {
   // console.log("Google sign-in success:", response);
   try {
-    await userStore.loginWithGoogle(response.credential);
+    await userStore.loginWithGoogle(response.credential)
   } catch (error) {
-    console.error("Backend login failed:", error);
-    // Optionally show an error message to the user
+    console.error("Backend login failed:", error)
   }
-};
+}
 
-const handleLoginError = (error) => {
-  console.error("Google sign-in error:", error);
+const handleLoginError = (error: any) => {
+  console.error("Google sign-in error:", error)
   showMessage.error(t('appHeader.loginFailed'))
-};
+}
 
 const copyRoomId = () => {
+  if (!roomId.value) return
   navigator.clipboard.writeText(roomId.value).then(() => {
-    showMessage.success(t('roomManager.copied'));
+    showMessage.success(t('roomManager.copied'))
   })
 }
 
-
-const handleLogout = () => {
-  userStore.logout();
-};
+onMounted(() => {
+  // Delay showing the button slightly to ensure 'isDark' and hydration are settled
+  // This helps avoid the case where isDark is undefined/false initially in prod
+  nextTick(() => {
+     showGoogleButton.value = true
+  })
+})
 </script>

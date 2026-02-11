@@ -12,13 +12,13 @@ export const useBossStore = defineStore('boss', {
   getters: {
     priorityChannels: (state) => {
       return state.bossRecords
-          .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'may_respawn')
-          .sort((a, b) => new Date(a.respawn_min_time) - new Date(b.respawn_min_time))
+        .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'may_respawn')
+        .sort((a, b) => new Date(a.respawn_min_time) - new Date(b.respawn_min_time))
     },
     avoidChannels: (state) => {
       return state.bossRecords
-          .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'respawning')
-          .sort((a, b) => new Date(a.respawn_max_time) - new Date(b.respawn_max_time))
+        .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'respawning')
+        .sort((a, b) => new Date(a.respawn_max_time) - new Date(b.respawn_max_time))
     }
   },
   actions: {
@@ -36,7 +36,7 @@ export const useBossStore = defineStore('boss', {
     },
     async updateBossRecord(record) {
       const index = this.bossRecords.findIndex(
-          r => ((r.channel === record.channel) && (r.boss_type_id === record.boss_type_id))
+        r => ((r.channel === record.channel) && (r.boss_type_id === record.boss_type_id))
       )
       if (index >= 0) {
         this.bossRecords.splice(index, 1, record);
@@ -79,14 +79,15 @@ export const useBossStore = defineStore('boss', {
     },
     updateBossStatusOnTimerEnd(record) {
       const index = this.bossRecords.findIndex(
-          r => r.channel === record.channel && r.boss_type_id === record.boss_type_id
-      );
+        (r) => r.channel === record.channel && r.boss_type_id === record.boss_type_id
+      )
 
       if (index !== -1) {
-        const currentRecord = { ...this.bossRecords[index] };
-        currentRecord.current_status = this.calculateCurrentStatus(currentRecord);
-        this.bossRecords.splice(index, 1, currentRecord);
+        const currentRecord = { ...this.bossRecords[index] }
+        // Fix: Use create new object to trigger reactivity if needed, and call calculateCurrentStatus with this
+        currentRecord.current_status = this.calculateCurrentStatus(currentRecord)
+        this.bossRecords.splice(index, 1, currentRecord)
       }
     },
-  }
+  },
 })

@@ -5,19 +5,10 @@
   </div>
 </template>
 
-<script setup>
-defineProps({
-  label: {
-    type: String,
-    required: true
-  },
-  value: {
-    type: String,
-    required: true
-  },
-  color: {
-    type: String,
-    default: 'text-white'
-  }
-})
+<script setup lang="ts">
+defineProps<{
+  label: string
+  value: string
+  color?: string
+}>()
 </script>

@@ -4,19 +4,20 @@
   </span>
 </template>
 
-<script setup>
-import { computed, defineEmits } from 'vue'
+<script setup lang="ts">
+import { computed } from 'vue'
 import { useTimer } from '../composables/useTimer'
 
-const props = defineProps({
-  targetTime: String,
-  prefix: { // 新增 prefix prop
-    type: String,
-    default: ''
-  }
+const props = withDefaults(defineProps<{
+  targetTime: string | null | undefined
+  prefix?: string
+}>(), {
+  prefix: ''
 })
 
-const emit = defineEmits(['timer-end'])
+const emit = defineEmits<{
+  (e: 'timer-end', targetTime: string | null | undefined): void
+}>()
 
 const onTimerEnd = () => {
   emit('timer-end', props.targetTime)

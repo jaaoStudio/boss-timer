@@ -111,7 +111,7 @@ const showGoogleButton = ref(true);
 const googleButtonConfig = computed(() => ({
   type: 'standard',
   size: 'medium',
-  theme: isDark.value ? 'filled_blue' : 'outline',
+  theme: isDark.value ? 'filled_black' : 'outline',
 }));
 
 

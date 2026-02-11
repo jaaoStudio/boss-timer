@@ -16,13 +16,13 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore.js'
+import { useBossStore } from '@/stores/bossStore'
 import RecommendedSection from './RecommendedSection.vue'
-import { useI18n } from 'vue-i18n';
+import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n();
+const { t } = useI18n()
 const bossStore = useBossStore()
 const { priorityChannels, avoidChannels } = storeToRefs(bossStore)
 </script>

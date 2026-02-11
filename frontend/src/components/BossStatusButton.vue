@@ -13,25 +13,23 @@
   </button>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import SkullIcon from "@icons/SkullIcon.vue"
-import SearchIcon from "@icons/SearchIcon.vue";
-import QuestionIcon from "@icons/questionIcon.vue";
-import { useI18n } from 'vue-i18n';
+import SearchIcon from "@icons/SearchIcon.vue"
+import QuestionIcon from "@icons/questionIcon.vue"
+import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n();
+const { t } = useI18n()
 
-const props = defineProps({
-  type: {
-    type: String,
-    required: true,
-    validator: (value) => ['alive', 'killed', 'not_found'].includes(value)
-  },
-  disabled: Boolean
-})
+const props = defineProps<{
+  type: 'alive' | 'killed' | 'not_found'
+  disabled?: boolean
+}>()
 
-defineEmits(['click'])
+defineEmits<{
+  (e: 'click'): void
+}>()
 
 const buttonConfigs = computed(() => ({
   alive: {

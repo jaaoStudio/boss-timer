@@ -4,17 +4,22 @@
   </span>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
-import { useI18n } from 'vue-i18n';
+import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n();
+const { t } = useI18n()
 
-const props = defineProps({
-  status: String
-})
+const props = defineProps<{
+  status?: string
+}>()
 
-const statusConfig = computed(() => ({
+interface StatusConfig {
+  text: string
+  class: string
+}
+
+const statusConfig = computed<Record<string, StatusConfig>>(() => ({
   alive: { text: t('status.alive'), class: 'bg-green-700 text-white' },
   killed: { text: t('status.killed'), class: 'bg-red-700 text-white' },
   not_found: { text: t('status.notFound'), class: 'bg-gray-700 text-white' },
@@ -23,11 +28,11 @@ const statusConfig = computed(() => ({
   unknown: { text: t('status.unknown'), class: 'bg-gray-700 text-white' }
 }))
 
-const statusText = computed(() => {
-  return statusConfig.value[props.status]?.text || t('status.unknown')
+const currentConfig = computed(() => {
+  const key = props.status || 'unknown'
+  return statusConfig.value[key] || statusConfig.value.unknown
 })
 
-const badgeClass = computed(() => {
-  return statusConfig.value[props.status]?.class || 'bg-gray-700 text-white'
-})
+const statusText = computed(() => currentConfig.value.text)
+const badgeClass = computed(() => currentConfig.value.class)
 </script>

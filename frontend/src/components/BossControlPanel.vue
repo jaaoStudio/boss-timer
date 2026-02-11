@@ -1,6 +1,6 @@
 <template>
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4"></h2>
+    <!-- Removed empty h2 -->
 
     <el-form
       :model="form"
@@ -15,16 +15,15 @@
           :placeholder="t('bossControlPanel.channel')"
           @input="onChannelInput"
           clearable
-          :maxlength="5"
-        >
-          </el-input>
+          maxlength="5"
+        />
       </el-form-item>
 
       <el-form-item :label="t('bossControlPanel.boss')">
         <el-select
           v-model="form.boss_type_id"
           :placeholder="t('bossControlPanel.selectBoss')"
-          @change="bossStore.setSelectedBossTypeId(form.boss_type_id)"
+          @change="handleBossChange"
           filterable
           clearable
           class="w-full"
@@ -48,7 +47,7 @@
             :class="{
               'opacity-60': loading
             }"
-            @click="() => onSelectStatus(status.type)"
+            @click="onSelectStatus(status.type)"
           />
         </div>
       </el-form-item>
@@ -57,59 +56,70 @@
   </div>
 </template>
 
-<script setup>
-import {ref, computed, watch, onMounted} from 'vue'
+<script setup lang="ts">
+import { ref, computed, watch, onMounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useRoomStore } from '@/stores/roomStore.js'
-import { useBossStore } from '@/stores/bossStore.js'
-import BossStatusButton from "@/components/BossStatusButton.vue";
-import {showMessage} from "@/composables/useElementPlus.js";
-import {useUserStore} from "@/stores/userStore.js";
-import { useWebSocketStore} from "@/stores/websocketStore.js";
-import { useI18n } from 'vue-i18n';
+import { useRoomStore } from '@/stores/roomStore'
+import { useBossStore } from '@/stores/bossStore'
+import BossStatusButton from "@/components/BossStatusButton.vue"
+import { showMessage } from "@/composables/useElementPlus"
+import { useUserStore } from '@/stores/userStore'
+import { useWebSocketStore } from '@/stores/websocketStore'
+import { useI18n } from 'vue-i18n'
 
-const { t, locale } = useI18n();
+const { t, locale } = useI18n()
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
-const userStore = useUserStore();
-const websocketStore = useWebSocketStore();
+const userStore = useUserStore()
+const websocketStore = useWebSocketStore()
 
 const { roomId } = storeToRefs(roomStore)
 const { bossTypes, selectedChannel, selectedBossTypeId } = storeToRefs(bossStore)
-const { isLoggedIn, anonymousId, anonymousName} = storeToRefs(userStore)
+const { isLoggedIn, anonymousId, anonymousName } = storeToRefs(userStore)
 
 const statuses = [
   { type: 'alive' },
   { type: 'killed' },
   { type: 'not_found' }
-]
+] as const
 
-const form = ref({
+interface FormState {
+  channel: string | number
+  boss_type_id: number | null
+  status: string
+}
+
+const form = ref<FormState>({
   channel: selectedChannel.value || '',
   boss_type_id: null,
   status: ''
 })
 
-const onSelectStatus = async (statusType) => {
-  if (loading.value) return;
-  form.value.status = statusType;
-  await recordBoss();
+const loading = ref(false)
+
+const handleBossChange = (val: number | null) => {
+  bossStore.setSelectedBossTypeId(val)
 }
 
+const onSelectStatus = async (statusType: string) => {
+  if (loading.value) return
+  form.value.status = statusType
+  await recordBoss()
+}
+
+// Sync from store to local form
 watch(selectedChannel, (newVal) => {
-  form.value.channel = newVal
+  form.value.channel = newVal || ''
 })
 
 watch(selectedBossTypeId, (newVal) => {
   form.value.boss_type_id = newVal
 })
 
-const loading = ref(false)
-
 const canSubmit = computed(() => {
   return roomId.value &&
-         form.value.channel &&
+         form.value.channel !== '' &&
          form.value.boss_type_id !== null &&
          form.value.status
 })
@@ -119,9 +129,9 @@ const recordBoss = async () => {
 
   loading.value = true
   try {
-    const payload = {
+    const payload: any = { // Using any for payload temporarily, ideally define interface
       room_id: roomId.value,
-      channel: parseInt(form.value.channel),
+      channel: typeof form.value.channel === 'string' ? parseInt(form.value.channel, 10) : form.value.channel,
       boss_type_id: form.value.boss_type_id,
       status: form.value.status,
       recorder_info: null
@@ -131,40 +141,34 @@ const recordBoss = async () => {
       payload.recorder_info = {
         anonymous_id: anonymousId.value,
         anonymous_name: anonymousName.value,
-      };
+      }
     }
 
     websocketStore.sendMessage({
       type: 'record_boss',
       payload: payload,
-    });
+    })
 
-    // Reset form field (channel) only if desired, or keep logic as is
     form.value.channel = ''
 
   } catch (error) {
-    console.error('Failed to send record boss message via WebSocket:', error);
-    showMessage.error(t('bossControlPanel.sendRecordFailed'));
+    console.error('Failed to send record boss message via WebSocket:', error)
+    showMessage.error(t('bossControlPanel.sendRecordFailed'))
   } finally {
     loading.value = false
   }
 }
 
-// 修改: Element Plus 的 @input 傳遞的是 value 字串，不是 event 物件
-const onChannelInput = (value) => {
-    // 確保 value 是字串再進行 replace，避免 null/undefined 報錯
-    if (!value) {
-        form.value.channel = '';
-        return;
-    }
-    const sanitized = value.toString().replace(/\D/g, '');
-    form.value.channel = sanitized ? parseInt(sanitized, 10) : '';
+const onChannelInput = (value: string) => {
+  if (!value) {
+    form.value.channel = ''
+    return
+  }
+  const sanitized = value.toString().replace(/\D/g, '')
+  form.value.channel = sanitized
 }
 
 onMounted(() => {
   form.value.boss_type_id = selectedBossTypeId.value
 })
 </script>
-
-<style scoped>
-</style>

@@ -11,20 +11,24 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore.js'
+import { useBossStore } from '@/stores/bossStore'
 import ChannelCard from './ChannelCard.vue'
-import { useI18n } from 'vue-i18n';
+import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n();
+const { t } = useI18n()
 const bossStore = useBossStore()
 const { selectedBossTypeId } = storeToRefs(bossStore)
-const recordedChannels = computed(() => {
-  if (bossStore.bossRecords.length === 0)  return []
-  const channels = new Set(bossStore.bossRecords.filter(r => r.boss_type_id === selectedBossTypeId.value).map(r => r.channel))
-  // console.log(Array.from(channels).sort((a, b) => a - b))
+
+const recordedChannels = computed<number[]>(() => {
+  if (bossStore.bossRecords.length === 0) return []
+  const channels = new Set(
+    bossStore.bossRecords
+      .filter((r) => r.boss_type_id === selectedBossTypeId.value)
+      .map((r) => r.channel)
+  )
   return Array.from(channels).sort((a, b) => a - b)
 })
 </script>

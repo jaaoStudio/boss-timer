@@ -5,36 +5,37 @@
   </div>
 </template>
 
-<script setup>
-import {computed} from 'vue'
-import {storeToRefs} from 'pinia'
-import {useBossStore} from '@/stores/bossStore.js'
-import { useI18n } from 'vue-i18n';
+<script setup lang="ts">
+import { computed } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useBossStore } from '@/stores/bossStore'
+import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n();
+const { t } = useI18n()
 
-const props = defineProps({
-  channelNumber: {
-    type: Number,
-    required: true,
-  },
-})
+const props = defineProps<{
+  channelNumber: number
+}>()
 
 const bossStore = useBossStore()
 const { bossRecords, selectedBossTypeId } = storeToRefs(bossStore)
 
 const record = computed(() => {
-  const foundRecord = bossRecords.value.find(
-    r => r.channel === props.channelNumber && r.boss_type_id === selectedBossTypeId.value
+  return bossRecords.value.find(
+    (r) => r.channel === props.channelNumber && r.boss_type_id === selectedBossTypeId.value
   )
-  return foundRecord
 })
 
 const status = computed(() => {
   return record.value?.current_status || 'unknown'
 })
 
-const statusMapping = computed(() => ({
+interface StatusConfig {
+  text: string
+  bg: string
+}
+
+const statusMapping = computed<Record<string, StatusConfig>>(() => ({
   alive: { text: t('status.alive'), bg: 'bg-green-700 text-white' },
   killed: { text: t('status.killed'), bg: 'bg-red-700 text-white' },
   may_respawn: { text: t('status.mayRespawn'), bg: 'bg-yellow-700 text-white' },
@@ -43,11 +44,14 @@ const statusMapping = computed(() => ({
   unknown: { text: t('status.unknown'), bg: 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300' },
 }))
 
-const statusBackgroundClass = computed(() => statusMapping.value[status.value]?.bg || statusMapping.value.unknown.bg)
-const statusText = computed(() => statusMapping.value[status.value]?.text || statusMapping.value.unknown.text)
+const currentStatusConfig = computed(() => {
+  return statusMapping.value[status.value] || statusMapping.value.unknown
+})
+
+const statusBackgroundClass = computed(() => currentStatusConfig.value.bg)
+const statusText = computed(() => currentStatusConfig.value.text)
 
 const selectChannel = () => {
   bossStore.setSelectedChannel(props.channelNumber)
 }
-
 </script>
