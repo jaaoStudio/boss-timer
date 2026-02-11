@@ -25,6 +25,7 @@ class Settings(BaseSettings):
 
     # Google Auth
     google_client_id: str = os.getenv("GOOGLE_CLIENT_ID")
+    google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET")
 
     # 應用配置
     version: str = os.getenv("VERSION", "1.0.0")

@@ -14,8 +14,37 @@ from app.config import settings
 # Google Auth
 from google.oauth2 import id_token
 from google.auth.transport import requests
+import requests as python_requests
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+
+def exchange_google_code(code: str) -> Optional[dict]:
+    """
+    將 Google Authorization Code 交換為 ID Token，並驗證返回 payload。
+    """
+    token_url = "https://oauth2.googleapis.com/token"
+    data = {
+        "code": code,
+        "client_id": settings.google_client_id,
+        "client_secret": settings.google_client_secret,
+        "redirect_uri": "postmessage",  # "postmessage" is required for the code flow from frontend
+        "grant_type": "authorization_code",
+    }
+    
+    try:
+        response = python_requests.post(token_url, data=data)
+        response.raise_for_status()
+        tokens = response.json()
+        id_token_str = tokens.get("id_token")
+        
+        if not id_token_str:
+            return None
+            
+        return verify_google_token(id_token_str)
+    except Exception as e:
+        print(f"Failed to exchange code: {e}")
+        return None
 
 
 def verify_google_token(token: str) -> Optional[dict]:

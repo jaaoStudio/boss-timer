@@ -4,7 +4,8 @@ from datetime import datetime
 
 
 class GoogleLoginRequest(BaseModel):
-    credential: str
+    credential: Optional[str] = None
+    code: Optional[str] = None
 
 
 class TokenResponse(BaseModel):

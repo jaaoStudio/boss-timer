@@ -22,11 +22,16 @@ async def login_with_google(
     """
     使用 Google Credential 登入或註冊使用者。
     """
-    payload = auth_service.verify_google_token(request.credential)
+    payload = None
+    if request.code:
+        payload = auth_service.exchange_google_code(request.code)
+    elif request.credential:
+        payload = auth_service.verify_google_token(request.credential)
+    
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid Google credential",
+            detail="Invalid Google credential or code",
         )
 
     google_id = payload.get("sub")

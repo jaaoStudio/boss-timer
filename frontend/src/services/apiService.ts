@@ -19,8 +19,8 @@ class ApiService {
   }
 
   // --- Auth ---
-  async loginWithGoogle(credential: string) {
-    const response = await this.client.post('/auth/google', { credential });
+  async loginWithGoogle(payload: { credential?: string; code?: string }) {
+    const response = await this.client.post('/auth/google', payload);
     return response.data;
   }
 
@@ -40,7 +40,7 @@ class ApiService {
     return response.data;
   }
 
-  async refresh_token(){
+  async refresh_token() {
     const response = await this.client.post('auth/refresh');
     return response.data;
   }
