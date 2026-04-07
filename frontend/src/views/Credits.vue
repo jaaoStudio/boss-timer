@@ -1,27 +1,27 @@
 <template>
-  <div class="bg-gray-900 text-gray-200 p-4 sm:p-6 md:p-8">
+  <div class="text-gray-800 dark:text-gray-200 p-4 sm:p-6 md:p-8">
     <div class="max-w-4xl mx-auto">
-      <h1 class="text-4xl font-bold text-white mb-6 border-b border-gray-700 pb-4">
+      <h1 class="text-4xl font-bold text-gray-900 dark:text-white mb-6 border-b border-gray-300 dark:border-gray-700 pb-4">
         {{ t('credits.title') }}
       </h1>
 
       <div class="space-y-8">
         <!-- Icons section -->
         <div v-if="icons.length">
-          <h2 class="text-2xl font-semibold text-teal-400 mb-4">{{ t('credits.iconsTitle') }}</h2>
-          <p class="text-gray-400 mb-4">
+          <h2 class="text-2xl font-semibold text-teal-600 dark:text-teal-400 mb-4">{{ t('credits.iconsTitle') }}</h2>
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
             {{ t('credits.iconsDescription') }}
           </p>
-          <ul class="list-disc list-inside space-y-3 text-gray-300">
+          <ul class="list-disc list-inside space-y-3 text-gray-700 dark:text-gray-300">
             <li v-for="icon in icons" :key="icon.name">
               "{{ icon.name }}" {{ t('credits.iconMadeBy') }}
-              <a :href="icon.authorUrl" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">
+              <a :href="icon.authorUrl" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline">
                 {{ icon.author }}
               </a>
-              <span v-if="icon.note" class="text-gray-400"> ({{ icon.note }})</span>
+              <span v-if="icon.note" class="text-gray-500 dark:text-gray-400"> ({{ icon.note }})</span>
               <span v-else>
                 {{ t('credits.from') }}
-                <a href="https://www.flaticon.com" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300">
+                <a href="https://www.flaticon.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">
                   www.flaticon.com
                 </a>
               </span>
@@ -31,21 +31,21 @@
 
         <!-- Technology section -->
         <div v-if="technologies.length">
-          <h2 class="text-2xl font-semibold text-teal-400 mb-4">{{ t('credits.technologyTitle') }}</h2>
-          <p class="text-gray-400 mb-4">
+          <h2 class="text-2xl font-semibold text-teal-600 dark:text-teal-400 mb-4">{{ t('credits.technologyTitle') }}</h2>
+          <p class="text-gray-600 dark:text-gray-400 mb-4">
             {{ t('credits.technologyDescription') }}
           </p>
-          <ul class="list-disc list-inside space-y-3 text-gray-300">
+          <ul class="list-disc list-inside space-y-3 text-gray-700 dark:text-gray-300">
             <li v-for="tech in technologies" :key="tech">{{ tech.key ? t(tech.key) : tech.name }}</li>
           </ul>
         </div>
 
         <!-- Data Sources section -->
         <div v-if="resources.length">
-          <h2 class="text-2xl font-semibold text-teal-400 mb-4">{{ t('credits.dataSourcesTitle') }}</h2>
-          <ul class="list-disc list-inside space-y-3 text-gray-300">
+          <h2 class="text-2xl font-semibold text-teal-600 dark:text-teal-400 mb-4">{{ t('credits.dataSourcesTitle') }}</h2>
+          <ul class="list-disc list-inside space-y-3 text-gray-700 dark:text-gray-300">
             <li v-for="resource in resources" :key="resource.name">
-              <a :href="resource.url" target="_blank" rel="noopener noreferrer" class="text-blue-400 hover:text-blue-300 underline">
+              <a :href="resource.url" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline">
                 {{ resource.name }}
               </a>
             </li>
@@ -54,8 +54,8 @@
 
       </div>
 
-      <div class="mt-12 text-center text-gray-500">
-        <router-link to="/" class="hover:text-gray-300 underline">{{ t('credits.backToHome') }}</router-link>
+      <div class="mt-12 text-center text-gray-500 dark:text-gray-500">
+        <router-link to="/" class="hover:text-gray-700 dark:hover:text-gray-300 underline">{{ t('credits.backToHome') }}</router-link>
       </div>
     </div>
   </div>
@@ -108,4 +108,3 @@ onMounted(() => {
 <style scoped>
 /* Tailwind utilities are already used inline */
 </style>
-

@@ -3,7 +3,7 @@ import { createPinia } from "pinia";
 import router from "./router";
 import './style.css';
 import { createGtm } from '@gtm-support/vue-gtm';
-import ApiService from '@/services/apiService.ts';
+import clarity from '@microsoft/clarity';
 import 'element-plus/theme-chalk/dark/css-vars.css'
 import vue3GoogleLogin from 'vue3-google-login'
 import App from './App.vue'
@@ -29,4 +29,11 @@ app.use(createGtm({
   vueRouter: router,
   trackOnNextTick: false,
 }))
+
+// Microsoft Clarity
+const clarityId = import.meta.env.VITE_CLARITY_ID;
+if (clarityId) {
+  clarity.init(clarityId);
+}
+
 app.mount('#app')
