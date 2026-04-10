@@ -5,11 +5,7 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.dependencies import limiter, verify_user_session
 from app.services.room_service import create_room as room_service_create_room, get_room_by_id
-from app.services.boss_service import BossService
 from app.schemas.room import RoomResponse, RoomExists
-from app.database.models import BossRecord, BossType
-from app.utils.jwt_helper import get_current_user_id, get_optional_current_user_id
-from typing import Optional
 import logging
 
 router = APIRouter(prefix="/room", tags=["rooms"])
@@ -58,29 +54,3 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
     except Exception as e:
         logging.error(f"Check room exists error: {e}")
         raise HTTPException(status_code=500, detail="Failed to check room existence")
-
-
-@router.get("/{room_id}/history")
-async def get_room_history(
-        room_id: str,
-        boss_type_id: Optional[int] = None,
-        limit: int = 50,
-        db: Session = Depends(get_db)
-):
-    try:
-        query = db.query(BossRecord, BossType).join(BossType).filter(BossRecord.room_id == room_id)
-
-        if boss_type_id:
-            query = query.filter(BossRecord.boss_type_id == boss_type_id)
-
-        results = query.order_by(BossRecord.recorded_at.desc()).limit(limit).all()
-
-        records = []
-        for boss_record, boss_type in results:
-            records.append(BossService.serialize_boss_record(boss_record, boss_type))
-
-        return records
-
-    except Exception as e:
-        logging.error(f"Get history error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get history")

@@ -1,40 +1,14 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Request, Response
-from sqlalchemy.orm import sessionmaker, Session, relationship, joinedload
+from fastapi import HTTPException
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta, timezone
 import logging
 from typing import Optional
-from app.database.models import Room, RoomUser, BossRecord, BossType
-from app.schemas.boss import BossRecordResponse, BossTypeResponse, BossRecordCreate
-
-from app.dependencies import get_current_user_from_ws, ConnectionManager, get_connection_manager
+from app.database.models import Room, BossRecord, BossType
+from app.schemas.boss import BossRecordResponse, BossRecordCreate
+from app.websocket.manager import ConnectionManager
 
 
 class BossService:
-    @staticmethod
-    def serialize_boss_record(boss_record: BossRecord, boss_type: BossType) -> dict:
-        record_dict = boss_record.__dict__.copy()
-        record_dict.update({
-            "min_respawn_minutes": boss_type.min_respawn_minutes,
-            "max_respawn_minutes": boss_type.max_respawn_minutes,
-            "current_status": BossService.get_current_status(boss_record, boss_type),
-            "recorded_at": boss_record.recorded_at.isoformat(),
-            "respawn_min_time": boss_record.respawn_min_time.isoformat() if boss_record.respawn_min_time else None,
-            "respawn_max_time": boss_record.respawn_max_time.isoformat() if boss_record.respawn_max_time else None,
-        })
-        return record_dict
-
-    @staticmethod
-    def get_current_status(boss_record: BossRecord, boss_type: BossType) -> str:
-        now = datetime.now(timezone.utc)
-
-        if boss_record.status == "killed":
-            if boss_record.respawn_max_time and now >= boss_record.respawn_max_time:
-                return "alive"  # Or some other status indicating it should have respawned
-            if boss_record.respawn_min_time and now >= boss_record.respawn_min_time:
-                return "may_respawn"
-            return "respawning"
-
-        return boss_record.status
 
     @staticmethod
     async def _validate_room_exists(db: Session, room_id: str) -> Room:
@@ -93,13 +67,14 @@ class BossService:
         if user_id:
             recorder_id_to_save = int(user_id)
         else:
-            recorder_info_to_save = record.recorder_info
+            recorder_info_to_save = record.recorder_info.model_dump() if record.recorder_info else None
+
         """創建 BOSS 記錄"""
         boss_record = BossRecord(
             room_id=record.room_id,
             channel=record.channel,
             boss_type_id=record.boss_type_id,
-            status=record.status,
+            status=record.status.value,
             recorded_at=respawn_times["base_time"],
             respawn_min_time=respawn_times["respawn_min_time"],
             respawn_max_time=respawn_times["respawn_max_time"],
@@ -112,40 +87,6 @@ class BossService:
         db.refresh(boss_record)
 
         return boss_record
-
-    @staticmethod
-    async def _broadcast_boss_update(db: Session,
-                                     room_id: str,
-                                     boss_record_id: int):
-        """
-        廣播單一 BOSS 的更新。
-        會重新查詢資料庫以確保包含完整的關聯資料 (如 recorder)。
-        """
-
-        # 1. 根據 ID 重新查詢，並使用 joinedload 預先載入 recorder 和 boss_type 關聯
-        record_with_details = db.query(BossRecord).options(
-            joinedload(BossRecord.recorder),
-            joinedload(BossRecord.boss_type)  # 預先載入 boss_type
-        ).filter(BossRecord.id == boss_record_id).first()
-
-        if not record_with_details:
-            logging.error(f"Could not find boss_record with id {boss_record_id} to broadcast update.")
-            return
-
-        # 2. 使用 Pydantic 模型進行序列化
-        # model_validate 會自動處理 recorder, recorder_info 和 boss_type
-        response_data = BossRecordResponse.model_validate(record_with_details)
-
-        # 3. 廣播序列化後的 JSON 資料
-        await get_connection_manager().broadcast_to_room(
-            room_id=room_id,
-            message={
-                "type": "boss_update",
-                "data": response_data.model_dump(mode='json')
-            }
-        )
-
-        logging.info(f"Broadcasted boss_update for room {room_id}: {response_data.model_dump_json()}")
 
     @staticmethod
     async def _get_last_killed_time(db: Session, record: BossRecordCreate) -> Optional[datetime]:
@@ -164,14 +105,11 @@ class BossService:
     async def record_boss_from_websocket(db: Session, record: BossRecordCreate, user_id: Optional[str], manager: ConnectionManager):
         """Handles boss recording initiated from a WebSocket message."""
         try:
-            # Validation and calculation logic is reused from the original service
             await BossService._validate_room_exists(db, record.room_id)
             boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
             respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
             boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)
 
-            # Instead of calling the old broadcast method, we get the full record data
-            # and then use the manager passed from the websocket endpoint to broadcast.
             record_with_recorder = db.query(BossRecord).options(
                 joinedload(BossRecord.recorder),
                 joinedload(BossRecord.boss_type)
@@ -193,10 +131,7 @@ class BossService:
             logging.info(f"Broadcasted boss_update from websocket for room {record.room_id}")
 
         except HTTPException as e:
-            # Re-raise HTTP exceptions to be potentially caught and sent to the client
             raise e
         except Exception as e:
             logging.error(f"Error in record_boss_from_websocket: {e}")
-            # In a websocket context, we might not be able to raise HTTPException,
-            # so we just log the error.
             raise e

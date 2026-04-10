@@ -53,18 +53,6 @@ async def get_maintenance_info():
         return default_info
 
 
-@router.put("/maintenance-info")
-async def update_maintenance_info(maintenance_info: MaintenanceInfo):
-    """
-    更新系統維護公告資訊。
-    將資訊寫入到 maintenance.json 檔案。
-    """
-    with open(MAINTENANCE_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(maintenance_info.model_dump_json(), f, ensure_ascii=False, indent=4)
-
-    return {"message": "Maintenance info updated successfully."}
-
-
 @router.post("/maintenance-config", response_model=MaintenanceConfigUpdate)
 async def update_maintenance_config(
     config: MaintenanceConfigUpdate,

@@ -55,9 +55,6 @@ class ApiService {
     return this.client.get('/boss/boss-types').then(res => res.data);
   }
 
-  recordBoss(data: any) { // Changed type to any to be more flexible
-    return this.client.post('/boss/record-boss', data).then(res => res.data);
-  }
 
   createRoom(roomId: string) {
     return this.client.post('/room/', { room_id: roomId }).then(res => res.data);
