@@ -15,6 +15,8 @@
           v-for="record in filteredBossRecords"
           :key="record.id"
           :record="record"
+          @click="bossStore.setSelectedBossTypeId(record.boss_type_id)"
+          class="cursor-pointer"
       />
     </div>
     <!-- Loading state removed as it was unused -->
