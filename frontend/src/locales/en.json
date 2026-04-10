@@ -40,7 +40,8 @@
     "recordHistory": "Record History",
     "leaveRoom": "Leave Room",
     "leavingRoom": "Leaving room...",
-    "copied": "Copied!"
+    "copied": "Copied!",
+    "settings": "Settings"
   },
   "appHeader": {
     "title": "Artale BOSS Timer",
@@ -114,6 +115,38 @@
     "respawning": "Respawning",
     "mayRespawn": "May Respawn",
     "unknown": "Unknown"
+  },
+  "recentRooms": {
+    "title": "Recent Rooms",
+    "clearAll": "Clear All",
+    "joining": "Joining...",
+    "roomExpired": "This room has expired and has been removed."
+  },
+  "settings": {
+    "title": "Settings",
+    "notificationSection": "Notifications",
+    "enableNotification": "Enable browser notifications",
+    "permissionDenied": "Notification permission denied. Please enable it in browser settings.",
+    "alertTiming": "Alert Timing",
+    "alertOnMinRespawn": "When boss may respawn (earliest)",
+    "alertOnMaxRespawn": "When boss has definitely respawned",
+    "soundSection": "Sound Alerts",
+    "enableSound": "Enable sound alerts",
+    "volume": "Vol.",
+    "soundType": "Sound",
+    "soundDefault": "Default",
+    "soundGentle": "Gentle",
+    "soundUrgent": "Urgent",
+    "soundCustom": "Custom",
+    "preview": "Preview",
+    "uploadFile": "Upload Sound",
+    "changeFile": "Change Sound",
+    "fileTooLarge": "File size must be under 5MB",
+    "uploadSuccess": "Sound uploaded successfully!"
+  },
+  "notification": {
+    "mayRespawn": "🐉 Boss may have respawned!",
+    "definitelyRespawned": "⚔️ Boss has definitely respawned!"
   },
   "credits": {
     "title": "Attributions & Credits",

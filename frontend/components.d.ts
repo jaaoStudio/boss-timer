@@ -18,6 +18,9 @@ declare module 'vue' {
     ChannelOverview: typeof import('./src/components/ChannelOverview.vue')['default']
     CountdownTimer: typeof import('./src/components/CountdownTimer.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
+    ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
+    ElDialog: typeof import('element-plus/es')['ElDialog']
+    ElDivider: typeof import('element-plus/es')['ElDivider']
     ElDropdown: typeof import('element-plus/es')['ElDropdown']
     ElDropdownItem: typeof import('element-plus/es')['ElDropdownItem']
     ElDropdownMenu: typeof import('element-plus/es')['ElDropdownMenu']
@@ -27,6 +30,7 @@ declare module 'vue' {
     ElInput: typeof import('element-plus/es')['ElInput']
     ElOption: typeof import('element-plus/es')['ElOption']
     ElSelect: typeof import('element-plus/es')['ElSelect']
+    ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
     GoogleLoginButton: typeof import('./src/components/GoogleLoginButton.vue')['default']
     MaintenanceBanner: typeof import('./src/components/MaintenanceBanner.vue')['default']
@@ -37,6 +41,7 @@ declare module 'vue' {
     RoomManager: typeof import('./src/components/RoomManager.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SettingsModal: typeof import('./src/components/SettingsModal.vue')['default']
     StatusBadge: typeof import('./src/components/StatusBadge.vue')['default']
   }
 }

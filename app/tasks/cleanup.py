@@ -12,7 +12,7 @@ async def cleanup_inactive_rooms():
 
             db = SessionLocal()
             try:
-                cutoff_time = datetime.now(timezone.utc) - timedelta(hours=24)
+                cutoff_time = datetime.now(timezone.utc) - timedelta(days=7)
                 inactive_rooms = db.query(Room).filter(Room.last_active < cutoff_time, Room.is_active == True).all()
                 for room in inactive_rooms:
                     room.is_active = False

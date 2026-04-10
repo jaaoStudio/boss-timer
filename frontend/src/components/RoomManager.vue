@@ -37,6 +37,11 @@
           </div>
         </el-dropdown-item>
 
+        <el-dropdown-item command="settings" class="hover:!bg-gray-100 dark:hover:!bg-gray-700 dark:!text-gray-200">
+          <el-icon><setting /></el-icon>
+          {{ t('roomManager.settings') }}
+        </el-dropdown-item>
+
         <el-dropdown-item divided command="leave" class="!text-red-500 hover:!bg-red-50 dark:hover:!bg-red-900/20">
           <el-icon><switch-button /></el-icon>
           {{ t('roomManager.leaveRoom') }}
@@ -45,10 +50,13 @@
       </el-dropdown-menu>
     </template>
   </el-dropdown>
+
+  <SettingsModal v-model="showSettings" />
 </template>
 
 <script setup lang="ts">
 import { ref } from 'vue'
+import SettingsModal from '@/components/SettingsModal.vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore.js'
@@ -57,7 +65,7 @@ import { useUserStore } from '@/stores/userStore.js'
 import { useI18n } from 'vue-i18n'
 import { ElLoading } from 'element-plus'
 import { showMessage } from "@/composables/useElementPlus.js"
-import { ArrowDown, CopyDocument, Moon, Sunny, Switch, SwitchButton } from '@element-plus/icons-vue'
+import { ArrowDown, CopyDocument, Moon, Sunny, Switch, SwitchButton, Setting } from '@element-plus/icons-vue'
 
 const { t, locale } = useI18n()
 const router = useRouter()
@@ -67,12 +75,14 @@ const { roomId } = storeToRefs(roomStore)
 const { user, isLoggedIn } = storeToRefs(userStore)
 
 const showRecordHistory = ref(user.value?.preferences?.showRecordHistory ?? true)
+const showSettings = ref(false)
 
 const handleCommand = (command: string) => {
   switch (command) {
     case 'copy': copyRoomId(); break;
     case 'language': switchLanguage(); break;
     case 'theme': toggleDark(); break;
+    case 'settings': showSettings.value = true; break;
     case 'leave': leaveRoom(); break;
   }
 }

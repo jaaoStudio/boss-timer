@@ -40,7 +40,8 @@
     "recordHistory": "擊殺紀錄",
     "leaveRoom": "離開房間",
     "leavingRoom": "正在離開房間...",
-    "copied": "已複製！"
+    "copied": "已複製！",
+    "settings": "設定"
   },
   "appHeader": {
     "title": "Artale BOSS 計時器",
@@ -114,6 +115,38 @@
     "respawning": "重生中",
     "mayRespawn": "可能重生",
     "unknown": "未知"
+  },
+  "recentRooms": {
+    "title": "最近的房間",
+    "clearAll": "清除全部",
+    "joining": "加入中...",
+    "roomExpired": "此房間已過期，已從列表中移除。"
+  },
+  "settings": {
+    "title": "設定",
+    "notificationSection": "通知提醒",
+    "enableNotification": "啟用瀏覽器通知",
+    "permissionDenied": "您已拒絕通知權限，請在瀏覽器設定中開啟。",
+    "alertTiming": "提醒時機",
+    "alertOnMinRespawn": "Boss 最早可能重生時",
+    "alertOnMaxRespawn": "Boss 確定已重生時",
+    "soundSection": "音效提醒",
+    "enableSound": "啟用音效提醒",
+    "volume": "音量",
+    "soundType": "音效",
+    "soundDefault": "預設",
+    "soundGentle": "柔和",
+    "soundUrgent": "緊急",
+    "soundCustom": "自訂音效",
+    "preview": "試聽",
+    "uploadFile": "上傳音效",
+    "changeFile": "更換音效",
+    "fileTooLarge": "檔案大小不能超過 5MB",
+    "uploadSuccess": "音效上傳成功！"
+  },
+  "notification": {
+    "mayRespawn": "🐉 Boss 可能已重生！",
+    "definitelyRespawned": "⚔️ Boss 確定已重生！"
   },
   "credits": {
     "title": "致謝 & 貢獻者",
