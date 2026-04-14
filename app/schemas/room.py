@@ -1,6 +1,6 @@
 # app/schemas/room.py
 from pydantic import BaseModel, ConfigDict, Field
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 
 
@@ -13,13 +13,17 @@ class RoomResponse(BaseModel):
     created_at: datetime
     last_active: datetime
     discord_webhook_url: Optional[str] = None
-    webhook_alert_type: Optional[str] = "both"
+    discord_webhook_enabled: bool = False
+    webhook_notify_events: Optional[List[str]] = Field(default_factory=lambda: ["killed", "alive", "not_found"])
+    webhook_alert_type: Optional[str] = "none"
 
     model_config = ConfigDict(from_attributes=True)
 
 class RoomSettingsUpdate(BaseModel):
     discord_webhook_url: Optional[str] = Field(None, max_length=1000)
-    webhook_alert_type: Optional[str] = Field("both", pattern="^(min|max|both|none)$")
+    discord_webhook_enabled: Optional[bool] = False
+    webhook_notify_events: Optional[List[str]] = None
+    webhook_alert_type: Optional[str] = Field("none", pattern="^(min|max|both|none)$")
 
 
 

@@ -133,18 +133,26 @@ class BossService:
 
             # Webhook Logic
             room = await BossService._validate_room_exists(db, record.room_id)
-            if room.discord_webhook_url:
+            if room.discord_webhook_enabled and room.discord_webhook_url:
                 webhook_url = room.discord_webhook_url
-                alert_type = room.webhook_alert_type or "both"
+                alert_type = room.webhook_alert_type or "none"
                 boss_name = boss_type.name_zh
                 channel = record.channel
                 recorder_name = record_with_recorder.recorder.display_name if record_with_recorder.recorder else "訪客"
                 record_status = record.status.value
                 
                 # 1. Immediate Broadcast
-                action_text = "擊殺了" if record_status == "killed" else ("標記存活" if record_status == "alive" else "找無王")
-                msg_content = f"⚔️ **{recorder_name}** 在 **[{channel}頻]** {action_text} **[{boss_name}]**！"
-                send_discord_webhook.delay(webhook_url, content=msg_content)
+                notify_events = room.webhook_notify_events if room.webhook_notify_events is not None else ["killed", "alive", "not_found"]
+                if record_status in notify_events:
+                    action_text = "擊殺了" if record_status == "killed" else ("標記存活" if record_status == "alive" else "未發現")
+                    msg_content = f"⚔️ **{recorder_name}** 在 **[{channel}頻]** {action_text} **[{boss_name}]**！"
+                    
+                    if boss_record.respawn_min_time and boss_record.respawn_max_time:
+                        min_ts = int(boss_record.respawn_min_time.timestamp())
+                        max_ts = int(boss_record.respawn_max_time.timestamp())
+                        msg_content += f" (預計重生: <t:{min_ts}:t> ~ <t:{max_ts}:t>)"
+                        
+                    send_discord_webhook.delay(webhook_url, content=msg_content)
                 
                 # 2. Spawn Alert (5 mins before)
                 celery_ids = {}
