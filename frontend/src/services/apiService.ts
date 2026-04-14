@@ -4,6 +4,8 @@ const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`;
 
 
 class ApiService {
+  client: any;
+
   constructor() {
     this.client = bossService;
   }
@@ -62,6 +64,14 @@ class ApiService {
 
   checkRoomExists(roomId: string) {
     return this.client.get(`/room/${roomId}/exists`).then(res => res.data);
+  }
+
+  updateRoomSettings(roomId: string, settings: Record<string, any>) {
+    return this.client.patch(`/room/${roomId}/settings`, settings).then(res => res.data);
+  }
+
+  deleteBossRecord(roomId: string, recordId: number) {
+    return this.client.delete(`/boss/room/${roomId}/records/${recordId}`).then(res => res.data);
   }
 
   // --- WebSocket ---

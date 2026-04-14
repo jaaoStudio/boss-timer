@@ -6,6 +6,35 @@
     :close-on-click-modal="true"
     class="settings-dialog"
   >
+    <!-- Discord Webhook Section -->
+    <div class="mb-6">
+      <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+        💬 Discord Webhook (房間專屬)
+      </h3>
+      <div class="space-y-4 pl-1">
+        <div class="flex flex-col gap-2">
+          <span class="text-sm text-gray-700 dark:text-gray-300">Webhook URL</span>
+          <el-input
+            v-model="webhookUrl"
+            placeholder="https://discord.com/api/webhooks/..."
+            clearable
+            @change="saveWebhookSettings"
+          />
+        </div>
+        <div class="flex flex-col gap-2 mt-2">
+          <span class="text-sm text-gray-700 dark:text-gray-300">預警模式 (約 5 分鐘前通知)</span>
+          <el-select v-model="webhookAlertType" @change="saveWebhookSettings">
+            <el-option label="最小與最大時間 (皆通知)" value="both" />
+            <el-option label="只通知最小時間" value="min" />
+            <el-option label="只通知最大時間" value="max" />
+            <el-option label="不預警 (只通知擊殺)" value="none" />
+          </el-select>
+        </div>
+      </div>
+    </div>
+
+    <el-divider class="!my-4" />
+
     <!-- Notification Section -->
     <div class="mb-6">
       <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
@@ -118,13 +147,15 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useSettings } from '@/composables/useSettings'
 import { useNotification } from '@/composables/useNotification'
 import { useSound } from '@/composables/useSound'
 import { VideoPlay } from '@element-plus/icons-vue'
 import { showMessage } from '@/composables/useElementPlus.js'
+import apiService from '@/services/apiService'
+import { useRoomStore } from '@/stores/roomStore'
 
 const { t } = useI18n()
 const { settings } = useSettings()
@@ -133,6 +164,36 @@ const { previewSound, saveCustomSound, getCustomSound } = useSound()
 
 const visible = defineModel<boolean>({ default: false })
 const permissionDenied = ref(false)
+const roomStore = useRoomStore()
+
+// Webhook state
+const webhookUrl = ref('')
+const webhookAlertType = ref('both')
+
+const loadRoomSettings = async () => {
+    if (!roomStore.roomId) return
+    try {
+        const roomInfo = await apiService.checkRoomExists(roomStore.roomId)
+        webhookUrl.value = roomInfo.discord_webhook_url || ''
+        webhookAlertType.value = roomInfo.webhook_alert_type || 'both'
+    } catch(e) {
+        // ignore
+    }
+}
+
+const saveWebhookSettings = async () => {
+    if (!roomStore.roomId) return
+    try {
+        await apiService.updateRoomSettings(roomStore.roomId, {
+            discord_webhook_url: webhookUrl.value || null,
+            webhook_alert_type: webhookAlertType.value
+        })
+        showMessage.success('Webhook 設定已更新')
+    } catch(e) {
+        console.log(e)
+        showMessage.error('更新失敗')
+    }
+}
 
 // Custom sound state
 const hasCustomMin = ref(false)
@@ -148,6 +209,12 @@ const customMinLabel = computed(() =>
 const customMaxLabel = computed(() =>
   hasCustomMax.value ? `${t('settings.soundCustom')} ✓` : t('settings.soundCustom')
 )
+
+watch(visible, (newVal) => {
+    if (newVal) {
+        loadRoomSettings()
+    }
+})
 
 onMounted(async () => {
   const minSound = await getCustomSound('custom-min')

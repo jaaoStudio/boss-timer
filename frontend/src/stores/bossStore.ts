@@ -53,6 +53,13 @@ export const useBossStore = defineStore('boss', {
       })
     },
 
+    deleteBossRecord(recordId) {
+      const index = this.bossRecords.findIndex(r => r.id === recordId)
+      if (index >= 0) {
+        this.bossRecords.splice(index, 1)
+      }
+    },
+
     setLoading(status) {
       this.loading = status
     },

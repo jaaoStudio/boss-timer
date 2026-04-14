@@ -114,6 +114,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
             case 'boss_update':
                 bossStore.updateBossRecord(message.data).then();
                 break;
+            case 'record_deleted':
+                bossStore.deleteBossRecord(message.data.record_id);
+                break;
             case 'user_count_update':
                 roomStore.setUserCount(message.count);
                 break;
