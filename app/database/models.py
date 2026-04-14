@@ -37,6 +37,8 @@ class Room(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     last_active = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     is_active = Column(Boolean, default=True, nullable=False)
+    discord_webhook_url = Column(String(1000), nullable=True) # 新增 Discord Webhook
+    webhook_alert_type = Column(String(20), default="both", nullable=True) # min, max, both, none
 
     boss_records = relationship("BossRecord", back_populates="room", cascade="all, delete-orphan")
     user_associations = relationship("RoomUser", back_populates="room", cascade="all, delete-orphan")
@@ -68,6 +70,8 @@ class BossRecord(Base):
     recorder_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     recorder_info = Column(JSONB)
     is_archived = Column(Boolean, default=False, nullable=False)
+    celery_task_ids = Column(JSONB, nullable=True) # 記錄定時推播的 Task ID
+
 
     @property
     def current_status(self) -> str:

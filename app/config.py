@@ -32,6 +32,8 @@ class Settings(BaseSettings):
 
     remote_registry_ip: str = os.getenv("REMOTE_REGISTRY_IP", "127.0.0.1")
     env: str = os.getenv("ENV", "development")
+    
+    redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
     model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 

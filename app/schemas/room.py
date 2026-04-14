@@ -12,8 +12,15 @@ class RoomResponse(BaseModel):
     room_id: str= Field(..., max_length=10)
     created_at: datetime
     last_active: datetime
+    discord_webhook_url: Optional[str] = None
+    webhook_alert_type: Optional[str] = "both"
 
     model_config = ConfigDict(from_attributes=True)
+
+class RoomSettingsUpdate(BaseModel):
+    discord_webhook_url: Optional[str] = Field(None, max_length=1000)
+    webhook_alert_type: Optional[str] = Field("both", pattern="^(min|max|both|none)$")
+
 
 
 class RoomExists(BaseModel):

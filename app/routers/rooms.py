@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.dependencies import limiter, verify_user_session
 from app.services.room_service import create_room as room_service_create_room, get_room_by_id
-from app.schemas.room import RoomResponse, RoomExists
+from app.schemas.room import RoomResponse, RoomExists, RoomSettingsUpdate
 import logging
 
 router = APIRouter(prefix="/room", tags=["rooms"])
@@ -54,3 +54,31 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
     except Exception as e:
         logging.error(f"Check room exists error: {e}")
         raise HTTPException(status_code=500, detail="Failed to check room existence")
+
+@router.patch("/{room_id}/settings", response_model=RoomResponse)
+@limiter.limit("30/minute")
+async def update_room_settings(
+        request: Request,
+        settings_data: RoomSettingsUpdate,
+        room_id: str = Path(..., min_length=10, max_length=10),
+        db: Session = Depends(get_db),
+        _ = Depends(verify_user_session)
+):
+    """更新房間設定 (Webhook 等)"""
+    room = get_room_by_id(db, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
+    try:
+        if settings_data.discord_webhook_url is not None:
+            room.discord_webhook_url = settings_data.discord_webhook_url
+        if settings_data.webhook_alert_type is not None:
+            room.webhook_alert_type = settings_data.webhook_alert_type
+        
+        db.commit()
+        db.refresh(room)
+        return RoomResponse.model_validate(room)
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Update room settings error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update room settings")

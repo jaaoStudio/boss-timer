@@ -6,6 +6,7 @@ from typing import Optional
 from app.database.models import Room, BossRecord, BossType
 from app.schemas.boss import BossRecordResponse, BossRecordCreate
 from app.websocket.manager import ConnectionManager
+from app.tasks.webhook_tasks import send_discord_webhook
 
 
 class BossService:
@@ -129,6 +130,43 @@ class BossService:
                 }
             )
             logging.info(f"Broadcasted boss_update from websocket for room {record.room_id}")
+
+            # Webhook Logic
+            room = await BossService._validate_room_exists(db, record.room_id)
+            if room.discord_webhook_url:
+                webhook_url = room.discord_webhook_url
+                alert_type = room.webhook_alert_type or "both"
+                boss_name = boss_type.name_zh
+                channel = record.channel
+                recorder_name = record_with_recorder.recorder.display_name if record_with_recorder.recorder else "訪客"
+                record_status = record.status.value
+                
+                # 1. Immediate Broadcast
+                action_text = "擊殺了" if record_status == "killed" else ("標記存活" if record_status == "alive" else "找無王")
+                msg_content = f"⚔️ **{recorder_name}** 在 **[{channel}頻]** {action_text} **[{boss_name}]**！"
+                send_discord_webhook.delay(webhook_url, content=msg_content)
+                
+                # 2. Spawn Alert (5 mins before)
+                celery_ids = {}
+                if record_status == "killed":
+                    now = datetime.now(timezone.utc)
+                    if alert_type in ["min", "both"] and boss_record.respawn_min_time:
+                        min_eta = boss_record.respawn_min_time - timedelta(minutes=5)
+                        if min_eta > now:
+                            alert_msg = f"⚠️ **[{boss_name}]** 將於 5 分鐘後在 **[{channel}頻]** 重生 (最短時間)！"
+                            task = send_discord_webhook.apply_async(args=[webhook_url, alert_msg], eta=min_eta)
+                            celery_ids["min_task_id"] = task.id
+                            
+                    if alert_type in ["max", "both"] and boss_record.respawn_max_time:
+                        max_eta = boss_record.respawn_max_time - timedelta(minutes=5)
+                        if max_eta > now:
+                            alert_msg = f"⚠️ **[{boss_name}]** 將於 5 分鐘後在 **[{channel}頻]** 重生 (最長時間)！"
+                            task = send_discord_webhook.apply_async(args=[webhook_url, alert_msg], eta=max_eta)
+                            celery_ids["max_task_id"] = task.id
+                
+                if celery_ids:
+                    boss_record.celery_task_ids = celery_ids
+                    db.commit()
 
         except HTTPException as e:
             raise e
