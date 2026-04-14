@@ -1,6 +1,7 @@
 services:
   db:
     image: postgres:latest
+    platform: linux/arm64
     restart: always
     shm_size: 128mb
     environment:
@@ -21,7 +22,7 @@ services:
     container_name: boss_service
     ports:
       - "1254:1254"
-    command: uvicorn main:app --host 0.0.0.0 --port 1254 --root-path /api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api
     env_file:
       - .env
     volumes:
@@ -31,6 +32,7 @@ services:
       - boss_network
     environment:
       - ENV=production
+      - REDIS_URL=redis://redis:6379/0
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
       interval: 30s
@@ -57,6 +59,50 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    container_name: boss_redis_prod
+    restart: always
+    networks:
+      - boss_network
+    ports:
+      - "6381:6379"
+
+  celery_worker_fast:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
+    platform: linux/arm64
+    container_name: boss_celery_worker_fast_prod
+    command: celery -A app.celery_app worker -Q celery --concurrency=4 --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    networks:
+      - boss_network
+    depends_on:
+      - redis
+      - db
+
+  celery_worker_discord:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
+    platform: linux/arm64
+    container_name: boss_celery_worker_discord_prod
+    command: celery -A app.celery_app worker -Q discord_queue --concurrency=1 --loglevel=info
+    env_file:
+      - .env
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    networks:
+      - boss_network
+    depends_on:
+      - redis
+      - db
 
 networks:
   boss_network:

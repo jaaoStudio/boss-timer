@@ -1,0 +1,9 @@
+# 開發環境專用：只啟動 Redis（後端和前端跑本機）
+# 用法：docker compose -f docker-compose.dev.yaml up -d
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: boss_redis_dev
+    restart: unless-stopped
+    ports:
+      - "6379:6379"  # 開發時直接用標準 port，本機可直接連

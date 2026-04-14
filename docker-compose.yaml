@@ -1,15 +1,18 @@
 services:
   boss_service:
     build:
-      context: app
+      context: .
+      dockerfile: app/Dockerfile
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
     platform: linux/arm64  # 構建適配 ARM 的镜像
     container_name: boss_service
     ports:
       - "1254:1254"
-    command: uvicorn main:app --host 0.0.0.0 --port 1254 --root-path /api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api
     volumes:
-      - ./.env:/boss-tracker/.env
+      - ./app/.env:/project/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
     restart: always
 
   boss_timer_nginx:
@@ -20,3 +23,43 @@ services:
     container_name: boss_timer_nginx
     ports:
       - "2255:80"
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    container_name: boss_redis
+    restart: always
+    ports:
+      - "6381:6379"
+
+  celery_worker_fast:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
+    platform: linux/arm64
+    container_name: boss_celery_worker_fast
+    command: celery -A app.celery_app worker -Q celery --concurrency=4 --loglevel=info
+    volumes:
+      - ./app/.env:/project/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    depends_on:
+      - redis
+
+  celery_worker_discord:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
+    platform: linux/arm64
+    container_name: boss_celery_worker_discord
+    command: celery -A app.celery_app worker -Q discord_queue --concurrency=1 --loglevel=info
+    volumes:
+      - ./app/.env:/project/.env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    depends_on:
+      - redis
