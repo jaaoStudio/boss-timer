@@ -1,6 +1,6 @@
 ---
 name: Boss Timer Backend 開發規範
-description: FastAPI 後端架構、資料庫模型、服務層模式、WebSocket 協議、Celery 非同步任務、認證流程與開發慣例。適用於所有後端相關的開發、修改與除錯任務。
+description: FastAPI 後端架構、資料庫模型、服務層模式、WebSocket 協議、Celery 非同步任務、認證流程與開發慣例。適用於所有後端相關的開發、修改與除錯任務。細項請參考子 skill：backend-api（路由/Schema）、backend-database（ORM/Migration）、backend-celery-webhook（Celery/Webhook）。
 ---
 
 # Boss Timer Backend 開發規範

@@ -1,6 +1,6 @@
 ---
 name: Boss Timer Frontend 開發規範
-description: Vue 3 前端架構、元件結構、Pinia 狀態管理、WebSocket 通訊、Composables 模式、路由與國際化慣例。適用於所有前端相關的開發、修改與除錯任務。
+description: Vue 3 前端架構、元件結構、Pinia 狀態管理、WebSocket 通訊、Composables 模式、路由與國際化慣例。適用於所有前端相關的開發、修改與除錯任務。新增元件、i18n、Element Plus UI 請參考子 skill：frontend-components。
 ---
 
 # Boss Timer Frontend 開發規範
