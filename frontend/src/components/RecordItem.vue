@@ -16,6 +16,8 @@
           size="small"
           circle
           plain
+          :loading="isDeleting"
+          :disabled="isDeleting"
           @click.stop="$emit('delete', record.id)"
           class="!p-1 h-6 w-6"
         >
@@ -60,6 +62,7 @@ interface Record {
 
 const props = defineProps<{
   record: Record
+  isDeleting?: boolean
 }>()
 
 const emit = defineEmits<{

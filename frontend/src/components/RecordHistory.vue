@@ -15,6 +15,7 @@
           v-for="record in filteredBossRecords"
           :key="record.id"
           :record="record"
+          :isDeleting="deletingIds.includes(record.id)"
           @click="bossStore.setSelectedBossTypeId(record.boss_type_id)"
           @delete="handleDelete"
           class="cursor-pointer"
@@ -40,6 +41,7 @@ const roomStore = useRoomStore()
 
 const { bossTypes, bossRecords } = storeToRefs(bossStore)
 
+const deletingIds = ref<number[]>([])
 const selectedBossFilter = ref<number | ''>('')
 
 const filteredBossRecords = computed(() => {
@@ -50,6 +52,9 @@ const filteredBossRecords = computed(() => {
 })
 
 const handleDelete = async (recordId: number) => {
+  if (deletingIds.value.includes(recordId)) return;
+  deletingIds.value.push(recordId)
+
   try {
     await ElMessageBox.confirm(
       t('recordHistory.deleteConfirmMessage'),
@@ -68,6 +73,8 @@ const handleDelete = async (recordId: number) => {
       ElMessage.error(t('recordHistory.deleteFailed'))
       console.error(err)
     }
+  } finally {
+    deletingIds.value = deletingIds.value.filter(id => id !== recordId)
   }
 }
 </script>
