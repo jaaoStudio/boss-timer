@@ -39,6 +39,8 @@ import RecordHistory from '@/components/RecordHistory.vue';
 import { storeToRefs } from "pinia";
 import { showMessage } from "@/composables/useElementPlus.js";
 import { useI18n } from "vue-i18n";
+import { useRecentRooms } from '@/composables/useRecentRooms';
+import { useBossAlerts } from '@/composables/useBossAlerts';
 
 const { t } = useI18n();
 const route = useRoute();
@@ -47,6 +49,10 @@ const roomStore = useRoomStore();
 const bossStore = useBossStore();
 const userStore = useUserStore();
 const websocketStore = useWebSocketStore();
+const { addRecentRoom } = useRecentRooms();
+
+// Activate boss alert system (notifications + sounds)
+useBossAlerts();
 
 const props = defineProps({
   roomId: {
@@ -71,6 +77,9 @@ onMounted(async () => {
         type: 'join_room',
         payload: { room_id: props.roomId },
       });
+
+      // Save to recent rooms
+      addRecentRoom(props.roomId);
 
     } else {
         await router.push({ name: 'RoomSelection' });

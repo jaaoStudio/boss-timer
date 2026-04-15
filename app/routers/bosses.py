@@ -1,60 +1,63 @@
-# app/routers/auth.py
-import uuid
-from fastapi import APIRouter, Depends, HTTPException, Response, Request
+# app/routers/bosses.py
+from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
-from datetime import datetime, timedelta, timezone
-from typing import Optional, List, Dict, Set, Any, Coroutine, Type
-from app.config import settings
+from typing import List
+
 from app.database.database import get_db
-from app.database.models import BossRecord, BossType
-from app.dependencies import limiter
-from app.services.room_service import update_room_last_active
-from app.services.boss_service import BossService
-from app.schemas.boss import BossTypeResponse, BossRecordCreate, BossRecordResponse
-from app.utils.jwt_helper import get_current_user_id, get_optional_current_user_id
-import logging
+from app.database.models import BossType, BossRecord
+from app.dependencies import limiter, verify_user_session, get_connection_manager
+from app.schemas.boss import BossTypeResponse
+from app.celery_app import celery_app
+from app.websocket.manager import ConnectionManager
 
 router = APIRouter(prefix="/boss", tags=["boss"])
-
-
-@router.post("/record-boss")
-@limiter.limit("20/minute")
-async def record_boss(
-        request: Request,
-        record: BossRecordCreate,
-        db: Session = Depends(get_db),
-        user_id: Optional[str] = Depends(get_optional_current_user_id)
-):
-    """記錄 BOSS 狀態"""
-    try:
-        # 驗證房間和 BOSS 類型
-        await BossService._validate_room_exists(db, record.room_id)
-        boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
-
-        # 計算重生時間
-        respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
-
-        # 創建 BOSS 記錄
-        boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)
-
-        # 更新房間最後活躍時間
-        update_room_last_active(db, record.room_id)
-
-        # The broadcast is now handled via WebSocket messages, so we remove it from the HTTP endpoint.
-        # await BossService._broadcast_boss_update(db=db, room_id=record.room_id, boss_record_id=boss_record.id)
-
-        # 返回響應
-        return BossRecordResponse.model_validate(boss_record)
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"Record boss error: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to record boss status {e}")
 
 
 @router.get("/boss-types", response_model=List[BossTypeResponse])
 @limiter.limit("5/minute")
 async def get_boss_types(request: Request, db: Session = Depends(get_db)):
     return db.query(BossType).all()
+
+@router.delete("/room/{room_id}/records/{record_id}")
+@limiter.limit("10/minute")
+async def delete_boss_record(
+    request: Request,
+    room_id: str,
+    record_id: int,
+    db: Session = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
+    _ = Depends(verify_user_session)
+):
+    """撤銷(作廢) BOSS 紀錄，並撤銷已註冊的 Celery 預警推播。"""
+    record = db.query(BossRecord).filter(
+        BossRecord.id == record_id,
+        BossRecord.room_id == room_id,
+        BossRecord.is_archived == False
+    ).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="Record not found")
+
+    # 1. 撤銷 Celery tasks
+    if record.celery_task_ids:
+        celery_ids = record.celery_task_ids
+        for key, task_id in celery_ids.items():
+            if task_id:
+                celery_app.control.revoke(task_id, terminate=False)
+
+    # 2. Soft delete
+    record.is_archived = True
+    db.commit()
+
+    # 3. WebSocket Broadcast
+    await manager.broadcast_to_room(
+        room_id=room_id,
+        message={
+            "type": "record_deleted",
+            "data": {"record_id": record_id, "room_id": room_id}
+        }
+    )
+
+    return {"message": "Record archived successfully"}
+
 

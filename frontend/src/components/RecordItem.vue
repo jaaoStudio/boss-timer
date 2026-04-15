@@ -9,7 +9,19 @@
           <span class="text-xs text-gray-500 ml-2">{{ t('recordItem.by') }} {{ recorderDisplayName }}</span>
         </div>
       </div>
-      <div class="text-sm text-gray-500 dark:text-gray-400">{{ formattedTime }}</div>
+      <div class="flex items-center gap-2">
+        <div class="text-sm text-gray-500 dark:text-gray-400">{{ formattedTime }}</div>
+        <el-button
+          type="danger"
+          size="small"
+          circle
+          plain
+          @click.stop="$emit('delete', record.id)"
+          class="!p-1 h-6 w-6"
+        >
+          <el-icon><Delete /></el-icon>
+        </el-button>
+      </div>
     </div>
     <div v-if="record.respawn_min_time" class="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-10">
       {{ t('recordItem.respawnWindow') }} {{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}
@@ -22,9 +34,13 @@ import { computed } from 'vue'
 import StatusBadge from './StatusBadge.vue'
 import { useI18n } from 'vue-i18n'
 
+import { Delete } from '@element-plus/icons-vue'
+
 const { t, locale } = useI18n()
 
 interface Record {
+  id: number
+  room_id: string
   status: string
   boss_type: {
     name_zh: string
@@ -44,6 +60,10 @@ interface Record {
 
 const props = defineProps<{
   record: Record
+}>()
+
+const emit = defineEmits<{
+  (e: 'delete', id: number): void
 }>()
 
 const recorderDisplayName = computed(() => {

@@ -1,7 +1,8 @@
 # app/routers/websocket.py
 import json
 import logging
-from typing import Optional
+import time
+from typing import Optional, Dict
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -14,6 +15,32 @@ from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
 
 router = APIRouter(prefix="/ws", tags=["websocket"])
+
+# --- Per-connection rate limiting for record_boss ---
+RATE_LIMIT_WINDOW = 60  # seconds
+RATE_LIMIT_MAX = 30     # max record_boss messages per window
+
+
+class RateLimiter:
+    def __init__(self):
+        self._counts: Dict[WebSocket, int] = {}
+        self._resets: Dict[WebSocket, float] = {}
+
+    def is_allowed(self, ws: WebSocket) -> bool:
+        now = time.time()
+        if ws not in self._counts or now - self._resets.get(ws, 0) > RATE_LIMIT_WINDOW:
+            self._counts[ws] = 0
+            self._resets[ws] = now
+        self._counts[ws] += 1
+        return self._counts[ws] <= RATE_LIMIT_MAX
+
+    def cleanup(self, ws: WebSocket):
+        self._counts.pop(ws, None)
+        self._resets.pop(ws, None)
+
+
+_rate_limiter = RateLimiter()
+
 
 @router.get("/connections/count")
 async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
@@ -52,8 +79,18 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         await manager.broadcast_user_count(room_id)
 
     elif msg_type == "record_boss":
+        # Security: verify the sender is subscribed to the target room
+        current_room = manager.socket_to_room.get(websocket)
+        if not current_room or current_room != room_id:
+            await websocket.send_text(json.dumps({"type": "error", "message": "You are not in this room"}))
+            return
+
+        # Rate limit: prevent spam
+        if not _rate_limiter.is_allowed(websocket):
+            await websocket.send_text(json.dumps({"type": "error", "message": "Rate limit exceeded. Please slow down."}))
+            return
+
         try:
-            # The payload now contains boss_type_id directly from the frontend
             record_create = BossRecordCreate(**payload)
             await boss_service.BossService.record_boss_from_websocket(db, record_create, user_id, manager)
         except Exception as e:
@@ -102,6 +139,7 @@ async def websocket_endpoint(
     except Exception as e:
         logging.error(f"WebSocket error: {e}", exc_info=True)
     finally:
+        _rate_limiter.cleanup(websocket)
         if websocket in manager.socket_to_room:
             room_id = manager.socket_to_room[websocket]
             manager.disconnect(websocket)

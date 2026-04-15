@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr, ConfigDict, Field
 from typing import Optional, Dict, Any
 from datetime import datetime
 
@@ -40,6 +40,21 @@ class User(BaseModel):
     is_admin: Optional[bool]
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PublicUser(BaseModel):
+    """Public-facing user info — hides google_id, email, is_admin."""
+    id: int
+    display_name: str
+    avatar_url: Optional[str] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RecorderInfo(BaseModel):
+    """Structured anonymous recorder info — prevents arbitrary JSON injection."""
+    anonymous_id: Optional[str] = Field(None, max_length=100)
+    anonymous_name: Optional[str] = Field(None, max_length=20)
 
 
 

@@ -114,11 +114,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
             case 'boss_update':
                 bossStore.updateBossRecord(message.data).then();
                 break;
+            case 'record_deleted':
+                bossStore.deleteBossRecord(message.data.record_id);
+                break;
             case 'user_count_update':
                 roomStore.setUserCount(message.count);
                 break;
             case 'error':
                 console.error('Received error from server:', message.message);
+                if (message.message === "Rate limit exceeded. Please slow down.") {
+                    import('@/i18n').then(({ default: i18n }) => {
+                        import('@/composables/useElementPlus').then(({ showMessage }) => {
+                            showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'));
+                        });
+                    });
+                }
                 break;
             default:
                 console.warn('Received unknown message type:', message.type);

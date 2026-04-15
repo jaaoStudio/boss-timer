@@ -249,7 +249,16 @@ def get_current_user(access_token: str | None = Cookie(None), db: Session = Depe
 def update_user_preferences(db: Session, user: models.User, preferences: dict) -> models.User:
     """
     更新使用者偏好設定。
+    只允許已知的偏好鍵，防止任意 JSON 注入。
     """
+    ALLOWED_PREFERENCE_KEYS = {"showRecordHistory"}
+
+    # 只保留允許的 key
+    filtered_preferences = {k: v for k, v in preferences.items() if k in ALLOWED_PREFERENCE_KEYS}
+
+    if not filtered_preferences:
+        return user  # 沒有有效的偏好設定要更新
+
     # 如果 user.preferences 是 None，初始化為一個空字典
     if user.preferences is None:
         user.preferences = {}
@@ -258,9 +267,10 @@ def update_user_preferences(db: Session, user: models.User, preferences: dict) -
     current_preferences = user.preferences.copy() if isinstance(user.preferences, dict) else {}
 
     # 合併新的偏好設定
-    current_preferences.update(preferences)
+    current_preferences.update(filtered_preferences)
     user.preferences = current_preferences
 
     db.commit()
     db.refresh(user)
     return user
+

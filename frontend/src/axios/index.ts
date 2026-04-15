@@ -33,6 +33,10 @@ class AxiosInstance {
   delete(url, config = {}) {
     return this.axiosInstance.delete(url, config);
   }
+
+  patch(url, config = {}) {
+    return this.axiosInstance.patch(url, config);
+  }
 }
 
 const setAxiosInterceptor = (axiosInstance) => {

@@ -1,0 +1,27 @@
+# Database data folders (prevent permission denied and transferring large useless data)
+app/db/
+db-data/
+db-init/
+
+# Virtual environments
+.venv/
+env/
+venv/
+venv-*/
+
+# Git
+.git/
+
+# Python compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Frontend components (backend doesn't need them)
+frontend/node_modules/
+frontend/dist/
+
+# Env files (should be mounted via docker-compose, not baked into image)
+.env
+.env.*

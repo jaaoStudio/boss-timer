@@ -4,7 +4,7 @@ export const useBossStore = defineStore('boss', {
   state: () => ({
     bossTypes: [],
     bossRecords: [],
-    history: new Map(),
+
     loading: false,
     selectedBossTypeId: null, // Changed from selectedBossName
     selectedChannel: null,
@@ -52,9 +52,14 @@ export const useBossStore = defineStore('boss', {
         return a.boss_type_id - b.boss_type_id;
       })
     },
-    setHistory(roomId, historyData) {
-      this.history.set(roomId, historyData)
+
+    deleteBossRecord(recordId) {
+      const index = this.bossRecords.findIndex(r => r.id === recordId)
+      if (index >= 0) {
+        this.bossRecords.splice(index, 1)
+      }
     },
+
     setLoading(status) {
       this.loading = status
     },

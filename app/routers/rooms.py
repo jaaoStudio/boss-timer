@@ -5,11 +5,7 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.dependencies import limiter, verify_user_session
 from app.services.room_service import create_room as room_service_create_room, get_room_by_id
-from app.services.boss_service import BossService
-from app.schemas.room import RoomResponse, RoomExists
-from app.database.models import BossRecord, BossType
-from app.utils.jwt_helper import get_current_user_id, get_optional_current_user_id
-from typing import Optional
+from app.schemas.room import RoomResponse, RoomExists, RoomSettingsUpdate
 import logging
 
 router = APIRouter(prefix="/room", tags=["rooms"])
@@ -34,7 +30,7 @@ async def create_room(
 
 
 @router.get("/{room_id}/exists", response_model=RoomExists)
-@limiter.limit("5/minute")
+@limiter.limit("15/minute")
 async def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
                             db: Session = Depends(get_db)):
     """檢查房間是否存在"""
@@ -47,6 +43,10 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
                 room_id=room.room_id,
                 created_at=room.created_at,
                 last_active=room.last_active,
+                discord_webhook_url=room.discord_webhook_url,
+                discord_webhook_enabled=room.discord_webhook_enabled or False,
+                webhook_notify_events=room.webhook_notify_events or ["killed", "alive", "not_found"],
+                webhook_alert_type=room.webhook_alert_type or "none"
             )
         else:
             raise HTTPException(
@@ -59,28 +59,29 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
         logging.error(f"Check room exists error: {e}")
         raise HTTPException(status_code=500, detail="Failed to check room existence")
 
-
-@router.get("/{room_id}/history")
-async def get_room_history(
-        room_id: str,
-        boss_type_id: Optional[int] = None,
-        limit: int = 50,
-        db: Session = Depends(get_db)
+@router.patch("/{room_id}/settings", response_model=RoomResponse)
+@limiter.limit("30/minute")
+async def update_room_settings(
+        request: Request,
+        settings_data: RoomSettingsUpdate,
+        room_id: str = Path(..., min_length=10, max_length=10),
+        db: Session = Depends(get_db),
+        _ = Depends(verify_user_session)
 ):
+    """更新房間設定 (Webhook 等)"""
+    room = get_room_by_id(db, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+        
     try:
-        query = db.query(BossRecord, BossType).join(BossType).filter(BossRecord.room_id == room_id)
-
-        if boss_type_id:
-            query = query.filter(BossRecord.boss_type_id == boss_type_id)
-
-        results = query.order_by(BossRecord.recorded_at.desc()).limit(limit).all()
-
-        records = []
-        for boss_record, boss_type in results:
-            records.append(BossService.serialize_boss_record(boss_record, boss_type))
-
-        return records
-
+        update_data = settings_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(room, key, value)
+        
+        db.commit()
+        db.refresh(room)
+        return RoomResponse.model_validate(room)
     except Exception as e:
-        logging.error(f"Get history error: {e}")
-        raise HTTPException(status_code=500, detail="Failed to get history")
+        db.rollback()
+        logging.error(f"Update room settings error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update room settings")

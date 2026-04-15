@@ -1,17 +1,23 @@
 # app/schemas/boss.py
+from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
-from typing import Optional, Dict, Any
+from typing import Optional
 from datetime import datetime
-from .auth import User  # 引入 User schema
+from .auth import PublicUser, RecorderInfo
+
+
+class BossStatus(str, Enum):
+    alive = "alive"
+    killed = "killed"
+    not_found = "not_found"
 
 
 class BossRecordCreate(BaseModel):
     room_id: str = Field(..., min_length=1, max_length=10, description="房間ID")
     channel: int = Field(..., ge=1, le=99999, description="頻道號碼")
     boss_type_id: int = Field(..., description="Boss類型ID")
-    status: str = Field(..., min_length=1, max_length=20, description="狀態")
-    recorder_id: Optional[int] = None # 允許傳入記錄者ID
-    recorder_info: Optional[Dict[str, Any]] = None # 允許傳入匿名記錄者資訊
+    status: BossStatus = Field(..., description="狀態")
+    recorder_info: Optional[RecorderInfo] = None
 
 
 class BossTypeResponse(BaseModel):
@@ -34,8 +40,8 @@ class BossRecordResponse(BaseModel):
     recorded_at: datetime
     respawn_min_time: Optional[datetime]
     respawn_max_time: Optional[datetime]
-    recorder: Optional[User] = None # 顯示記錄的使用者資訊
-    recorder_info: Optional[Dict[str, Any]] = None # 顯示匿名記錄者資訊
+    recorder: Optional[PublicUser] = None
+    recorder_info: Optional[RecorderInfo] = None
     current_status: str
     boss_type: BossTypeResponse
 

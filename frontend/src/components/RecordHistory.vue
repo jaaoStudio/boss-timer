@@ -15,6 +15,9 @@
           v-for="record in filteredBossRecords"
           :key="record.id"
           :record="record"
+          @click="bossStore.setSelectedBossTypeId(record.boss_type_id)"
+          @delete="handleDelete"
+          class="cursor-pointer"
       />
     </div>
     <!-- Loading state removed as it was unused -->
@@ -25,11 +28,15 @@
 import { ref, computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
+import { useRoomStore } from '@/stores/roomStore'
 import RecordItem from './RecordItem.vue'
 import { useI18n } from 'vue-i18n'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import apiService from '@/services/apiService'
 
 const { t, locale } = useI18n()
 const bossStore = useBossStore()
+const roomStore = useRoomStore()
 
 const { bossTypes, bossRecords } = storeToRefs(bossStore)
 
@@ -41,4 +48,26 @@ const filteredBossRecords = computed(() => {
   }
   return bossRecords.value.filter(record => record.boss_type_id === selectedBossFilter.value)
 })
+
+const handleDelete = async (recordId: number) => {
+  try {
+    await ElMessageBox.confirm(
+      t('recordHistory.deleteConfirmMessage'),
+      t('recordHistory.deleteConfirmTitle'),
+      {
+        confirmButtonText: '確定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    )
+    
+    await apiService.deleteBossRecord(roomStore.roomId, recordId)
+    ElMessage.success(t('recordHistory.deleteSuccess'))
+  } catch (err: any) {
+    if (err !== 'cancel' && err?.response?.status !== 429 && err?.response?.status !== 404) {
+      ElMessage.error(t('recordHistory.deleteFailed'))
+      console.error(err)
+    }
+  }
+}
 </script>
