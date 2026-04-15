@@ -33,6 +33,7 @@ declare module 'vue' {
     ElSelect: typeof import('element-plus/es')['ElSelect']
     ElSlider: typeof import('element-plus/es')['ElSlider']
     ElSwitch: typeof import('element-plus/es')['ElSwitch']
+    ElTooltip: typeof import('element-plus/es')['ElTooltip']
     GoogleLoginButton: typeof import('./src/components/GoogleLoginButton.vue')['default']
     MaintenanceBanner: typeof import('./src/components/MaintenanceBanner.vue')['default']
     RecommendedChannels: typeof import('./src/components/RecommendedChannels.vue')['default']

@@ -43,6 +43,10 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
                 room_id=room.room_id,
                 created_at=room.created_at,
                 last_active=room.last_active,
+                discord_webhook_url=room.discord_webhook_url,
+                discord_webhook_enabled=room.discord_webhook_enabled or False,
+                webhook_notify_events=room.webhook_notify_events or ["killed", "alive", "not_found"],
+                webhook_alert_type=room.webhook_alert_type or "none"
             )
         else:
             raise HTTPException(
@@ -70,10 +74,9 @@ async def update_room_settings(
         raise HTTPException(status_code=404, detail="Room not found")
         
     try:
-        if settings_data.discord_webhook_url is not None:
-            room.discord_webhook_url = settings_data.discord_webhook_url
-        if settings_data.webhook_alert_type is not None:
-            room.webhook_alert_type = settings_data.webhook_alert_type
+        update_data = settings_data.model_dump(exclude_unset=True)
+        for key, value in update_data.items():
+            setattr(room, key, value)
         
         db.commit()
         db.refresh(room)

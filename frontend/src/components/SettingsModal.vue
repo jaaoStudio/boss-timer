@@ -9,9 +9,17 @@
     <!-- Discord Webhook Section -->
     <div class="mb-6">
       <div class="flex items-center justify-between mb-3">
-        <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-          {{ t('settings.discordWebhookSection') }}
-        </h3>
+        <div class="flex items-center gap-1.5">
+          <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
+            {{ t('settings.discordWebhookSection') }}
+          </h3>
+          <el-tooltip
+            :content="t('settings.webhookInfoTooltip')"
+            placement="top"
+          >
+            <el-icon class="text-gray-400 hover:text-gray-600 cursor-help"><InfoFilled /></el-icon>
+          </el-tooltip>
+        </div>
         <el-switch
           v-model="webhookEnabled"
           @change="saveWebhookSettings"
@@ -27,6 +35,9 @@
             clearable
             @change="saveWebhookSettings"
           />
+          <span v-if="webhookEnabled && !webhookUrl" class="text-xs text-orange-500 mt-1">
+            {{ t('settings.webhookUrlEmptyWarning') }}
+          </span>
         </div>
         <div class="flex flex-col gap-2 mt-2">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.webhookNotifyEvents') }}</span>
@@ -167,7 +178,7 @@ import { useI18n } from 'vue-i18n'
 import { useSettings } from '@/composables/useSettings'
 import { useNotification } from '@/composables/useNotification'
 import { useSound } from '@/composables/useSound'
-import { VideoPlay } from '@element-plus/icons-vue'
+import { VideoPlay, InfoFilled } from '@element-plus/icons-vue'
 import { showMessage } from '@/composables/useElementPlus.js'
 import apiService from '@/services/apiService'
 import { useRoomStore } from '@/stores/roomStore'
@@ -202,11 +213,19 @@ const loadRoomSettings = async () => {
 
 const saveWebhookSettings = async () => {
     if (!roomStore.roomId) return
+
+    if (webhookEnabled.value && webhookUrl.value) {
+        const url = webhookUrl.value.trim();
+        if (!url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) {
+            showMessage.warning(t('settings.webhookUrlInvalid'))
+        }
+    }
+
     try {
         await apiService.updateRoomSettings(roomStore.roomId, {
             discord_webhook_enabled: webhookEnabled.value,
             webhook_notify_events: webhookNotifyEvents.value,
-            discord_webhook_url: webhookUrl.value || null,
+            discord_webhook_url: webhookUrl.value ? webhookUrl.value.trim() : null,
             webhook_alert_type: webhookAlertType.value
         })
         showMessage.success(t('settings.webhookUpdated'))

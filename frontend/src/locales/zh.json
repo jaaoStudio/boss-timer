@@ -101,7 +101,11 @@
   "recordHistory": {
     "title": "擊殺紀錄",
     "allBosses": "所有 BOSS",
-    "loading": "載入中..."
+    "loading": "載入中...",
+    "deleteFailed": "作廢失敗",
+    "deleteConfirmTitle": "作廢紀錄",
+    "deleteConfirmMessage": "這項操作將會作廢此筆紀錄並撤銷 Discord 預警，確認嗎？",
+    "deleteSuccess": "紀錄已作廢"
   },
   "recordItem": {
     "by": "by",
@@ -125,6 +129,7 @@
   "settings": {
     "title": "設定",
     "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
+    "webhookInfoTooltip": "開啟後僅對「新建立」的擊殺紀錄生效，過去已記錄的王不會補發通知喔！",
     "webhookUrl": "Webhook URL",
     "webhookNotifyEvents": "發送即時紀錄通知",
     "webhookNotifyKilled": "擊殺",
@@ -137,6 +142,8 @@
     "webhookAlertNone": "不預警 (關閉)",
     "webhookUpdated": "Webhook 設定已更新",
     "webhookUpdateFailed": "更新失敗",
+    "webhookUrlEmptyWarning": "⚠️ 尚未設定網址，即使開啟也不會有通知送出喔！",
+    "webhookUrlInvalid": "Webhook 網址格式可能不正確，請確認！",
     "notificationSection": "通知提醒",
     "enableNotification": "啟用瀏覽器通知",
     "permissionDenied": "您已拒絕通知權限，請在瀏覽器設定中開啟。",
@@ -202,5 +209,9 @@
     "section8Content": "本網站隱私權保護政策將因應需求隨時進行修正，修正後的條款將更新於本網站上。",
     "section9Title": "九、聯絡我們",
     "section9Content": "若您對於您的個人資料有任何疑問、或希望請求刪除，請透過電子郵件聯繫我們："
+  },
+  "globalErrors": {
+    "rateLimitExceeded": "操作太頻繁，請稍後再試",
+    "recordNotFound": "找不到此紀錄（可能已被刪除）"
   }
 }

@@ -1,5 +1,5 @@
 # app/routers/bosses.py
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 
@@ -19,7 +19,7 @@ async def get_boss_types(request: Request, db: Session = Depends(get_db)):
     return db.query(BossType).all()
 
 @router.delete("/room/{room_id}/records/{record_id}")
-@limiter.limit("30/minute")
+@limiter.limit("10/minute")
 async def delete_boss_record(
     request: Request,
     room_id: str,

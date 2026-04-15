@@ -101,7 +101,11 @@
   "recordHistory": {
     "title": "Record History",
     "allBosses": "All Bosses",
-    "loading": "Loading..."
+    "loading": "Loading...",
+    "deleteFailed": "Failed to void record",
+    "deleteConfirmTitle": "Void Record",
+    "deleteConfirmMessage": "This action will void this record and cancel its Discord alerts. Are you sure?",
+    "deleteSuccess": "Record voided successfully"
   },
   "recordItem": {
     "by": "by",
@@ -125,6 +129,7 @@
   "settings": {
     "title": "Settings",
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
+    "webhookInfoTooltip": "Enabling this will only notify for new records. Past records will not be notified.",
     "webhookUrl": "Webhook URL",
     "webhookNotifyEvents": "Send Real-time Record Notifications",
     "webhookNotifyKilled": "Killed",
@@ -137,6 +142,8 @@
     "webhookAlertNone": "No Alert (Off)",
     "webhookUpdated": "Webhook settings updated",
     "webhookUpdateFailed": "Settings update failed",
+    "webhookUrlEmptyWarning": "⚠️ URL not set. Notifications will not be sent even if enabled it!",
+    "webhookUrlInvalid": "Webhook URL format may be incorrect. Please verify!",
     "notificationSection": "Notifications",
     "enableNotification": "Enable browser notifications",
     "permissionDenied": "Notification permission denied. Please enable it in browser settings.",
@@ -202,5 +209,9 @@
     "section8Content": "The privacy policy of this website will be amended at any time in response to needs, and the revised terms will be updated on the website.",
     "section9Title": "IX. Contact Us",
     "section9Content": "If you have any questions about your personal data or wish to request its deletion, please contact us via email at:"
+  },
+  "globalErrors": {
+    "rateLimitExceeded": "Operating too fast, please try again later",
+    "recordNotFound": "Record not found (may have been deleted)"
   }
 }

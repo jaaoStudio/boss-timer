@@ -52,8 +52,8 @@ const filteredBossRecords = computed(() => {
 const handleDelete = async (recordId: number) => {
   try {
     await ElMessageBox.confirm(
-      '這項操作將會作廢此筆紀錄並撤銷 Discord 預警，確認嗎？',
-      '作廢紀錄',
+      t('recordHistory.deleteConfirmMessage'),
+      t('recordHistory.deleteConfirmTitle'),
       {
         confirmButtonText: '確定',
         cancelButtonText: '取消',
@@ -62,10 +62,10 @@ const handleDelete = async (recordId: number) => {
     )
     
     await apiService.deleteBossRecord(roomStore.roomId, recordId)
-    ElMessage.success('紀錄已作廢')
-  } catch (err) {
-    if (err !== 'cancel') {
-      ElMessage.error('除錯失敗')
+    ElMessage.success(t('recordHistory.deleteSuccess'))
+  } catch (err: any) {
+    if (err !== 'cancel' && err?.response?.status !== 429 && err?.response?.status !== 404) {
+      ElMessage.error(t('recordHistory.deleteFailed'))
       console.error(err)
     }
   }

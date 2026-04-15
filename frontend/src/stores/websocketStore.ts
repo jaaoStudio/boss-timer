@@ -122,6 +122,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 break;
             case 'error':
                 console.error('Received error from server:', message.message);
+                if (message.message === "Rate limit exceeded. Please slow down.") {
+                    import('@/i18n').then(({ default: i18n }) => {
+                        import('@/composables/useElementPlus').then(({ showMessage }) => {
+                            showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'));
+                        });
+                    });
+                }
                 break;
             default:
                 console.warn('Received unknown message type:', message.type);

@@ -20,7 +20,7 @@ class RoomResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class RoomSettingsUpdate(BaseModel):
-    discord_webhook_url: Optional[str] = Field(None, max_length=1000)
+    discord_webhook_url: Optional[str] = Field(None, max_length=1000, pattern=r"^(https://discord\.com/api/webhooks/|https://discordapp\.com/api/webhooks/).+")
     discord_webhook_enabled: Optional[bool] = False
     webhook_notify_events: Optional[List[str]] = None
     webhook_alert_type: Optional[str] = Field("none", pattern="^(min|max|both|none)$")
@@ -32,3 +32,7 @@ class RoomExists(BaseModel):
     room_id: str= Field(..., max_length=10)
     created_at: Optional[datetime] = None
     last_active: Optional[datetime] = None
+    discord_webhook_url: Optional[str] = None
+    discord_webhook_enabled: bool = False
+    webhook_notify_events: Optional[List[str]] = Field(default_factory=lambda: ["killed", "alive", "not_found"])
+    webhook_alert_type: Optional[str] = "none"

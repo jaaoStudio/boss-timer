@@ -4,6 +4,7 @@ import { useUserStore} from "@/stores/userStore.js";
 import {storeToRefs} from "pinia";
 import {showMessage} from "@/composables/useElementPlus.js";
 import apiService from "@/services/apiService.js";
+import i18n from "@/i18n";
 
 export const handleError = (axiosInstance, error) => {
   // 如果沒有 response，表示是網路錯誤
@@ -16,6 +17,14 @@ export const handleError = (axiosInstance, error) => {
   switch (error.response.status) {
     case 401:
       handleUnauthorized(axiosInstance, error);
+      break;
+    case 404:
+      if (error.response.data && error.response.data.detail === "Record not found") {
+        showMessage.warning(i18n.global.t('globalErrors.recordNotFound'));
+      }
+      break;
+    case 429:
+      showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'));
       break;
     case 503:
       handleServiceUnavailable();
