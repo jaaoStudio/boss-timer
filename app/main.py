@@ -7,6 +7,7 @@ import json
 import os
 
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.dependencies import limiter, rate_limit_exceeded_handler
 from app.config import settings
@@ -64,6 +65,7 @@ app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifes
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # CORS 設定
 origin_list = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]
@@ -93,4 +95,4 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api")
+    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api", proxy_headers=True, forwarded_allow_ips="*")

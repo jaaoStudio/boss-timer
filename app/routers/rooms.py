@@ -12,7 +12,7 @@ router = APIRouter(prefix="/room", tags=["rooms"])
 
 
 @router.post("/", response_model=RoomResponse)
-@limiter.limit("5/minute")
+@limiter.limit("15/minute")
 async def create_room(
         request: Request,
         db: Session = Depends(get_db),
