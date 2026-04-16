@@ -139,7 +139,8 @@
     "title": "設定",
     "tabs": {
       "preferences": "系統設定",
-      "changelog": "更新日誌"
+      "changelog": "更新日誌",
+      "support": "支持開發"
     },
     "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
     "webhookInfoTooltip": "開啟後僅對「新建立」的擊殺紀錄生效，過去已記錄的王不會補發通知喔！",
@@ -178,7 +179,13 @@
     "uploadFile": "上傳音效",
     "changeFile": "更換音效",
     "fileTooLarge": "檔案大小不能超過 5MB",
-    "uploadSuccess": "音效上傳成功！"
+    "uploadSuccess": "音效上傳成功！",
+    "support": {
+      "message": "如果 Boss Timer 對您有幫助，歡迎請開發者喝杯啤酒！您的支持是持續開發的最大動力 ❤️",
+      "payuniLabel": "台灣贊助 (PayUni)",
+      "payuniMethods": "信用卡 / ATM",
+      "thankyou": "感謝每一位贊助者，讓這個工具得以持續進步！"
+    }
   },
   "notification": {
     "mayRespawn": "🐉 Boss 可能已重生！",

@@ -139,7 +139,8 @@
     "title": "Settings",
     "tabs": {
       "preferences": "Preferences",
-      "changelog": "Changelog"
+      "changelog": "Changelog",
+      "support": "Support"
     },
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
     "webhookInfoTooltip": "Enabling this will only notify for new records. Past records will not be notified.",
@@ -178,7 +179,13 @@
     "uploadFile": "Upload Sound",
     "changeFile": "Change Sound",
     "fileTooLarge": "File size must be under 5MB",
-    "uploadSuccess": "Sound uploaded successfully!"
+    "uploadSuccess": "Sound uploaded successfully!",
+    "support": {
+      "message": "If Boss Timer has been helpful to you, feel free to buy the developer a coffee! Your support keeps this tool going ❤️",
+      "payuniLabel": "Taiwan Donation (PayUni)",
+      "payuniMethods": "Credit Card / ATM",
+      "thankyou": "Thank you to everyone who has supported this project!"
+    }
   },
   "notification": {
     "mayRespawn": "🐉 Boss may have respawned!",
