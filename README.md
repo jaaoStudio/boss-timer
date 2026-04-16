@@ -2,151 +2,189 @@
 
 一個為楓之谷世界 (Artale) 設計的即時 Boss 計時器，幫助玩家和團隊高效追蹤 Boss 的重生狀態。
 
-[Live Demo](https://boss-timer.jaao.tw/)
+[🔗 Live Demo](https://boss-timer.jaao.tw/)
 
 ![專案截圖](boss-timer.jaao.tw_.png)
 
+---
+
 ## ✨ 主要功能
 
-- **即時狀態追蹤**: 即時顯示 Boss 的存活、死亡和即將重生狀態。
-- **多人協作房間**: 支援建立多個獨立的房間，方便不同隊伍或社群使用。
-- **WebSocket 即時更新**: 所有狀態變更都會透過 WebSocket 立即同步給房間內的所有使用者。
-- **Google 帳號登入**: 透過 Google OAuth 進行安全快速的身份驗證。
-- **多國語言**: 支援繁體中文和英文介面。
-- **響應式設計**: 在桌面和行動裝置上都有良好的使用體驗。
-- **系統維護模式**: 可由管理員開啟，方便進行系統更新與維護。
+- **即時狀態追蹤** — 以卡片總覽或甘特時間軸兩種視角查看 Boss 重生狀態
+- **多人協作房間** — 建立獨立房間，房間內所有成員即時同步
+- **WebSocket 即時更新** — 狀態變更透過 WebSocket 立即廣播
+- **Discord Webhook** — 擊殺即時通知 + 重生前 5 分鐘預警排程
+- **Google 帳號登入 / 訪客模式** — 支援 Google OAuth 與匿名快速加入
+- **Boss 收藏** — 標記常用 Boss，下拉選單優先顯示收藏清單
+- **通知與音效提醒** — 瀏覽器推播通知 + Web Audio API 音效（支援自訂音效上傳）
+- **深色模式 / 多國語言** — 支援繁體中文與英文
+
+---
 
 ## 🛠️ 技術棧
 
 | 類別 | 技術 |
 | :--- | :--- |
-| **後端** | Python 3.11+, FastAPI, SQLAlchemy, PostgreSQL, Uvicorn, WebSockets |
-| **前端** | Vue.js 3, Vite, Pinia, Vue Router, Tailwind CSS, Element Plus |
+| **後端** | Python 3.11+, FastAPI, SQLAlchemy, PostgreSQL |
+| **即時通訊** | WebSocket (原生 FastAPI) |
+| **非同步任務** | Celery + Redis |
+| **前端** | Vue 3 (Composition API), Vite, Pinia, Tailwind CSS v4, Element Plus, ECharts |
 | **部署** | Docker, Docker Compose, Nginx |
+| **套件管理** | uv (Python), npm (Node) |
 
-## 🚀 快速開始 (本地開發)
+---
 
-本指南將引導您在本地開發環境中，完整地設定並執行此專案。
+## 🚀 本地開發
 
-### 第 1 步：設定環境變數
+### 前置需求
 
-專案的設定被拆分成三個獨立的 `.env` 檔案。請依照以下步驟，從範本建立您自己的設定檔。
+- [Docker](https://www.docker.com/) & Docker Compose
+- [uv](https://github.com/astral-sh/uv) — Python 套件管理
+- Node.js 18+, npm
 
-#### a) 資料庫初始化設定
-
-此設定檔用於**首次建立**資料庫容器時，設定 PostgreSQL 的超級使用者。
+### 第 1 步：設定後端環境變數
 
 ```bash
-# 進入資料庫設定目錄
-cd app/db
-
-# 從範本複製設定檔
-cp .env.example .env
+cp app/.env.example app/.env
 ```
-> `app/db/.env` 內的帳號密碼是資料庫容器的最高權限帳密，通常在本地開發外不需要修改。
 
-#### b) 後端應用程式設定
+編輯 `app/.env`，填入以下必要設定：
 
-此設定檔告知 FastAPI 後端應用程式如何**連線到資料庫**，以及 Google OAuth 和 JWT 的金鑰。
+```dotenv
+# 資料庫連線（本機開發指向 localhost）
+POSTGRES_SERVER=localhost
+POSTGRES_PORT=5432
+POSTGRES_USER=your_user
+POSTGRES_PASSWORD=your_password
+POSTGRES_DB=boss_tracker
 
-```bash
-# 回到專案根目錄
-cd ../..
+# JWT 金鑰（可用 openssl rand -hex 32 產生）
+SECRET_KEY=your_super_secret_key
 
-# 進入後端應用程式目錄
-cd app
-
-# 從範本複製設定檔
-cp .env.example .env
+# Google OAuth
+GOOGLE_CLIENT_ID=your_client_id.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=your_client_secret
 ```
-**請務必編輯 `app/.env`**，將 `POSTGRES_SERVER` 改為 `localhost` (如果資料庫在本機)，並填入您自己的 `SECRET_KEY` 和 `GOOGLE_CLIENT_ID`。
 
-#### c) 前端應用程式設定
+> **前端**已內建 `.env.development`，開發時不需另行設定。
 
-此設定檔告知 Vue.js 前端應用程式後端 API 的位址和 Google 相關的 ID。
+### 第 2 步：建立資料庫並執行 Migration
+
+> 本機開發時需要自行準備 PostgreSQL 實例（可使用任意 Docker 方式啟動），確保連線設定與 `app/.env` 相符後執行：
 
 ```bash
-# 回到專案根目錄
-cd ..
+# 在專案根目錄執行（不是 app/ 裡面）
+uv run alembic upgrade head
+```
 
-# 進入前端目錄
+### 第 3 步：啟動所有服務
+
+開發時需要同時開啟 **4 個終端機**：
+
+**終端機 1 — Redis（Docker）**
+```bash
+docker compose -f docker-compose.dev.yaml up -d
+```
+
+**終端機 2 — FastAPI 後端**
+```bash
+uv run uvicorn app.main:app \
+  --host 0.0.0.0 \
+  --port 1254 \
+  --ssl-keyfile=frontend/vite-key.pem \
+  --ssl-certfile=frontend/vite.pem \
+  --reload
+```
+
+> SSL 憑證用於與前端 HTTPS 開發伺服器配合。若尚未產生，可用以下指令：
+> ```bash
+> cd frontend && npx vite-plugin-mkcert
+> ```
+
+**終端機 3 — Celery Worker（Discord Webhook 任務）**
+```bash
+uv run celery -A app.celery_app worker \
+  -Q celery,discord_queue \
+  --concurrency=2 \
+  --loglevel=info
+```
+
+**終端機 4 — 前端 Vite 開發伺服器**
+```bash
 cd frontend
-
-# 從範本複製設定檔
-cp .env.example .env
+npm install   # 首次執行
+npm run dev
 ```
-編輯 `frontend/.env` 並填入您自己的 Google 服務 ID。
 
-### 第 2 步：啟動服務與資料庫遷移
+開啟瀏覽器前往 `https://localhost:5173`。
 
-完成所有設定後，請回到專案根目錄，並依照以下順序啟動服務。
+---
 
-#### a) 啟動資料庫服務
+## 🏗️ Docker 建置與部署
+
+### 建置映像並推送
 
 ```bash
-# 進入資料庫目錄
-cd app/db
+# 設定版本號
+export REMOTE_REGISTRY_IP=harbor.jaao.tw
+export BACKEND_VERSION=2.5.0
+export FRONTEND_VERSION=2.5.0
 
-# 在背景啟動資料庫容器
-docker-compose up -d
+docker compose build
+docker push ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
+docker push ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${FRONTEND_VERSION}
 ```
 
-#### b) 執行資料庫遷移
-
-資料庫啟動後，我們需要使用 Alembic 工具建立所需的資料表。
+### 在正式機啟動
 
 ```bash
-# 回到專案根目錄
-cd ../..
-
-# 執行遷移指令 (此指令會建立/更新資料庫中的資料表)
-alembic upgrade head
+docker compose -f docker-compose.prod.yaml up -d
 ```
-> **注意**: 您需要在本地端安裝 `alembic` 和專案所需的 Python 套件才能執行此指令。或者，您也可以進入 `boss_service` 容器中執行此指令。
 
-#### c) 啟動主應用程式
-
-最後，建置並啟動後端和前端服務。
+### 正式機執行 DB Migration
 
 ```bash
-# 確認您在專案根目錄
-
-# 使用您的參數建置並啟動服務
-REMOTE_REGISTRY_IP=harbor.jaao.tw \
-BACKEND_VERSION=2.4.3 \
-FRONTEND_VERSION=2.2.5 \
-docker-compose up -d --build
+docker compose -f docker-compose.prod.yaml exec boss_service alembic upgrade head
 ```
 
-### 第 3 步：瀏覽網站
-
-所有服務都成功啟動後，您可以在瀏覽器中開啟 `http://localhost:2255` 來查看網站。
-
+---
 
 ## 📁 專案結構
 
 ```
-.
-├── app/            # FastAPI 後端應用程式
-│   ├── database/   # 資料庫模型與設定
-│   ├── routers/    # API 路由
-│   ├── schemas/    # Pydantic 資料模型
-│   ├── services/   # 業務邏輯服務
-│   └── main.py     # 應用程式進入點
-├── frontend/       # Vue.js 前端應用程式
+boss-timing/
+├── app/                        # FastAPI 後端
+│   ├── database/               # ORM 模型 & 資料庫連線
+│   ├── routers/                # API 路由 (auth / rooms / bosses / websocket / system)
+│   ├── schemas/                # Pydantic 資料模型
+│   ├── services/               # 業務邏輯
+│   ├── tasks/                  # Celery 非同步任務 (Discord Webhook、房間清理)
+│   ├── websocket/              # WebSocket ConnectionManager
+│   ├── celery_app.py           # Celery 設定
+│   ├── main.py                 # 應用程式進入點
+│   └── Dockerfile
+│
+├── frontend/                   # Vue 3 前端
 │   ├── src/
-│   │   ├── components/ # Vue 組件
-│   │   ├── stores/     # Pinia 狀態管理
-│   │   ├── views/      # 頁面視圖
-│   │   └── main.ts     # 前端進入點
-│   └── vite.config.ts  # Vite 設定
-├── docker-compose.yaml # Docker Compose 設定
-└── alembic/        # 資料庫遷移工具
+│   │   ├── components/         # Vue 元件
+│   │   ├── composables/        # Composables (useSettings, useBossAlerts, useFavoriteBosses...)
+│   │   ├── stores/             # Pinia 狀態 (user / room / boss / websocket)
+│   │   ├── views/              # 頁面視圖
+│   │   ├── locales/            # i18n 翻譯 (zh / en)
+│   │   └── main.ts
+│   ├── .env.development        # 開發環境變數
+│   ├── .env.production         # 正式環境變數
+│   └── Dockerfile
+│
+├── alembic/                    # DB Migration 腳本
+├── docker-compose.yaml         # 建置用（含 build 指令）
+├── docker-compose.dev.yaml     # 開發用（只啟動 Redis）
+├── docker-compose.prod.yaml    # 正式環境（全容器化）
+├── pyproject.toml              # Python 套件定義 (uv)
+└── uv.lock
 ```
 
-## 🤝 貢獻
-
-歡迎任何形式的貢獻！如果您有任何建議或發現了 Bug，請隨時提出 Issue 或發送 Pull Request。
+---
 
 ## 📄 授權
 
