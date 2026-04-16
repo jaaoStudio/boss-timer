@@ -114,9 +114,9 @@ const { t } = useI18n()
     "webhookNotifyAlive": "存活",
     "webhookNotifyNotFound": "未發現",
     "webhookAlertMode": "預警模式 (約 5 分鐘前通知)",
-    "webhookAlertBoth": "最小與最大時間 (皆通知)",
-    "webhookAlertMin": "只通知最小時間",
-    "webhookAlertMax": "只通知最大時間",
+    "webhookAlertBoth": "最小重生與最大重生時間 (皆通知)",
+    "webhookAlertMin": "只通知最小重生時間",
+    "webhookAlertMax": "只通知最大重生時間",
     "webhookAlertNone": "不預警 (關閉)",
     "webhookUpdated": "Webhook 設定已更新",
     "webhookUpdateFailed": "更新失敗"

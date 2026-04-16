@@ -15,9 +15,32 @@ from app.database import models
 from app.database.database import get_db
 from app.websocket.manager import ConnectionManager
 from app.services.auth_service import get_current_user # 引入 get_current_user
+def get_user_identifier(request: Request) -> str:
+    """
+    自定義限流識別碼提取函數：
+    1. 優先使用登入使用者的 user_id (解析 access_token)
+    2. 其次使用訪客的 anonymous_user_id
+    3. 最後才退回使用真實 IP
+    """
+    token = request.cookies.get("access_token")
+    if token:
+        if token.startswith("Bearer "):
+            token = token.split(" ")[1]
+        try:
+            payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+            user_id = payload.get("sub")
+            if user_id:
+                return f"user:{user_id}"
+        except (JWTError, ValueError):
+            pass
 
+    anon_id = request.cookies.get("anonymous_user_id")
+    if anon_id:
+        return f"anon:{anon_id}"
 
-limiter = Limiter(key_func=get_remote_address)
+    return get_remote_address(request)
+
+limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
 
 # 自定義速率限制超過時的例外處理函式
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):

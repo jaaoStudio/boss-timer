@@ -1,5 +1,8 @@
 <template>
-  <div :class="['p-2', 'rounded-lg', 'text-center', 'cursor-pointer', 'transition-all', 'duration-200', 'ease-in-out', statusBackgroundClass]" @click="selectChannel">
+  <div
+    :class="['relative', 'p-2', 'rounded-lg', 'text-center', 'cursor-pointer', 'transition-all', 'duration-200', 'ease-in-out', statusBackgroundClass, { 'opacity-50': isExpired }]"
+    @click="selectChannel"
+  >
     <div :class="['font-bold', channelNumber >= 1000 ? 'text-xs' : 'text-sm']">CH {{ channelNumber }}</div>
     <div class="text-xs font-medium">{{ statusText }}</div>
   </div>
@@ -35,6 +38,15 @@ interface StatusConfig {
   bg: string
 }
 
+const isExpired = computed(() => {
+  if (!record.value) return false
+  if (record.value.current_status !== 'alive') return false
+  if (!record.value.respawn_min_time || !record.value.respawn_max_time) return false
+  const windowDuration = new Date(record.value.respawn_max_time).getTime() - new Date(record.value.respawn_min_time).getTime()
+  const timeSinceMax = Date.now() - new Date(record.value.respawn_max_time).getTime()
+  return timeSinceMax > windowDuration
+})
+
 const statusMapping = computed<Record<string, StatusConfig>>(() => ({
   alive: { text: t('status.alive'), bg: 'bg-green-700 text-white' },
   killed: { text: t('status.killed'), bg: 'bg-red-700 text-white' },
@@ -45,6 +57,9 @@ const statusMapping = computed<Record<string, StatusConfig>>(() => ({
 }))
 
 const currentStatusConfig = computed(() => {
+  if (isExpired.value) {
+    return { text: t('status.expired'), bg: 'bg-green-700 text-white' }
+  }
   return statusMapping.value[status.value] || statusMapping.value.unknown
 })
 
