@@ -16,6 +16,15 @@ export default defineConfig((config: ConfigEnv) => {
   const loadedEnv = loadEnv(config.mode, process.cwd(), '')
   return {
     base: loadedEnv.VITE_BASE_PUBLIC_PATH,
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            echarts: ['echarts', 'vue-echarts'],
+          },
+        },
+      },
+    },
     plugins: [
       vue(),
       VitePluginHtmlEnv(),

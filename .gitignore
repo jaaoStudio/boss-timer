@@ -34,3 +34,5 @@ app/.env
 
 node_modules
 .env
+.claude
+CLAUDE.md

@@ -10,8 +10,8 @@
       <!-- BOSS 資訊 -->
       <BossInfo />
 
-      <!-- 頻道總覽 -->
-      <ChannelOverview />
+      <!-- 頻道總覽 / 時間軸 -->
+      <ChannelView />
 
       <!-- 推薦頻道 -->
       <RecommendedChannels />
@@ -24,7 +24,7 @@
 
 <script setup>
 import { onMounted, onUnmounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import { useRoomStore } from '@/stores/roomStore.js'
 import { useBossStore } from '@/stores/bossStore.js'
 import { useUserStore} from "@/stores/userStore.js";
@@ -33,17 +33,15 @@ import ApiService from '@/services/apiService.ts';
 import AppHeader from '@/components/AppHeader.vue';
 import BossControlPanel from '@/components/BossControlPanel.vue';
 import BossInfo from '@/components/BossInfo.vue';
-import ChannelOverview from '@/components/ChannelOverview.vue';
+import ChannelView from '@/components/ChannelView.vue';
 import RecommendedChannels from '@/components/RecommendedChannels.vue';
 import RecordHistory from '@/components/RecordHistory.vue';
-import { storeToRefs } from "pinia";
 import { showMessage } from "@/composables/useElementPlus.js";
 import { useI18n } from "vue-i18n";
 import { useRecentRooms } from '@/composables/useRecentRooms';
 import { useBossAlerts } from '@/composables/useBossAlerts';
 
 const { t } = useI18n();
-const route = useRoute();
 const router = useRouter();
 const roomStore = useRoomStore();
 const bossStore = useBossStore();
@@ -53,6 +51,7 @@ const { addRecentRoom } = useRecentRooms();
 
 // Activate boss alert system (notifications + sounds)
 useBossAlerts();
+
 
 const props = defineProps({
   roomId: {

@@ -92,6 +92,7 @@ const technologies = [
   { name: "FastAPI" },
   { name: "PostgreSQL" },
   { name: "Gemini cli" },
+  { name: "Claude code" },
   { name: t('credits.manyOtherLibraries'), key: 'credits.manyOtherLibraries' },
 ];
 

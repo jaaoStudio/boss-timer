@@ -66,7 +66,9 @@
     "boss": "BOSS",
     "status": "狀態",
     "selectBoss": "選擇 BOSS",
-    "sendRecordFailed": "發送紀錄失敗，請重試。"
+    "sendRecordFailed": "發送紀錄失敗，請重試。",
+    "favorites": "⭐ 收藏",
+    "otherBosses": "全部 Boss"
   },
   "bossInfo": {
     "details": "詳細資訊",
@@ -91,6 +93,12 @@
   },
   "channelOverview": {
     "title": "頻道總覽"
+  },
+  "channelTimeline": {
+    "noData": "目前沒有重生時間資料。",
+    "leftIsNow": "左邊 = 現在",
+    "expand": "展開全圖",
+    "collapse": "收起"
   },
   "recommendedChannels": {
     "title": "推薦頻道",
@@ -118,7 +126,8 @@
     "notFound": "未發現",
     "respawning": "重生中",
     "mayRespawn": "可能重生",
-    "unknown": "未知"
+    "unknown": "未知",
+    "expired": "已過期"
   },
   "recentRooms": {
     "title": "最近的房間",
@@ -128,6 +137,10 @@
   },
   "settings": {
     "title": "設定",
+    "tabs": {
+      "preferences": "系統設定",
+      "changelog": "更新日誌"
+    },
     "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
     "webhookInfoTooltip": "開啟後僅對「新建立」的擊殺紀錄生效，過去已記錄的王不會補發通知喔！",
     "webhookUrl": "Webhook URL",
@@ -136,9 +149,9 @@
     "webhookNotifyAlive": "存活",
     "webhookNotifyNotFound": "未發現",
     "webhookAlertMode": "預警模式 (約 5 分鐘前通知)",
-    "webhookAlertBoth": "最小與最大時間 (皆通知)",
-    "webhookAlertMin": "只通知最小時間",
-    "webhookAlertMax": "只通知最大時間",
+    "webhookAlertBoth": "最小重生與最大重生時間 (皆通知)",
+    "webhookAlertMin": "只通知最小重生時間",
+    "webhookAlertMax": "只通知最大重生時間",
     "webhookAlertNone": "不預警 (關閉)",
     "webhookUpdated": "Webhook 設定已更新",
     "webhookUpdateFailed": "更新失敗",
@@ -154,6 +167,9 @@
     "enableSound": "啟用音效提醒",
     "volume": "音量",
     "soundType": "音效",
+    "channelViewSection": "📊 預設頻道總覽模式",
+    "channelViewOverview": "卡片總覽",
+    "channelViewTimeline": "重生時間軸",
     "soundDefault": "預設",
     "soundGentle": "柔和",
     "soundUrgent": "緊急",
@@ -213,5 +229,92 @@
   "globalErrors": {
     "rateLimitExceeded": "操作太頻繁，請稍後再試",
     "recordNotFound": "找不到此紀錄（可能已被刪除）"
+  },
+  "changelog": {
+    "v2_5_0": {
+      "title": "v2.5.0",
+      "date": "2026-04-16",
+      "items": [
+        "新增：頻道總覽新增『重生時間軸』視圖，以甘特圖呈現各頻道 Boss 狀態時間軸，支援擊殺 / 存活 / 未發現篩選",
+        "新增：Boss 下拉選單支援『收藏』功能，常用 Boss 可置頂顯示（收藏狀態跨裝置同步至帳號）",
+        "新增：頻道卡片新增過期指示，當存活狀態超過最大重生窗口時自動半透明提示",
+        "優化：頻道視圖偏好（卡片 / 時間軸）可儲存並跨裝置同步"
+      ]
+    },
+    "v2_4_1": {
+      "title": "v2.4.1 (Backend v2.6.1)",
+      "date": "2026-04-16",
+      "items": [
+        "新增：最近的房間面板，快速回到近期房間",
+        "新增：自訂音效與瀏覽器本地系統推播通知設定",
+        "新增：支援 Discord 房間專屬 Webhook 即時推播 (含：擊殺、存活、未發現狀態，以及重生區間計算)",
+        "新增：點擊「擊殺紀錄」項目文字即可快速切換當前選取的 BOSS",
+        "優化：作廢擊殺紀錄功能 (並同步撤銷相關聯的 Discord Webhook 通知)",
+        "優化：將 API 限流機制升級為基於「使用者身分 (JWT/Cookie)」的辨識模式，解決同 Wi-Fi 下遭誤擋的問題",
+        "優化：全面強化 API 與 WebSocket 安全性輸入驗證，移除未受保護的端點",
+        "修復：擊殺紀錄刪除按鈕遭長按 Enter 導致連發送出的問題",
+        "修復：全域錯誤提示的反饋介面體驗"
+      ]
+    },
+    "v2_3_0": {
+      "title": "v2.3.0",
+      "date": "2026-04-07",
+      "items": [
+        "新增：整合 Microsoft Clarity 分析工具，用於改善使用者體驗",
+        "新增：隱私權政策新增分析工具揭露說明章節",
+        "優化：將 Google 登入按鈕重構為可複用的獨立元件，確保樣式一致",
+        "優化：Google 身份驗證改用後端 OAuth 授權碼流程，提升安全性",
+        "修復：Credits、法律聲明、隱私權政策等靜態頁面的深色模式顯示問題"
+      ]
+    },
+    "v2_2_0": {
+      "title": "v2.2.0",
+      "date": "2025-12-23",
+      "items": [
+        "新增：全站深色 / 淺色模式切換支援",
+        "新增：完整中英雙語國際化 (i18n) 支援",
+        "新增：Boss 資訊欄可正確顯示所選頻道的詳細資訊",
+        "優化：頁腳導覽重構，法律聲明與隱私權政策改為獨立頁面",
+        "優化：改善房間管理的使用者體驗與介面細節",
+        "優化：資料庫從 boss_name 遷移至 boss_type_id，確保多語言穩定性",
+        "修復：切換語言時 Boss 名稱顯示錯誤的問題"
+      ]
+    },
+    "v2_1_0": {
+      "title": "v2.1.0",
+      "date": "2025-08-11",
+      "items": [
+        "新增：統一 WebSocket 架構，支援即時更新與全域通知廣播",
+        "新增：全系統維護模式，支援即時狀態推播",
+        "新增：API 速率限制與穩健的會話管理機制",
+        "優化：改用 Cookie 進行身份驗證，統一 WebSocket 認證流程",
+        "優化：每個房間的 WebSocket 連線數限制，防止濫用",
+        "優化：Docker 與 CI/CD 流程改善",
+        "優化：後端依賴管理遷移至 uv"
+      ]
+    },
+    "v2_0_0": {
+      "title": "v2.0.0",
+      "date": "2025-07-16",
+      "items": [
+        "新增：Google SSO 登入，支援 JWT 驗證與跨分頁同步",
+        "新增：匿名使用者支援，未登入訪客也能記錄 Boss 資料",
+        "新增：使用者偏好設定管理 (依帳號儲存)",
+        "新增：房間與紀錄軟刪除機制，保護歷史資料完整性",
+        "新增：房間 WebSocket 連線數上限",
+        "優化：Boss 狀態記錄從下拉選單改為一鍵按鈕操作",
+        "優化：房間 ID 改由後端產生，提升安全性",
+        "優化：整合 Google Tag Manager 與分析追蹤"
+      ]
+    },
+    "v1_0_0": {
+      "title": "v1.0.0 (First Release)",
+      "date": "2025-07-04",
+      "items": [
+        "全新 Artale Boss 計時系統正式上線",
+        "支援跨裝置 WebSocket 即時連線同步",
+        "新增致謝頁面與貢獻者列表"
+      ]
+    }
   }
 }

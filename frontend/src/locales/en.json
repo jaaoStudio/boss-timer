@@ -66,7 +66,9 @@
     "boss": "BOSS",
     "status": "Status",
     "selectBoss": "Select BOSS",
-    "sendRecordFailed": "Failed to send record, please try again."
+    "sendRecordFailed": "Failed to send record, please try again.",
+    "favorites": "⭐ Favorites",
+    "otherBosses": "All Bosses"
   },
   "bossInfo": {
     "details": "Details",
@@ -91,6 +93,12 @@
   },
   "channelOverview": {
     "title": "Channel Overview"
+  },
+  "channelTimeline": {
+    "noData": "No respawn data available.",
+    "leftIsNow": "Left edge = Now",
+    "expand": "Show all",
+    "collapse": "Collapse"
   },
   "recommendedChannels": {
     "title": "Recommended Channels",
@@ -118,7 +126,8 @@
     "notFound": "Not Found",
     "respawning": "Respawning",
     "mayRespawn": "May Respawn",
-    "unknown": "Unknown"
+    "unknown": "Unknown",
+    "expired": "Expired"
   },
   "recentRooms": {
     "title": "Recent Rooms",
@@ -128,6 +137,10 @@
   },
   "settings": {
     "title": "Settings",
+    "tabs": {
+      "preferences": "Preferences",
+      "changelog": "Changelog"
+    },
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
     "webhookInfoTooltip": "Enabling this will only notify for new records. Past records will not be notified.",
     "webhookUrl": "Webhook URL",
@@ -154,6 +167,9 @@
     "enableSound": "Enable sound alerts",
     "volume": "Vol.",
     "soundType": "Sound",
+    "channelViewSection": "📊 Default Channel View",
+    "channelViewOverview": "Card Overview",
+    "channelViewTimeline": "Respawn Timeline",
     "soundDefault": "Default",
     "soundGentle": "Gentle",
     "soundUrgent": "Urgent",
@@ -213,5 +229,92 @@
   "globalErrors": {
     "rateLimitExceeded": "Operating too fast, please try again later",
     "recordNotFound": "Record not found (may have been deleted)"
+  },
+  "changelog": {
+    "v2_5_0": {
+      "title": "v2.5.0",
+      "date": "2026-04-16",
+      "items": [
+        "New: Channel overview now includes a 'Respawn Timeline' view — a Gantt-style chart showing boss status history per channel, with filters for killed / alive / not found",
+        "New: Boss selector supports 'Favorites' — pin frequently tracked bosses to the top of the dropdown (synced across devices when logged in)",
+        "New: Channel cards now show an 'expired' indicator when an alive status has exceeded its maximum respawn window",
+        "Enhancement: Channel view preference (card / timeline) is now saved and synced across devices"
+      ]
+    },
+    "v2_4_1": {
+      "title": "v2.4.1 (Backend v2.6.1)",
+      "date": "2026-04-16",
+      "items": [
+        "New: 'Recent Rooms' panel to quickly rejoin previous rooms",
+        "New: Custom sound settings and browser notification alerts",
+        "New: Support for Discord Room-Specific Webhooks (including kill, alive, missing states, and respawn window intervals)",
+        "New: Click on a history record's text to quickly switch the currently selected BOSS",
+        "Enhancement: Void kill records feature (synchronously cancels associated Discord Webhook alerts)",
+        "Enhancement: Upgraded API rate limiting to identity-based (JWT/Cookie) mode to solve false blocks for users sharing Wi-Fi",
+        "Enhancement: Comprehensively hardened API and WebSocket security input validation, removing unprotected endpoints",
+        "Fix: Prevent multiple rapid submissions when holding Enter on the kill record delete button",
+        "Fix: Improved global error prompt feedback user experience"
+      ]
+    },
+    "v2_3_0": {
+      "title": "v2.3.0",
+      "date": "2026-04-07",
+      "items": [
+        "New: Integrated Microsoft Clarity analytics for UX improvement insights",
+        "New: Privacy Policy updated with analytics disclosure section",
+        "Enhancement: Refactored Google Sign-In button into a reusable component with consistent styling",
+        "Enhancement: Migrated Google authentication to a backend OAuth authorization code flow for better security",
+        "Fix: Dark mode support for Credits, Legal Disclaimer, and Privacy Policy static pages"
+      ]
+    },
+    "v2_2_0": {
+      "title": "v2.2.0",
+      "date": "2025-12-23",
+      "items": [
+        "New: Full dark / light theme mode support across the entire site",
+        "New: Complete bilingual internationalization (zh / en)",
+        "New: Boss info panel shows details for the selected channel",
+        "Enhancement: Restructured footer navigation — Legal and Privacy pages are now standalone routes",
+        "Enhancement: Improved room management UX and minor UI polish",
+        "Enhancement: Database migrated from boss_name to boss_type_id for stable multi-language support",
+        "Fix: Boss type names now display correctly when the language is switched"
+      ]
+    },
+    "v2_1_0": {
+      "title": "v2.1.0",
+      "date": "2025-08-11",
+      "items": [
+        "New: Unified WebSocket architecture for real-time updates and global notifications",
+        "New: Global maintenance mode with live status broadcast",
+        "New: API rate limiting and robust session management",
+        "Enhancement: Switched to cookie-based authentication with unified WebSocket auth",
+        "Enhancement: WebSocket connection limits per user to prevent abuse",
+        "Enhancement: Docker and CI/CD pipeline improvements",
+        "Enhancement: Migrated backend dependency management to uv"
+      ]
+    },
+    "v2_0_0": {
+      "title": "v2.0.0",
+      "date": "2025-07-16",
+      "items": [
+        "New: Google SSO login with JWT authentication and cross-tab sync",
+        "New: Anonymous user support — guests can now record boss data without logging in",
+        "New: User preferences management (saved per account)",
+        "New: Room and record soft-delete to protect history integrity",
+        "New: WebSocket connection count limit per room",
+        "Enhancement: Boss status recording changed from dropdown to one-click buttons",
+        "Enhancement: Room ID generation moved to backend for security",
+        "Enhancement: Added Google Tag Manager and analytics tracking"
+      ]
+    },
+    "v1_0_0": {
+      "title": "v1.0.0 (First Release)",
+      "date": "2025-07-04",
+      "items": [
+        "New Artale Boss Timer system officially launched",
+        "Support for cross-device real-time WebSocket synchronization",
+        "Credits page and attributions section added"
+      ]
+    }
   }
 }

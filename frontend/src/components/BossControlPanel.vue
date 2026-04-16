@@ -3,51 +3,82 @@
     <!-- Removed empty h2 -->
 
     <el-form
-      :model="form"
-      @submit.prevent="recordBoss"
-      label-position="top"
-      class="grid grid-cols-1 md:grid-cols-3 gap-4"
+        :model="form"
+        @submit.prevent="recordBoss"
+        label-position="top"
+        class="grid grid-cols-1 md:grid-cols-3 gap-4"
     >
 
       <el-form-item :label="t('bossControlPanel.channel')">
         <el-input
-          v-model="form.channel"
-          :placeholder="t('bossControlPanel.channel')"
-          @input="onChannelInput"
-          clearable
-          maxlength="5"
+            v-model="form.channel"
+            :placeholder="t('bossControlPanel.channel')"
+            @input="onChannelInput"
+            clearable
+            maxlength="5"
         />
       </el-form-item>
 
       <el-form-item :label="t('bossControlPanel.boss')">
+
+
         <el-select
-          v-model="form.boss_type_id"
-          :placeholder="t('bossControlPanel.selectBoss')"
-          @change="handleBossChange"
-          filterable
-          clearable
-          class="w-full"
+            v-model="form.boss_type_id"
+            :placeholder="t('bossControlPanel.selectBoss')"
+            @change="handleBossChange"
+            filterable
+            clearable
+            class="w-full"
         >
-          <el-option
-            v-for="boss in bossTypes"
-            :key="boss.id"
-            :label="locale === 'zh' ? boss.name_zh : boss.name_en"
-            :value="boss.id"
-          />
+          <!-- 收藏區 -->
+          <el-option-group v-if="favoriteOptions.length" :label="t('bossControlPanel.favorites')">
+            <el-option
+                v-for="boss in favoriteOptions"
+                :key="boss.id"
+                :label="bossLabel(boss)"
+                :value="boss.id"
+            >
+              <div class="flex items-center justify-between w-full pr-1">
+                <span>{{ bossLabel(boss) }}</span>
+                <StarSolidIcon
+                    class="w-4 h-4 text-yellow-400 shrink-0 cursor-pointer hover:text-yellow-500"
+                    @click.stop="toggleFavorite(boss.id)"
+                />
+              </div>
+            </el-option>
+          </el-option-group>
+
+          <!-- 其他 -->
+          <el-option-group :label="favoriteOptions.length ? t('bossControlPanel.otherBosses') : ''">
+            <el-option
+                v-for="boss in otherOptions"
+                :key="boss.id"
+                :label="bossLabel(boss)"
+                :value="boss.id"
+            >
+              <div class="flex items-center justify-between w-full pr-1">
+                <span>{{ bossLabel(boss) }}</span>
+                <StarIcon
+                    class="w-4 h-4 text-gray-300 dark:text-gray-600 shrink-0 cursor-pointer hover:text-yellow-400"
+                    @click.stop="toggleFavorite(boss.id)"
+                />
+              </div>
+            </el-option>
+          </el-option-group>
         </el-select>
       </el-form-item>
 
       <el-form-item :label="t('bossControlPanel.status')">
         <div class="flex gap-2 w-full">
           <BossStatusButton
-            v-for="status in statuses"
-            :key="status.type"
-            :type="status.type"
-            :disabled="loading"
-            :class="{
+              v-for="status in statuses"
+              :key="status.type"
+              :type="status.type"
+              :disabled="loading"
+              :class="{
               'opacity-60': loading
             }"
-            @click="onSelectStatus(status.type)"
+              @click="onSelectStatus(status.type)"
           />
         </div>
       </el-form-item>
@@ -57,31 +88,46 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useRoomStore } from '@/stores/roomStore'
-import { useBossStore } from '@/stores/bossStore'
+import {ref, computed, watch, onMounted} from 'vue'
+import {storeToRefs} from 'pinia'
+import {useRoomStore} from '@/stores/roomStore'
+import {useBossStore} from '@/stores/bossStore'
 import BossStatusButton from "@/components/BossStatusButton.vue"
-import { showMessage } from "@/composables/useElementPlus"
-import { useUserStore } from '@/stores/userStore'
-import { useWebSocketStore } from '@/stores/websocketStore'
-import { useI18n } from 'vue-i18n'
+import {showMessage} from "@/composables/useElementPlus"
+import {useUserStore} from '@/stores/userStore'
+import {useWebSocketStore} from '@/stores/websocketStore'
+import {useI18n} from 'vue-i18n'
+import {useFavoriteBosses} from '@/composables/useFavoriteBosses'
+import {StarIcon} from '@heroicons/vue/24/outline'
+import {StarIcon as StarSolidIcon} from '@heroicons/vue/24/solid'
 
-const { t, locale } = useI18n()
+const {t, locale} = useI18n()
 
 const roomStore = useRoomStore()
 const bossStore = useBossStore()
 const userStore = useUserStore()
 const websocketStore = useWebSocketStore()
 
-const { roomId } = storeToRefs(roomStore)
-const { bossTypes, selectedChannel, selectedBossTypeId } = storeToRefs(bossStore)
-const { isLoggedIn, anonymousId, anonymousName } = storeToRefs(userStore)
+const {roomId} = storeToRefs(roomStore)
+const {bossTypes, selectedChannel, selectedBossTypeId} = storeToRefs(bossStore)
+const {isLoggedIn, anonymousId, anonymousName} = storeToRefs(userStore)
+
+const {favoriteBossIds, toggleFavorite} = useFavoriteBosses()
+
+const bossLabel = (boss: any) => locale.value === 'zh' ? boss.name_zh : boss.name_en
+
+const favoriteOptions = computed(() =>
+    bossTypes.value.filter((b) => favoriteBossIds.value.includes(b.id))
+)
+const otherOptions = computed(() =>
+    bossTypes.value.filter((b) => !favoriteBossIds.value.includes(b.id))
+)
+
 
 const statuses = [
-  { type: 'alive' },
-  { type: 'killed' },
-  { type: 'not_found' }
+  {type: 'alive'},
+  {type: 'killed'},
+  {type: 'not_found'}
 ] as const
 
 interface FormState {
@@ -119,9 +165,9 @@ watch(selectedBossTypeId, (newVal) => {
 
 const canSubmit = computed(() => {
   return roomId.value &&
-         form.value.channel !== '' &&
-         form.value.boss_type_id !== null &&
-         form.value.status
+      form.value.channel !== '' &&
+      form.value.boss_type_id !== null &&
+      form.value.status
 })
 
 const recordBoss = async () => {

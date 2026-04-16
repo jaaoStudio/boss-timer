@@ -2,12 +2,27 @@
   <el-dialog
     v-model="visible"
     :title="t('settings.title')"
-    width="440px"
+    width="500px"
     :close-on-click-modal="true"
     class="settings-dialog"
   >
-    <!-- Discord Webhook Section -->
-    <div class="mb-6">
+    <el-tabs v-model="activeTab" class="settings-tabs pr-4">
+      <el-tab-pane :label="t('settings.tabs.preferences')" name="preferences">
+        <!-- Channel View Section -->
+        <div class="mb-6">
+          <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3">
+            {{ t('settings.channelViewSection') }}
+          </h3>
+          <el-radio-group v-model="channelViewModeLocal" @change="handleViewModeChange" class="pl-1">
+            <el-radio value="overview">{{ t('settings.channelViewOverview') }}</el-radio>
+            <el-radio value="timeline">{{ t('settings.channelViewTimeline') }}</el-radio>
+          </el-radio-group>
+        </div>
+
+        <el-divider class="!my-4" />
+
+        <!-- Discord Webhook Section -->
+        <div class="mb-6">
       <div class="flex items-center justify-between mb-3">
         <div class="flex items-center gap-1.5">
           <h3 class="text-sm font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
@@ -169,6 +184,31 @@
         </div>
       </div>
     </div>
+      </el-tab-pane>
+
+      <!-- Changelog Section -->
+      <el-tab-pane :label="t('settings.tabs.changelog')" name="changelog">
+        <el-timeline class="pt-2 pl-1 pr-6 max-h-[50vh] overflow-y-auto w-full">
+          <el-timeline-item
+            v-for="(version, index) in changelogData"
+            :key="version.id"
+            :timestamp="version.date"
+            placement="top"
+            :type="index === 0 ? 'primary' : 'info'"
+            :hollow="index !== 0"
+          >
+            <el-card shadow="never" class="!border-gray-100 dark:!border-gray-700 !bg-gray-50 dark:!bg-gray-800">
+              <h4 class="font-bold text-sm text-gray-800 dark:text-gray-200 mb-2">{{ version.title }}</h4>
+              <ul class="list-disc pl-4 space-y-1">
+                <li v-for="(item, i) in version.items" :key="i" class="text-left text-xs text-gray-600 dark:text-gray-400">
+                  {{ item }}
+                </li>
+              </ul>
+            </el-card>
+          </el-timeline-item>
+        </el-timeline>
+      </el-tab-pane>
+    </el-tabs>
   </el-dialog>
 </template>
 
@@ -182,15 +222,39 @@ import { VideoPlay, InfoFilled } from '@element-plus/icons-vue'
 import { showMessage } from '@/composables/useElementPlus.js'
 import apiService from '@/services/apiService'
 import { useRoomStore } from '@/stores/roomStore'
+import { useChannelViewPreference } from '@/composables/useChannelViewPreference'
 
-const { t } = useI18n()
+const { t, tm } = useI18n()
 const { settings } = useSettings()
 const { requestPermission } = useNotification()
 const { previewSound, saveCustomSound, getCustomSound } = useSound()
+const { viewMode, setViewMode } = useChannelViewPreference()
 
 const visible = defineModel<boolean>({ default: false })
 const permissionDenied = ref(false)
 const roomStore = useRoomStore()
+
+const activeTab = ref('preferences')
+
+// Channel view mode — local ref mirrors the singleton so el-radio-group stays reactive
+const channelViewModeLocal = ref(viewMode.value)
+watch(viewMode, (v) => { channelViewModeLocal.value = v })
+
+async function handleViewModeChange(mode: string) {
+  await setViewMode(mode as 'overview' | 'timeline')
+}
+
+type ChangelogVersion = { title: string; date: string; items: string[] }
+
+const changelogData = computed(() => {
+  const all = tm('changelog') as Record<string, ChangelogVersion>
+  return Object.keys(all).map(key => ({
+    id: key.replace(/_/g, '.'),
+    title: all[key].title,
+    date: all[key].date,
+    items: all[key].items,
+  }))
+})
 
 // Webhook state
 const webhookEnabled = ref(false)
