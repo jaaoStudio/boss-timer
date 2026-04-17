@@ -65,6 +65,16 @@
               </div>
             </el-option>
           </el-option-group>
+
+          <!-- 自訂 Boss -->
+          <el-option-group v-if="customBossTypes.length" :label="t('bossControlPanel.customBosses')">
+            <el-option
+                v-for="boss in customBossTypes"
+                :key="boss.id"
+                :label="boss.name_zh"
+                :value="boss.id"
+            />
+          </el-option-group>
         </el-select>
       </el-form-item>
 
@@ -116,11 +126,14 @@ const {favoriteBossIds, toggleFavorite} = useFavoriteBosses()
 
 const bossLabel = (boss: any) => locale.value === 'zh' ? boss.name_zh : boss.name_en
 
+const globalBossTypes = computed(() => bossTypes.value.filter(b => !b.room_id))
+const customBossTypes = computed(() => bossTypes.value.filter(b => !!b.room_id))
+
 const favoriteOptions = computed(() =>
-    bossTypes.value.filter((b) => favoriteBossIds.value.includes(b.id))
+    globalBossTypes.value.filter((b) => favoriteBossIds.value.includes(b.id))
 )
 const otherOptions = computed(() =>
-    bossTypes.value.filter((b) => !favoriteBossIds.value.includes(b.id))
+    globalBossTypes.value.filter((b) => !favoriteBossIds.value.includes(b.id))
 )
 
 
@@ -150,6 +163,14 @@ const handleBossChange = (val: number | null) => {
 
 const onSelectStatus = async (statusType: string) => {
   if (loading.value) return
+  if (!form.value.boss_type_id) {
+    showMessage.warning(t('bossControlPanel.selectBossFirst'))
+    return
+  }
+  if (!form.value.channel) {
+    showMessage.warning(t('bossControlPanel.enterChannelFirst'))
+    return
+  }
   form.value.status = statusType
   await recordBoss()
 }
@@ -166,7 +187,7 @@ watch(selectedBossTypeId, (newVal) => {
 const canSubmit = computed(() => {
   return roomId.value &&
       form.value.channel !== '' &&
-      form.value.boss_type_id !== null &&
+      !!form.value.boss_type_id &&
       form.value.status
 })
 

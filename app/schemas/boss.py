@@ -22,13 +22,20 @@ class BossRecordCreate(BaseModel):
 
 class BossTypeResponse(BaseModel):
     id: int
+    room_id: Optional[str] = None
     name_en: str
     name_zh: str
     min_respawn_minutes: int
     max_respawn_minutes: int
-    description: Optional[str]
+    description: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class CustomBossTypeCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=50)
+    min_respawn_minutes: int = Field(..., ge=1, le=99999)
+    max_respawn_minutes: int = Field(..., ge=1, le=99999)
 
 
 class BossRecordResponse(BaseModel):

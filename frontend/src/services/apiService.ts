@@ -74,6 +74,14 @@ class ApiService {
     return this.client.delete(`/boss/room/${roomId}/records/${recordId}`).then(res => res.data);
   }
 
+  createCustomBossType(roomId: string, payload: { name: string; min_respawn_minutes: number; max_respawn_minutes: number }) {
+    return this.client.post(`/boss/room/${roomId}/boss-types`, payload).then(res => res.data);
+  }
+
+  deleteCustomBossType(roomId: string, bossTypeId: number) {
+    return this.client.delete(`/boss/room/${roomId}/boss-types/${bossTypeId}`).then(res => res.data);
+  }
+
   // --- WebSocket ---
   createWebSocket() {
     // The HttpOnly cookie will be sent automatically by the browser.

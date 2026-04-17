@@ -108,6 +108,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 appInfoStore.setMaintenanceInfo(message.data);
                 break;
             case 'room_state':
+                if (message.boss_types) {
+                    bossStore.setBossTypes(message.boss_types);
+                }
                 bossStore.setBossRecords(message.boss_records);
                 roomStore.setUserCount(message.user_count);
                 break;

@@ -56,6 +56,7 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     SettingsChangelog: typeof import('./src/components/SettingsChangelog.vue')['default']
+    SettingsCustomBosses: typeof import('./src/components/SettingsCustomBosses.vue')['default']
     SettingsModal: typeof import('./src/components/SettingsModal.vue')['default']
     SettingsPreferences: typeof import('./src/components/SettingsPreferences.vue')['default']
     SettingsSupport: typeof import('./src/components/SettingsSupport.vue')['default']

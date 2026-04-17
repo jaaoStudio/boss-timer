@@ -4,7 +4,7 @@
       <div class="flex flex-row sm:flex-col items-center gap-2.5 sm:gap-x-4">
         <div class="flex items-center">
           <img src="/leaf24px.png" alt="Logo" class="h-8 w-8 mr-3">
-          <h1 class=" text-2xl sm:block hidden font-bold text-gray-900 dark:text-white">{{ t('appHeader.title') }}</h1>
+          <h2 class=" text-2xl sm:block hidden font-bold text-gray-900 dark:text-white">{{ t('appHeader.title') }}</h2>
         </div>
         <div v-if="roomId" class="cursor-pointer" @click="copyRoomId">
           <p class="text-gray-500 dark:text-gray-400 text-sm">{{ t('appHeader.room') }} <span class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{{ roomId }}</span></p>

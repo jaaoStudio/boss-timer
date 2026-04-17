@@ -67,8 +67,11 @@
     "status": "Status",
     "selectBoss": "Select BOSS",
     "sendRecordFailed": "Failed to send record, please try again.",
+    "selectBossFirst": "Please select a Boss first",
+    "enterChannelFirst": "Please enter a channel first",
     "favorites": "⭐ Favorites",
-    "otherBosses": "All Bosses"
+    "otherBosses": "All Bosses",
+    "customBosses": "Custom Bosses"
   },
   "bossInfo": {
     "details": "Details",
@@ -140,7 +143,24 @@
     "tabs": {
       "preferences": "Preferences",
       "changelog": "Changelog",
-      "support": "Support"
+      "support": "Support",
+      "customBoss": "Custom Boss"
+    },
+    "customBoss": {
+      "addTitle": "Add Custom Boss",
+      "namePlaceholder": "Boss Name",
+      "minRespawn": "Min Respawn (min)",
+      "maxRespawn": "Max Respawn (min)",
+      "add": "Add",
+      "addSuccess": "Custom boss added",
+      "addFailed": "Failed to add",
+      "existing": "Existing Custom Bosses",
+      "delete": "Delete",
+      "deleteSuccess": "Deleted",
+      "deleteFailed": "Failed to delete",
+      "deleteConfirmTitle": "Delete Custom Boss",
+      "deleteConfirmMessage": "This will permanently delete the boss and all its kill records. This action cannot be undone. Continue?",
+      "empty": "No custom bosses yet"
     },
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
     "webhookInfoTooltip": "Enabling this will only notify for new records. Past records will not be notified.",

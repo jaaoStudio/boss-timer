@@ -60,6 +60,21 @@ export const useBossStore = defineStore('boss', {
       }
     },
 
+    addCustomBossType(bossType) {
+      this.bossTypes.push(bossType)
+    },
+
+    removeCustomBossType(bossTypeId) {
+      const index = this.bossTypes.findIndex(b => b.id === bossTypeId)
+      if (index >= 0) {
+        this.bossTypes.splice(index, 1)
+      }
+      if (this.selectedBossTypeId === bossTypeId) {
+        this.selectedBossTypeId = null
+      }
+      this.bossRecords = this.bossRecords.filter(r => r.boss_type_id !== bossTypeId)
+    },
+
     setLoading(status) {
       this.loading = status
     },

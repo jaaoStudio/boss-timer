@@ -67,8 +67,11 @@
     "status": "狀態",
     "selectBoss": "選擇 BOSS",
     "sendRecordFailed": "發送紀錄失敗，請重試。",
+    "selectBossFirst": "請先選擇 Boss",
+    "enterChannelFirst": "請先輸入頻道",
     "favorites": "⭐ 收藏",
-    "otherBosses": "全部 Boss"
+    "otherBosses": "全部 Boss",
+    "customBosses": "自訂 Boss"
   },
   "bossInfo": {
     "details": "詳細資訊",
@@ -140,7 +143,24 @@
     "tabs": {
       "preferences": "系統設定",
       "changelog": "更新日誌",
-      "support": "支持開發"
+      "support": "支持開發",
+      "customBoss": "自訂 Boss"
+    },
+    "customBoss": {
+      "addTitle": "新增自訂 Boss",
+      "namePlaceholder": "Boss 名稱",
+      "minRespawn": "最短重生（分鐘）",
+      "maxRespawn": "最長重生（分鐘）",
+      "add": "新增",
+      "addSuccess": "自訂 Boss 已新增",
+      "addFailed": "新增失敗",
+      "existing": "已新增的自訂 Boss",
+      "delete": "刪除",
+      "deleteSuccess": "已刪除",
+      "deleteFailed": "刪除失敗",
+      "deleteConfirmTitle": "刪除自訂 Boss",
+      "deleteConfirmMessage": "刪除後，此 Boss 及所有相關擊殺紀錄將永久移除，無法復原。確定要繼續嗎？",
+      "empty": "尚無自訂 Boss"
     },
     "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
     "webhookInfoTooltip": "開啟後僅對「新建立」的擊殺紀錄生效，過去已記錄的王不會補發通知喔！",
