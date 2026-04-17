@@ -1,23 +1,37 @@
 <template>
   <div class="min-h-screen bg-white dark:bg-gray-900">
-    <div class="container mx-auto px-4 py-8">
-      <!-- 標題 -->
-      <AppHeader />
+    <!-- 三欄佈局：廣告 | 主內容 | 廣告 -->
+    <div class="flex justify-center">
+      <!-- 左側廣告 -->
+      <aside class="hidden xl:flex flex-col items-center pt-8 w-[160px] shrink-0">
+        <AdBanner ad-slot="6801399498" />
+      </aside>
 
-      <!-- 控制面板 -->
-      <BossControlPanel />
+      <!-- 主內容 -->
+      <div class="flex-1 min-w-0 max-w-5xl px-4 py-8">
+        <!-- 標題 -->
+        <AppHeader />
 
-      <!-- BOSS 資訊 -->
-      <BossInfo />
+        <!-- 控制面板 -->
+        <BossControlPanel />
 
-      <!-- 頻道總覽 / 時間軸 -->
-      <ChannelView />
+        <!-- BOSS 資訊 -->
+        <BossInfo />
 
-      <!-- 推薦頻道 -->
-      <RecommendedChannels />
+        <!-- 頻道總覽 / 時間軸 -->
+        <ChannelView />
 
-      <!-- 歷史紀錄 -->
-      <RecordHistory v-if="userStore.user?.preferences?.showRecordHistory ?? true" />
+        <!-- 推薦頻道 -->
+        <RecommendedChannels />
+
+        <!-- 歷史紀錄 -->
+        <RecordHistory v-if="userStore.user?.preferences?.showRecordHistory ?? true" />
+      </div>
+
+      <!-- 右側廣告 -->
+      <aside class="hidden xl:flex flex-col items-center pt-8 w-[160px] shrink-0">
+        <AdBanner ad-slot="6801399498" />
+      </aside>
     </div>
   </div>
 </template>
@@ -40,6 +54,7 @@ import { showMessage } from "@/composables/useElementPlus.js";
 import { useI18n } from "vue-i18n";
 import { useRecentRooms } from '@/composables/useRecentRooms';
 import { useBossAlerts } from '@/composables/useBossAlerts';
+import AdBanner from '@/components/AdBanner.vue';
 
 const { t } = useI18n();
 const router = useRouter();

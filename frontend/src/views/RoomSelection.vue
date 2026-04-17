@@ -50,21 +50,24 @@
       <div v-if="recentRooms.length > 0" class="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
         <div class="flex items-center justify-between mb-3">
           <h3 class="text-sm font-semibold text-gray-600 dark:text-gray-300">{{ t('recentRooms.title') }}</h3>
-          <button @click="clearAllRecent" class="text-xs text-gray-400 hover:text-red-400 transition-colors">{{ t('recentRooms.clearAll') }}</button>
         </div>
         <div class="space-y-2">
           <div v-for="room in recentRooms" :key="room.roomId"
-               class="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer group"
+               class="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
                @click="joinRecentRoom(room.roomId)">
             <div class="flex items-center gap-2">
               <span class="font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ room.roomId }}</span>
               <span class="text-xs text-gray-400">{{ formatLastVisited(room.lastVisited) }}</span>
             </div>
-            <div class="flex items-center gap-1">
+            <div class="flex items-center gap-2">
               <span v-if="joiningRoomId === room.roomId" class="text-xs text-indigo-400">{{ t('recentRooms.joining') }}</span>
-              <button @click.stop="removeRecent(room.roomId)" class="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-400 transition-all p-1">
-                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
-              </button>
+
+              <el-icon
+                :size="20"
+                @click.stop="removeRecent(room.roomId)"
+              >
+                <CircleClose class="text-gray-400 dark:text-gray-400  hover:text-red-600 transition-colors duration-200" />
+              </el-icon>
             </div>
           </div>
         </div>
@@ -112,7 +115,7 @@ import { showMessage } from "@/composables/useElementPlus.js";
 import GoogleLoginButton from "@/components/GoogleLoginButton.vue";
 import { useI18n } from 'vue-i18n';
 import LanguageIcon from "@/assets/icons/LanguageIcon.vue";
-import {Moon, Sunny} from "@element-plus/icons-vue";
+import {Moon, Sunny, CircleClose} from "@element-plus/icons-vue";
 import { isDark, toggleDark } from '@/composables/useTheme.js';
 import { useRecentRooms } from '@/composables/useRecentRooms';
 import { formatDistanceToNow } from 'date-fns';
@@ -141,7 +144,6 @@ const formatLastVisited = (isoString) => {
 };
 
 const removeRecent = (roomId) => { removeRecentRoom(roomId); };
-const clearAllRecent = () => { clearRecentRooms(); };
 
 const joinRecentRoom = async (roomId) => {
   if (!userStore.isLoggedIn && !userStore.anonymousName) {
