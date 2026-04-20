@@ -260,6 +260,18 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_6_0": {
+      "title": "v2.6.0",
+      "date": "2026-04-20",
+      "items": [
+        "New: Custom Boss per room — define room-specific bosses with a custom name and respawn range (Room Settings > Custom Bosses)",
+        "New: Draggable layout — reorder widgets and resize them across 4 width steps (¼ to full width)",
+        "New: Widget collapse — collapse any widget to a slim title bar; click to expand",
+        "New: User Guide page (footer > User Guide) explaining how to use the main features",
+        "Enhancement: Layout upgraded to a 4-column grid for more flexible widget placement",
+        "Enhancement: Deleting a custom Boss now clears related records and Discord alert schedules, with a confirmation prompt"
+      ]
+    },
     "v2_5_0": {
       "title": "v2.5.0",
       "date": "2026-04-16",
