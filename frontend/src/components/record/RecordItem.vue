@@ -4,7 +4,7 @@
       <div class="flex items-center space-x-3">
         <StatusBadge :status="record.status" />
         <div>
-          <span class="font-semibold text-gray-900 dark:text-white">{{ locale === 'zh' ? record.boss_type.name_zh : record.boss_type.name_en }}</span>
+          <span class="font-semibold text-gray-900 dark:text-white">{{ locale === 'zh' ? record.boss_type?.name_zh : record.boss_type?.name_en }}</span>
           <span class="text-gray-600 dark:text-gray-300 font-mono">- CH{{ record.channel }}</span>
           <span class="text-xs text-gray-500 ml-2">{{ t('recordItem.by') }} {{ recorderDisplayName }}</span>
         </div>
@@ -25,7 +25,7 @@
         </el-button>
       </div>
     </div>
-    <div v-if="record.respawn_min_time" class="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-10">
+    <div v-if="record.respawn_min_time && record.respawn_max_time" class="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-10">
       {{ t('recordItem.respawnWindow') }} {{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}
     </div>
   </div>
@@ -40,32 +40,33 @@ import { Delete } from '@element-plus/icons-vue'
 
 const { t, locale } = useI18n()
 
-interface Record {
+interface RecordData {
   id: number
-  room_id: string
+  room_id?: string
   status: string
-  boss_type: {
+  boss_type?: {
     name_zh: string
     name_en: string
   }
   channel: number
   recorded_at: string
-  respawn_min_time?: string
-  respawn_max_time?: string
+  respawn_min_time?: string | null
+  respawn_max_time?: string | null
   recorder?: {
     display_name: string
-  }
+  } | null
   recorder_info?: {
-    anonymous_name: string
-  }
+    anonymous_name?: string
+  } | null
+  [key: string]: any
 }
 
 const props = defineProps<{
-  record: Record
+  record: RecordData
   isDeleting?: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   (e: 'delete', id: number): void
 }>()
 

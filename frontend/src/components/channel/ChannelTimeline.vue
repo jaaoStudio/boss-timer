@@ -137,13 +137,13 @@ const timelineData = computed<TimelineRow[]>(() => {
     const aOrd = STATUS_ORDER[a.current_status] ?? 4
     const bOrd = STATUS_ORDER[b.current_status] ?? 4
     if (aOrd !== bOrd) return aOrd - bOrd
-    return new Date(a.respawn_min_time).getTime() - new Date(b.respawn_min_time).getTime()
+    return new Date(a.respawn_min_time!).getTime() - new Date(b.respawn_min_time!).getTime()
   })
 
   return sorted.map((r) => ({
     channel: r.channel,
-    minTime: new Date(r.respawn_min_time).getTime(),
-    maxTime: new Date(r.respawn_max_time).getTime(),
+    minTime: new Date(r.respawn_min_time!).getTime(),
+    maxTime: new Date(r.respawn_max_time!).getTime(),
     status: r.current_status,
     isExpired: isExpiredRecord(r, now),
   }))
@@ -290,12 +290,13 @@ const chartOption = computed(() => {
     series: [
       {
         type: 'custom',
-        renderItem: (_params: any, api: any) => {
+        renderItem: (params: any, api: any) => {
           const catIndex = api.value(0)
           const start = api.coord([api.value(1), catIndex])
           const end = api.coord([api.value(2), catIndex])
           const bandWidth = api.size([0, 1])[1]
           const barHeight = bandWidth * 0.55
+          const itemStyle = barData[params.dataIndex]?.itemStyle ?? {}
           return {
             type: 'rect',
             shape: {
@@ -303,8 +304,12 @@ const chartOption = computed(() => {
               y: start[1] - barHeight / 2,
               width: Math.max(end[0] - start[0], 4),
               height: barHeight,
+              r: itemStyle.borderRadius ?? 0,
             },
-            style: { ...api.style() },
+            style: {
+              fill: itemStyle.color,
+              opacity: itemStyle.opacity,
+            },
           }
         },
         encode: { x: [1, 2], y: 0 },

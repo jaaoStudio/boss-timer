@@ -29,27 +29,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import CountdownTimer from './CountdownTimer.vue'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, type BossRecord } from '@/stores/bossStore'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const bossStore = useBossStore()
 
-interface ChannelRecord {
-  id?: number | string
-  channel: number
-  respawn_min_time: string
-  respawn_max_time: string
-  [key: string]: any
-}
-
 const props = defineProps<{
   title: string
-  channels: ChannelRecord[]
+  channels: BossRecord[]
   type: 'priority' | 'avoid'
 }>()
 
-const handleTimerEnd = (record: ChannelRecord) => {
+const handleTimerEnd = (record: BossRecord) => {
   bossStore.updateBossStatusOnTimerEnd(record)
 }
 
