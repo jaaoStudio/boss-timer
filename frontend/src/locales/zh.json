@@ -343,5 +343,23 @@
         "新增致謝頁面與貢獻者列表"
       ]
     }
+  },
+  "layout": {
+    "customize": "自訂版面",
+    "editModeHint": "拖曳或點擊箭頭調整順序，桌面端可調整寬度",
+    "reset": "重設",
+    "done": "完成",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "fullWidth": "展開為整行",
+    "halfWidth": "縮為半行",
+    "hidden": "已隱藏",
+    "items": {
+      "controlPanel": "控制面板",
+      "bossInfo": "Boss 資訊",
+      "channelView": "頻道總覽",
+      "recommendedChannels": "推薦頻道",
+      "recordHistory": "歷史紀錄"
+    }
   }
 }

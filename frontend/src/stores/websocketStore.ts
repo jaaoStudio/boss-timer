@@ -49,8 +49,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
                 isConnected.value = true;
                 reconnectAttempts.value = 0;
                 isManualDisconnect.value = false;
-                // Connection is open, process any messages that were queued
                 processMessageQueue();
+                // 重連後自動重新加入房間
+                const currentRoomId = roomStore.roomId;
+                if (currentRoomId) {
+                    socket.value.send(JSON.stringify({
+                        type: 'join_room',
+                        payload: { room_id: currentRoomId },
+                    }));
+                }
             };
 
             socket.value.onmessage = (event) => {

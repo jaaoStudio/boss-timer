@@ -47,6 +47,7 @@ declare module 'vue' {
     ElTimelineItem: typeof import('element-plus/es')['ElTimelineItem']
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     GoogleLoginButton: typeof import('./src/components/GoogleLoginButton.vue')['default']
+    LayoutItemWrapper: typeof import('./src/components/LayoutItemWrapper.vue')['default']
     MaintenanceBanner: typeof import('./src/components/MaintenanceBanner.vue')['default']
     RecommendedChannels: typeof import('./src/components/RecommendedChannels.vue')['default']
     RecommendedSection: typeof import('./src/components/RecommendedSection.vue')['default']

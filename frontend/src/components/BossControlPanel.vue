@@ -1,12 +1,11 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
-    <!-- Removed empty h2 -->
+  <div class="@container bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
 
     <el-form
         :model="form"
         @submit.prevent="recordBoss"
         label-position="top"
-        class="grid grid-cols-1 md:grid-cols-3 gap-4"
+        class="grid grid-cols-1 @[560px]:grid-cols-3 gap-4"
     >
 
       <el-form-item :label="t('bossControlPanel.channel')">

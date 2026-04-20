@@ -251,7 +251,7 @@ def update_user_preferences(db: Session, user: models.User, preferences: dict) -
     更新使用者偏好設定。
     只允許已知的偏好鍵，防止任意 JSON 注入。
     """
-    ALLOWED_PREFERENCE_KEYS = {"showRecordHistory", "channelViewMode", "favoriteBossIds"}
+    ALLOWED_PREFERENCE_KEYS = {"showRecordHistory", "channelViewMode", "favoriteBossIds", "bossTrackerLayout"}
 
     # 只保留允許的 key
     filtered_preferences = {k: v for k, v in preferences.items() if k in ALLOWED_PREFERENCE_KEYS}

@@ -343,5 +343,23 @@
         "Credits page and attributions section added"
       ]
     }
+  },
+  "layout": {
+    "customize": "Customize Layout",
+    "editModeHint": "Drag or use arrows to reorder. Toggle width on desktop.",
+    "reset": "Reset",
+    "done": "Done",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "fullWidth": "Full Width",
+    "halfWidth": "Half Width",
+    "hidden": "Hidden",
+    "items": {
+      "controlPanel": "Control Panel",
+      "bossInfo": "Boss Info",
+      "channelView": "Channel Overview",
+      "recommendedChannels": "Recommended Channels",
+      "recordHistory": "Record History"
+    }
   }
 }
