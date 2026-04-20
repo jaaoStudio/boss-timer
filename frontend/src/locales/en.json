@@ -58,7 +58,9 @@
     "credits": "Attributions & Credits",
     "legal": "Legal Disclaimer",
     "privacy": "Privacy Policy",
+    "guide": "User Guide",
     "contactUs": "Contact Us",
+    "backToHome": "Back to Home",
     "copyright": "Copyright © 2025 boss-timer.jaao.tw. All Rights Reserved."
   },
   "bossControlPanel": {
@@ -343,6 +345,62 @@
         "Credits page and attributions section added"
       ]
     }
+  },
+  "guide": {
+    "title": "User Guide",
+    "subtitle": "Get started with Artale Boss Timer",
+    "sections": {
+      "start": {
+        "title": "Create or Join a Room",
+        "steps": [
+          "On the home page, enter any room name and click \"Create New Room\", or enter a room code shared by a friend and click \"Join\".",
+          "Share the room code with your teammates — all actions within the same room sync in real time.",
+          "You can sign in with Google (to save preferences) or join as a guest by entering a nickname."
+        ]
+      },
+      "record": {
+        "title": "Report Boss Status",
+        "steps": [
+          "In the \"Control Panel\", select a Boss from the dropdown (supports search) and enter the channel number.",
+          "Click \"Killed\", \"Alive\", or \"Not Found\" to submit — the system calculates respawn times automatically.",
+          "Click the star icon next to a Boss to favorite it. Favorited bosses appear at the top of the dropdown."
+        ]
+      },
+      "view": {
+        "title": "View Respawn Info",
+        "steps": [
+          "\"Channel Overview\" offers two views: Card mode (quick countdown per channel) and Gantt Timeline (visual respawn windows).",
+          "The timeline supports status filters (may respawn / respawning / alive / expired) and scrollable rows.",
+          "\"Recommended Channels\" automatically highlights channels worth visiting (may respawn) and those to avoid (respawning)."
+        ]
+      },
+      "history": {
+        "title": "History & Undo",
+        "steps": [
+          "\"Record History\" lists all reports in the room, filterable by Boss.",
+          "If you submitted a wrong report, click the trash icon to undo it — this also cancels any scheduled Discord alerts."
+        ]
+      },
+      "layout": {
+        "title": "Customize Layout",
+        "steps": [
+          "Click \"Customize Layout\" in the top-right to enter edit mode. Drag widgets (desktop) or use the arrow buttons (mobile) to reorder.",
+          "On desktop, use the \"−\" and \"+\" buttons to adjust widget width (¼, ½, ¾, or full). Some widgets have a minimum width of ½.",
+          "In normal view, each widget has a collapse button in its top-right corner (visible on hover). Click to fold it into a thin bar.",
+          "Layout is saved automatically — locally for guests, synced to your account if signed in with Google."
+        ]
+      },
+      "settings": {
+        "title": "Notifications, Sound & Discord",
+        "steps": [
+          "Click the gear icon in the top-right to open Settings. Toggle browser notifications and sound alerts, adjust volume and reminder timing.",
+          "In the \"Discord Webhook\" tab, paste a channel Webhook URL to receive kill notifications and respawn alerts (~5 min before).",
+          "In the \"Custom Bosses\" tab, add room-specific non-standard bosses with custom names and respawn time ranges."
+        ]
+      }
+    },
+    "tip": "Tip",
+    "tipContent": "The room code can be copied directly from the URL bar. Inside a room, clicking the room code in the top-left corner copies it to your clipboard."
   },
   "layout": {
     "customize": "Customize Layout",

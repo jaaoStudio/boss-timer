@@ -2,7 +2,7 @@
 
 一個為楓之谷世界 (Artale) 設計的即時 Boss 計時器，幫助玩家和團隊高效追蹤 Boss 的重生狀態。
 
-[🔗 Live Demo](https://boss-timer.jaao.tw/)
+[🔗 Live Demo](https://boss-timer.jaao.tw/) ｜ [📖 使用教學](https://boss-timer.jaao.tw/guide)
 
 ![專案截圖](boss-timer.jaao.tw_.png)
 
@@ -10,13 +10,15 @@
 
 ## ✨ 主要功能
 
-- **即時狀態追蹤** — 以卡片總覽或甘特時間軸兩種視角查看 Boss 重生狀態
+- **即時狀態追蹤** — 卡片總覽或甘特時間軸兩種視角查看 Boss 重生狀態
 - **多人協作房間** — 建立獨立房間，房間內所有成員即時同步
-- **WebSocket 即時更新** — 狀態變更透過 WebSocket 立即廣播
-- **Discord Webhook** — 擊殺即時通知 + 重生前 5 分鐘預警排程
-- **Google 帳號登入 / 訪客模式** — 支援 Google OAuth 與匿名快速加入
+- **WebSocket 即時更新** — 狀態變更透過 WebSocket 立即廣播到所有連線成員
+- **可拖曳自訂版面** — 拖曳調整區塊順序、1/4 至全寬四段寬度調整、Widget 收合/展開
+- **Discord Webhook** — 擊殺即時通知 + 重生前 5 分鐘預警排程，可設定通知事件與預警模式
+- **自訂 Boss** — 新增房間專屬非標準 Boss，設定名稱與重生時間範圍
 - **Boss 收藏** — 標記常用 Boss，下拉選單優先顯示收藏清單
-- **通知與音效提醒** — 瀏覽器推播通知 + Web Audio API 音效（支援自訂音效上傳）
+- **Google 帳號登入 / 訪客模式** — 支援 Google OAuth 與匿名快速加入，偏好設定跨裝置同步
+- **通知與音效提醒** — 瀏覽器推播通知 + Web Audio API 音效（支援多種音色）
 - **深色模式 / 多國語言** — 支援繁體中文與英文
 
 ---
@@ -28,7 +30,7 @@
 | **後端** | Python 3.11+, FastAPI, SQLAlchemy, PostgreSQL |
 | **即時通訊** | WebSocket (原生 FastAPI) |
 | **非同步任務** | Celery + Redis |
-| **前端** | Vue 3 (Composition API), Vite, Pinia, Tailwind CSS v4, Element Plus, ECharts |
+| **前端** | Vue 3 (Composition API), Vite, Pinia, TypeScript, Tailwind CSS v4, Element Plus, ECharts |
 | **部署** | Docker, Docker Compose, Nginx |
 | **套件管理** | uv (Python), npm (Node) |
 
@@ -52,11 +54,11 @@ cp app/.env.example app/.env
 
 ```dotenv
 # 資料庫連線（本機開發指向 localhost）
-POSTGRES_SERVER=localhost
-POSTGRES_PORT=5432
-POSTGRES_USER=your_user
-POSTGRES_PASSWORD=your_password
-POSTGRES_DB=boss_tracker
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=your_user
+DB_PASSWORD=your_password
+DB_NAME=boss_tracker
 
 # JWT 金鑰（可用 openssl rand -hex 32 產生）
 SECRET_KEY=your_super_secret_key
@@ -70,7 +72,7 @@ GOOGLE_CLIENT_SECRET=your_client_secret
 
 ### 第 2 步：建立資料庫並執行 Migration
 
-> 本機開發時需要自行準備 PostgreSQL 實例（可使用任意 Docker 方式啟動），確保連線設定與 `app/.env` 相符後執行：
+> 本機開發時需要自行準備 PostgreSQL 實例，確保連線設定與 `app/.env` 相符後執行：
 
 ```bash
 # 在專案根目錄執行（不是 app/ 裡面）
@@ -127,8 +129,8 @@ npm run dev
 ```bash
 # 設定版本號
 export REMOTE_REGISTRY_IP=harbor.jaao.tw
-export BACKEND_VERSION=2.5.0
-export FRONTEND_VERSION=2.5.0
+export BACKEND_VERSION=2.6.0
+export FRONTEND_VERSION=2.6.0
 
 docker compose build
 docker push ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
@@ -166,11 +168,11 @@ boss-timing/
 │
 ├── frontend/                   # Vue 3 前端
 │   ├── src/
-│   │   ├── components/         # Vue 元件
-│   │   ├── composables/        # Composables (useSettings, useBossAlerts, useFavoriteBosses...)
-│   │   ├── stores/             # Pinia 狀態 (user / room / boss / websocket)
-│   │   ├── views/              # 頁面視圖
-│   │   ├── locales/            # i18n 翻譯 (zh / en)
+│   │   ├── components/         # Vue 元件（boss / channel / layout / record / settings / ui）
+│   │   ├── composables/        # Composables（useLayoutConfig, useSettings, useBossAlerts…）
+│   │   ├── stores/             # Pinia 狀態（user / room / boss / websocket）
+│   │   ├── views/              # 頁面視圖（BossTracker, RoomSelection, UserGuide…）
+│   │   ├── locales/            # i18n 翻譯（zh / en）
 │   │   └── main.ts
 │   ├── .env.development        # 開發環境變數
 │   ├── .env.production         # 正式環境變數
