@@ -1,9 +1,9 @@
 <template>
   <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
-    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">{{ t('recordHistory.title') }}</h2>
-    <div class="flex justify-end mb-4">
+    <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
+      <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('recordHistory.title') }}</h2>
       <select v-model="selectedBossFilter"
-              class="px-3 py-2 border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              class="w-full @md:w-auto px-3 py-2 border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
         <option value="">{{ t('recordHistory.allBosses') }}</option>
         <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
           {{ locale === 'zh' ? boss.name_zh : boss.name_en }}

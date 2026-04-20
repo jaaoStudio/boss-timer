@@ -1,54 +1,60 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6" v-if="selectedBoss">
-    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">{{ locale === 'zh' ? selectedBoss.name_zh : selectedBoss.name_en }}</h2>
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6" v-if="selectedBoss">
+    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+      {{ locale === 'zh' ? selectedBoss.name_zh : selectedBoss.name_en }}
+    </h2>
 
-    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 @lg:grid-cols-2 gap-x-8 gap-y-1">
       <!-- 基本資訊 -->
-      <div>
-        <h3 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('bossInfo.basicInfo') }}</h3>
-        <div class="space-y-2">
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.respawnTime') }}</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{ selectedBoss.min_respawn_minutes }} - {{ selectedBoss.max_respawn_minutes }} {{ t('bossInfo.minutes') }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.description') }}</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{ selectedBoss.description || t('bossInfo.none') }}</span>
-          </div>
+      <div class="space-y-1.5">
+        <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+          {{ t('bossInfo.basicInfo') }}
+        </p>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.respawnTime') }}</span>
+          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">
+            {{ selectedBoss.min_respawn_minutes }} – {{ selectedBoss.max_respawn_minutes }} {{ t('bossInfo.minutes') }}
+          </span>
+        </div>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.description') }}</span>
+          <span class="text-sm font-medium text-gray-800 dark:text-gray-200 text-right max-w-[60%] break-words">
+            {{ selectedBoss.description || t('bossInfo.none') }}
+          </span>
         </div>
       </div>
 
       <!-- 當前狀態 -->
-      <div>
-        <h3 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('bossInfo.currentStatus') }}</h3>
-        <div class="space-y-2">
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.channel') }}</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{ selectedRecord?.channel }}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.status') }}</span>
-            <StatusBadge :status="selectedRecord?.current_status" />
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.recordTime') }}</span>
-            <span class="font-medium text-gray-800 dark:text-gray-200">{{ formatTime(selectedRecord?.recorded_at) }}</span>
-          </div>
+      <div class="space-y-1.5 mt-4 @lg:mt-0">
+        <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+          {{ t('bossInfo.currentStatus') }}
+        </p>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.channel') }}</span>
+          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ selectedRecord?.channel ?? '—' }}</span>
+        </div>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.status') }}</span>
+          <StatusBadge :status="selectedRecord?.current_status" />
+        </div>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.recordTime') }}</span>
+          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTime(selectedRecord?.recorded_at) }}</span>
         </div>
       </div>
 
       <!-- 重生時間 -->
-      <div v-if="selectedRecord?.respawn_min_time">
-        <h3 class="text-lg font-medium text-gray-700 dark:text-gray-300 mb-2">{{ t('bossInfo.respawnCountdown') }}</h3>
-        <div class="space-y-2">
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.earliestRespawn') }}</span>
-            <CountdownTimer :target-time="selectedRecord.respawn_min_time" />
-          </div>
-          <div class="flex justify-between">
-            <span class="text-gray-500 dark:text-gray-400">{{ t('bossInfo.latestRespawn') }}</span>
-            <CountdownTimer :target-time="selectedRecord.respawn_max_time" />
-          </div>
+      <div v-if="selectedRecord?.respawn_min_time" class="space-y-1.5 mt-4 @lg:col-span-2">
+        <p class="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-1">
+          {{ t('bossInfo.respawnCountdown') }}
+        </p>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.earliestRespawn') }}</span>
+          <CountdownTimer :target-time="selectedRecord.respawn_min_time" />
+        </div>
+        <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.latestRespawn') }}</span>
+          <CountdownTimer :target-time="selectedRecord.respawn_max_time" />
         </div>
       </div>
     </div>

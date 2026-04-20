@@ -2,7 +2,7 @@
   <!-- 編輯模式工具列 -->
   <div
     v-if="isEditMode"
-    class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2.5"
+    class="my-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2.5"
   >
     <div class="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 min-w-0">
       <ViewColumnsIcon class="w-4 h-4 shrink-0" />

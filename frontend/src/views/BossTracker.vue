@@ -7,7 +7,7 @@
       </aside>
 
       <!-- 主內容 -->
-      <div class="flex-1 min-w-0 max-w-5xl px-4 py-8">
+      <div class="flex-1 min-w-0 max-w-5xl px-4 py-8 gap-2">
         <AppHeader />
 
         <!-- 編輯模式工具列 -->
@@ -25,7 +25,7 @@
           handle=".drag-handle"
           :animation="150"
           ghost-class="opacity-30"
-          class="grid grid-cols-1 md:grid-cols-2 gap-4"
+          class="grid grid-cols-1 md:grid-cols-4 gap-6"
         >
           <LayoutItemWrapper
             v-for="(item, index) in layout"
@@ -37,7 +37,9 @@
             :visible="isItemVisible(item.id)"
             @move-up="moveItem(index, index - 1)"
             @move-down="moveItem(index, index + 1)"
-            @toggle-col-span="toggleColSpan(item.id)"
+            @increase-col-span="increaseColSpan(item.id)"
+            @decrease-col-span="decreaseColSpan(item.id)"
+            @toggle-collapsed="toggleCollapsed(item.id)"
           >
             <BossControlPanel v-if="item.id === 'controlPanel'" />
             <BossInfo v-else-if="item.id === 'bossInfo'" />
@@ -90,7 +92,7 @@ const { addRecentRoom } = useRecentRooms()
 
 useBossAlerts()
 
-const { layout, isEditMode, moveItem, toggleColSpan, enterEditMode, exitEditMode, resetLayout } = useLayoutConfig()
+const { layout, isEditMode, moveItem, increaseColSpan, decreaseColSpan, toggleCollapsed, enterEditMode, exitEditMode, resetLayout } = useLayoutConfig()
 
 function isItemVisible(id) {
   if (id === 'recordHistory') {

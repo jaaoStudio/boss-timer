@@ -346,13 +346,15 @@
   },
   "layout": {
     "customize": "Customize Layout",
-    "editModeHint": "Drag or use arrows to reorder. Toggle width on desktop.",
+    "editModeHint": "Drag or use arrows to reorder. Adjust width (¼ ½ ¾ full) on desktop.",
     "reset": "Reset",
     "done": "Done",
     "moveUp": "Move Up",
     "moveDown": "Move Down",
-    "fullWidth": "Full Width",
-    "halfWidth": "Half Width",
+    "narrower": "Narrower",
+    "wider": "Wider",
+    "collapse": "Collapse",
+    "expand": "Expand",
     "hidden": "Hidden",
     "items": {
       "controlPanel": "Control Panel",

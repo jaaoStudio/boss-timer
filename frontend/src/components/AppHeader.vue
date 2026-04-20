@@ -1,5 +1,5 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
     <div class="flex flex-col sm:flex-row items-center sm:justify-between gap-y-4 sm:gap-x-2.5">
       <div class="flex flex-row sm:flex-col items-center gap-2.5 sm:gap-x-4">
         <div class="flex items-center">
@@ -52,8 +52,6 @@ import RoomManager from '@/components/room/RoomManager.vue'
 import GoogleLoginButton from "@/components/ui/GoogleLoginButton.vue"
 import { showMessage } from "@/composables/useElementPlus"
 import { useI18n } from "vue-i18n"
-import { computed, ref, watch, nextTick, onMounted } from 'vue'
-import { isDark } from '@/composables/useTheme'
 
 const { t } = useI18n()
 

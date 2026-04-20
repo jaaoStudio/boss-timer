@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2 overflow-auto">
+  <div class="grid gap-2 overflow-auto [grid-template-columns:repeat(auto-fill,minmax(3.5rem,1fr))]">
     <ChannelCard
       v-for="channel in recordedChannels"
       :key="channel"

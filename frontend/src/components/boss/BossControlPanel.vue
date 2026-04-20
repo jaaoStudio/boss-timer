@@ -1,11 +1,11 @@
 <template>
-  <div class="@container bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-6">
+  <div class="@container bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
 
     <el-form
         :model="form"
         @submit.prevent="recordBoss"
         label-position="top"
-        class="grid grid-cols-1 @[560px]:grid-cols-3 gap-4"
+        class="grid grid-cols-2 @[560px]:grid-cols-3 gap-4"
     >
 
       <el-form-item :label="t('bossControlPanel.channel')">
@@ -77,7 +77,7 @@
         </el-select>
       </el-form-item>
 
-      <el-form-item :label="t('bossControlPanel.status')">
+      <el-form-item :label="t('bossControlPanel.status')" class="col-span-2 @[560px]:col-span-1">
         <div class="flex gap-2 w-full">
           <BossStatusButton
               v-for="status in statuses"

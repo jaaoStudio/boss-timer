@@ -346,13 +346,15 @@
   },
   "layout": {
     "customize": "自訂版面",
-    "editModeHint": "拖曳或點擊箭頭調整順序，桌面端可調整寬度",
+    "editModeHint": "拖曳或點擊箭頭調整順序，桌面端可調整寬度（¼ ½ ¾ 全寬）",
     "reset": "重設",
     "done": "完成",
     "moveUp": "上移",
     "moveDown": "下移",
-    "fullWidth": "展開為整行",
-    "halfWidth": "縮為半行",
+    "narrower": "縮窄",
+    "wider": "加寬",
+    "collapse": "收合",
+    "expand": "展開",
     "hidden": "已隱藏",
     "items": {
       "controlPanel": "控制面板",

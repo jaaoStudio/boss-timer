@@ -5,26 +5,57 @@ export type LayoutItemId = 'controlPanel' | 'bossInfo' | 'channelView' | 'recomm
 
 export interface LayoutItem {
   id: LayoutItemId
-  colSpan: 1 | 2
+  colSpan: 1 | 2 | 3 | 4
+  collapsed: boolean
 }
 
 const STORAGE_KEY = 'boss_tracker_layout'
 const PREFERENCE_KEY = 'bossTrackerLayout'
 
 const DEFAULT_ITEMS: LayoutItem[] = [
-  { id: 'controlPanel', colSpan: 2 },
-  { id: 'bossInfo', colSpan: 2 },
-  { id: 'channelView', colSpan: 2 },
-  { id: 'recommendedChannels', colSpan: 2 },
-  { id: 'recordHistory', colSpan: 2 },
+  { id: 'controlPanel', colSpan: 4, collapsed: false },
+  { id: 'bossInfo', colSpan: 4, collapsed: false },
+  { id: 'channelView', colSpan: 4, collapsed: false },
+  { id: 'recommendedChannels', colSpan: 4, collapsed: false },
+  { id: 'recordHistory', colSpan: 4, collapsed: false },
 ]
 
 const REQUIRED_IDS: LayoutItemId[] = ['controlPanel', 'bossInfo', 'channelView', 'recommendedChannels', 'recordHistory']
+
+export const MIN_COL_SPAN: Record<LayoutItemId, 1 | 2> = {
+  controlPanel:        1,
+  bossInfo:            1,
+  channelView:         2,
+  recommendedChannels: 2,
+  recordHistory:       2,
+}
 
 function isValidItems(data: unknown): data is LayoutItem[] {
   if (!Array.isArray(data) || data.length === 0) return false
   const ids = new Set(data.map((i: any) => i?.id))
   return REQUIRED_IDS.every(id => ids.has(id))
+}
+
+/**
+ * Migrate old layout format (colSpan 1|2, no collapsed) to new format (colSpan 1-4, collapsed).
+ * Old colSpan 2 (full width in 2-col grid) → 4 (full width in 4-col grid)
+ * Old colSpan 1 (half width in 2-col grid) → 2 (half width in 4-col grid)
+ */
+function migrateItem(item: any): LayoutItem {
+  let colSpan = item.colSpan ?? 4
+  // Detect old format: colSpan was 1 or 2 in a 2-column system
+  // If colSpan <= 2 and no collapsed field exists, it's likely old format
+  if (item.collapsed === undefined && colSpan <= 2) {
+    colSpan = colSpan === 2 ? 4 : 2
+  }
+  // Clamp to valid range, respecting per-item minimum
+  const min = MIN_COL_SPAN[item.id as LayoutItemId] ?? 1
+  colSpan = Math.max(min, Math.min(4, colSpan)) as 1 | 2 | 3 | 4
+  return {
+    id: item.id,
+    colSpan,
+    collapsed: item.collapsed ?? false,
+  }
 }
 
 function parseStored(raw: string | null): { items?: unknown } | null {
@@ -48,9 +79,10 @@ export function useLayoutConfig() {
       source = parseStored(localStorage.getItem(STORAGE_KEY))
     }
 
-    return isValidItems(source?.items)
-      ? source!.items.map(i => ({ ...i }))
-      : DEFAULT_ITEMS.map(i => ({ ...i }))
+    if (isValidItems(source?.items)) {
+      return source!.items.map(i => migrateItem(i))
+    }
+    return DEFAULT_ITEMS.map(i => ({ ...i }))
   }
 
   const layout = ref<LayoutItem[]>(loadItems())
@@ -73,9 +105,26 @@ export function useLayoutConfig() {
     layout.value = items
   }
 
-  function toggleColSpan(id: LayoutItemId) {
+  function increaseColSpan(id: LayoutItemId) {
     const item = layout.value.find(i => i.id === id)
-    if (item) item.colSpan = item.colSpan === 2 ? 1 : 2
+    if (item && item.colSpan < 4) {
+      item.colSpan = (item.colSpan + 1) as 1 | 2 | 3 | 4
+    }
+  }
+
+  function decreaseColSpan(id: LayoutItemId) {
+    const item = layout.value.find(i => i.id === id)
+    const min = MIN_COL_SPAN[id]
+    if (item && item.colSpan > min) {
+      item.colSpan = (item.colSpan - 1) as 1 | 2 | 3 | 4
+    }
+  }
+
+  function toggleCollapsed(id: LayoutItemId) {
+    const item = layout.value.find(i => i.id === id)
+    if (item) item.collapsed = !item.collapsed
+    // Persist immediately so collapse state survives without entering edit mode
+    saveLayout()
   }
 
   function enterEditMode() {
@@ -95,7 +144,9 @@ export function useLayoutConfig() {
     layout,
     isEditMode,
     moveItem,
-    toggleColSpan,
+    increaseColSpan,
+    decreaseColSpan,
+    toggleCollapsed,
     enterEditMode,
     exitEditMode,
     resetLayout,
