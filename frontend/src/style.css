@@ -10,7 +10,9 @@ button:not(:disabled):not(.el-button),
 }
 
 @layer base {
-  button:focus, button:focus-visible {
+
+  button:focus,
+  button:focus-visible {
     outline: none;
   }
 }
@@ -19,9 +21,12 @@ button:not(:disabled):not(.el-button),
 
 /* 針對深色模式的設定 (如果你有做 Dark Mode) */
 html.dark {
-  --el-color-primary: #60a5fa; /* Tailwind blue-400，深色模式下亮一點 */
-  --el-color-primary-light-9: #1e3a8a; /* 深色模式下的背景色要深一點 */
+  --el-color-primary: #60a5fa;
+  /* Tailwind blue-400，深色模式下亮一點 */
+  --el-color-primary-light-9: #1e3a8a;
+  /* 深色模式下的背景色要深一點 */
 }
+
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -36,7 +41,8 @@ html.dark {
   -moz-osx-font-smoothing: grayscale;
 
   --el-color-primary: theme('colors.gray.300');
-  --el-color-primary-light-9: #eff6ff; /* Tailwind blue-50 */
+  --el-color-primary-light-9: #eff6ff;
+  /* Tailwind blue-50 */
 }
 
 a {
@@ -72,33 +78,6 @@ h1 {
   font-size: 3.2em;
   line-height: 1.1;
   /* 移除 header 的寫死顏色，讓它繼承 body */
-}
-
-/* 如果您希望這個按鈕也跟著變色，也需要改 */
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-
-  /* --- 修改：按鈕背景也改用變數 --- */
-  background-color: var(--el-fill-color-light);
-  /* 改成跟隨主題的淡灰色 */
-  color: var(--el-text-color-regular);
-
-  cursor: pointer;
-  transition: border-color 0.25s, background-color 0.3s;
-}
-
-button:hover {
-  border-color: #646cff;
-}
-
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }
 
 .card {

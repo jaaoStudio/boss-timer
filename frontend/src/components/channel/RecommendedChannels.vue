@@ -19,7 +19,7 @@
 <script setup lang="ts">
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
-import RecommendedSection from './RecommendedSection.vue'
+import RecommendedSection from '@/components/ui/RecommendedSection.vue'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()

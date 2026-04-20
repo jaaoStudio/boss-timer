@@ -31,10 +31,10 @@ import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
-import SettingsPreferences from '@/components/SettingsPreferences.vue'
-import SettingsChangelog from '@/components/SettingsChangelog.vue'
-import SettingsSupport from '@/components/SettingsSupport.vue'
-import SettingsCustomBosses from '@/components/SettingsCustomBosses.vue'
+import SettingsPreferences from '@/components/settings/SettingsPreferences.vue'
+import SettingsChangelog from '@/components/settings/SettingsChangelog.vue'
+import SettingsSupport from '@/components/settings/SettingsSupport.vue'
+import SettingsCustomBosses from '@/components/settings/SettingsCustomBosses.vue'
 
 const { t } = useI18n()
 const { roomId } = storeToRefs(useRoomStore())

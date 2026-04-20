@@ -101,7 +101,7 @@ import {ref, computed, watch, onMounted} from 'vue'
 import {storeToRefs} from 'pinia'
 import {useRoomStore} from '@/stores/roomStore'
 import {useBossStore} from '@/stores/bossStore'
-import BossStatusButton from "@/components/BossStatusButton.vue"
+import BossStatusButton from "@/components/boss/BossStatusButton.vue"
 import {showMessage} from "@/composables/useElementPlus"
 import {useUserStore} from '@/stores/userStore'
 import {useWebSocketStore} from '@/stores/websocketStore'

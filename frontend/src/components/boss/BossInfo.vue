@@ -59,8 +59,8 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
-import StatusBadge from './StatusBadge.vue'
-import CountdownTimer from './CountdownTimer.vue'
+import StatusBadge from '@/components/ui/StatusBadge.vue'
+import CountdownTimer from '@/components/ui/CountdownTimer.vue'
 import { useI18n } from 'vue-i18n'
 import { format } from 'date-fns'
 

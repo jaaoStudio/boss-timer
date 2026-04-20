@@ -11,30 +11,12 @@
         <AppHeader />
 
         <!-- 編輯模式工具列 -->
-        <div
-          v-if="isEditMode"
-          class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-indigo-200 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-4 py-2.5"
-        >
-          <div class="flex items-center gap-2 text-indigo-700 dark:text-indigo-300 min-w-0">
-            <ViewColumnsIcon class="w-4 h-4 shrink-0" />
-            <span class="text-sm">{{ $t('layout.editModeHint') }}</span>
-          </div>
-          <div class="flex items-center gap-2 shrink-0">
-            <el-button size="small" @click="resetLayout">{{ $t('layout.reset') }}</el-button>
-            <el-button size="small" type="primary" @click="exitEditMode">{{ $t('layout.done') }}</el-button>
-          </div>
-        </div>
-
-        <!-- 自訂版面按鈕（平時低調） -->
-        <div v-else class="flex justify-end mb-1">
-          <div
-            @click="enterEditMode"
-            class="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors cursor-pointer py-1 px-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800/50"
-          >
-            <ViewColumnsIcon class="w-3.5 h-3.5" />
-            {{ $t('layout.customize') }}
-          </div>
-        </div>
+        <EditModeToolbar
+          :is-edit-mode="isEditMode"
+          @enter="enterEditMode"
+          @exit="exitEditMode"
+          @reset="resetLayout"
+        />
 
         <!-- 版面 Grid -->
         <VueDraggable
@@ -83,20 +65,20 @@ import { useUserStore } from '@/stores/userStore.js'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import ApiService from '@/services/apiService.ts'
 import AppHeader from '@/components/AppHeader.vue'
-import BossControlPanel from '@/components/BossControlPanel.vue'
-import BossInfo from '@/components/BossInfo.vue'
-import ChannelView from '@/components/ChannelView.vue'
-import RecommendedChannels from '@/components/RecommendedChannels.vue'
-import RecordHistory from '@/components/RecordHistory.vue'
-import LayoutItemWrapper from '@/components/LayoutItemWrapper.vue'
+import BossControlPanel from '@/components/boss/BossControlPanel.vue'
+import BossInfo from '@/components/boss/BossInfo.vue'
+import ChannelView from '@/components/channel/ChannelView.vue'
+import RecommendedChannels from '@/components/channel/RecommendedChannels.vue'
+import RecordHistory from '@/components/record/RecordHistory.vue'
+import LayoutItemWrapper from '@/components/layout/LayoutItemWrapper.vue'
+import EditModeToolbar from '@/components/layout/EditModeToolbar.vue'
 import { showMessage } from '@/composables/useElementPlus.js'
 import { useI18n } from 'vue-i18n'
 import { useRecentRooms } from '@/composables/useRecentRooms'
 import { useBossAlerts } from '@/composables/useBossAlerts'
 import { useLayoutConfig } from '@/composables/useLayoutConfig'
-import AdBanner from '@/components/AdBanner.vue'
+import AdBanner from '@/components/ui/AdBanner.vue'
 import { VueDraggable } from 'vue-draggable-plus'
-import { ViewColumnsIcon } from '@heroicons/vue/24/outline'
 
 const { t } = useI18n()
 const router = useRouter()

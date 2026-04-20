@@ -23,17 +23,48 @@ description: 新增或修改 Vue 3 元件、Element Plus UI、多語系 i18n 鍵
 ```
 frontend/src/
 ├── components/
-│   ├── AppHeader.vue
-│   ├── BossControlPanel.vue
-│   ├── BossInfo.vue
-│   ├── BossStatusButton.vue
-│   ├── ChannelCard.vue
-│   ├── ChannelOverview.vue
-│   ├── RecordHistory.vue
-│   ├── RecordItem.vue
-│   ├── SettingsModal.vue     ← Discord Webhook 設定、通知、音效
-│   ├── StatusBadge.vue
-│   └── ...
+│   ├── AppHeader.vue             ← 全域頂部導覽列（保留頂層）
+│   ├── AppFooter.vue             ← 全域頁尾（保留頂層）
+│   │
+│   ├── boss/                     ← Boss 相關
+│   │   ├── BossControlPanel.vue
+│   │   ├── BossInfo.vue
+│   │   ├── BossInfoItem.vue
+│   │   └── BossStatusButton.vue
+│   │
+│   ├── channel/                  ← 頻道相關
+│   │   ├── ChannelCard.vue
+│   │   ├── ChannelOverview.vue
+│   │   ├── ChannelTimeline.vue
+│   │   ├── ChannelView.vue
+│   │   └── RecommendedChannels.vue
+│   │
+│   ├── layout/                   ← 版面結構
+│   │   ├── EditModeToolbar.vue   ← 編輯模式工具列（props/emits 與父溝通）
+│   │   └── LayoutItemWrapper.vue
+│   │
+│   ├── record/                   ← 擊殺紀錄
+│   │   ├── RecordHistory.vue
+│   │   └── RecordItem.vue
+│   │
+│   ├── room/                     ← 房間操作
+│   │   └── RoomManager.vue
+│   │
+│   ├── settings/                 ← 設定彈窗（通知、音效、Webhook、自訂 Boss）
+│   │   ├── SettingsModal.vue
+│   │   ├── SettingsPreferences.vue
+│   │   ├── SettingsChangelog.vue
+│   │   ├── SettingsSupport.vue
+│   │   └── SettingsCustomBosses.vue
+│   │
+│   └── ui/                       ← 通用 UI 元件
+│       ├── AdBanner.vue
+│       ├── CountdownTimer.vue
+│       ├── GoogleLoginButton.vue
+│       ├── MaintenanceBanner.vue
+│       ├── RecommendedSection.vue
+│       └── StatusBadge.vue
+│
 ├── locales/
 │   ├── zh.json               ← 繁體中文翻譯
 │   └── en.json               ← 英文翻譯
@@ -42,6 +73,8 @@ frontend/src/
     ├── BossTracker.vue
     └── ...
 ```
+
+> **⚠️ Import 路徑規則**：跨子目錄引用元件一律使用 `@/components/<子目錄>/元件名.vue`，禁止使用相對路徑（`./` 或 `../`）。
 
 ---
 
@@ -139,6 +172,7 @@ const { t } = useI18n()
 | `bossInfo.*` | Boss 詳細資訊 |
 | `bossStatusButton.*` | Boss 狀態按鈕 |
 | `channelOverview.*` | 頻道總覽 |
+| `channelTimeline.*` | 重生時間軸 |
 | `recommendedChannels.*` | 推薦頻道 |
 | `recordHistory.*` | 擊殺紀錄 |
 | `recordItem.*` | 單筆紀錄 |
@@ -146,10 +180,13 @@ const { t } = useI18n()
 | `recentRooms.*` | 最近房間 |
 | `settings.*` | 設定彈窗（通知、音效、Webhook） |
 | `notification.*` | 瀏覽器通知文字 |
+| `layout.*` | 版面編輯模式工具列與自訂版面 |
 | `appFooter.*` | 頁尾 |
 | `credits.*` | 致謝頁 |
 | `legal.*` | 法律聲明頁 |
 | `privacy.*` | 隱私政策頁 |
+| `changelog.*` | 更新日誌內容 |
+| `globalErrors.*` | 全域錯誤提示 |
 
 ---
 

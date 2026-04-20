@@ -56,7 +56,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import SettingsModal from '@/components/SettingsModal.vue'
+import SettingsModal from '@/components/settings/SettingsModal.vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore.js'

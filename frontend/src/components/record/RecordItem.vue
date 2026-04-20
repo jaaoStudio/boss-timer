@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import StatusBadge from './StatusBadge.vue'
+import StatusBadge from '@/components/ui/StatusBadge.vue'
 import { useI18n } from 'vue-i18n'
 
 import { Delete } from '@element-plus/icons-vue'

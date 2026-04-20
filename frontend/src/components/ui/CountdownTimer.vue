@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useTimer } from '../composables/useTimer'
+import { useTimer } from '@/composables/useTimer'
 
 const props = withDefaults(defineProps<{
   targetTime: string | null | undefined

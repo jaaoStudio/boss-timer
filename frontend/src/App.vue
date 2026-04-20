@@ -2,7 +2,7 @@
 import { onMounted, watch } from 'vue';
 import { RouterView } from "vue-router";
 import AppFooter from "@/components/AppFooter.vue";
-import MaintenanceBanner from "@/components/MaintenanceBanner.vue"; // 引入元件
+import MaintenanceBanner from "@/components/ui/MaintenanceBanner.vue"; // 引入元件
 import { useUserStore } from '@/stores/userStore';
 import { useAppInfoStore } from '@/stores/appInfo'; // 引入 store
 import { useWebSocketStore } from '@/stores/websocketStore'; // 引入 websocket store

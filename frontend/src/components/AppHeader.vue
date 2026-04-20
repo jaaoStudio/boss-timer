@@ -48,8 +48,8 @@ import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
 import { useUserStore } from '@/stores/userStore'
 import { UsersIcon } from '@heroicons/vue/24/outline'
-import RoomManager from '@/components/RoomManager.vue'
-import GoogleLoginButton from "@/components/GoogleLoginButton.vue"
+import RoomManager from '@/components/room/RoomManager.vue'
+import GoogleLoginButton from "@/components/ui/GoogleLoginButton.vue"
 import { showMessage } from "@/composables/useElementPlus"
 import { useI18n } from "vue-i18n"
 import { computed, ref, watch, nextTick, onMounted } from 'vue'
