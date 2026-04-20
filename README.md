@@ -122,6 +122,26 @@ npm run dev
 
 ---
 
+## 🐳 本機完整容器化（docker-compose.local.yaml）
+
+不想在本機安裝 Python / Node 環境時，可用此方式一鍵啟動完整服務（後端、前端 Nginx、Redis、Celery Workers），資料庫連線沿用 `app/.env` 的設定，指向已有的 PostgreSQL 實例。
+
+```bash
+docker compose -f docker-compose.local.yaml --env-file ./app/.env up --build
+```
+
+| 服務 | Port | 說明 |
+| :--- | :--- | :--- |
+| `boss_service` | 1254 | FastAPI 後端 |
+| `boss_timer_nginx` | 2255 | 前端 Nginx |
+| `redis` | 6381 | Redis（Celery Broker） |
+| `celery_worker_fast` | — | 一般任務 Worker |
+| `celery_worker_discord` | — | Discord 推播 Worker |
+
+> 若資料庫跑在宿主機，`app/.env` 的 `DB_HOST` 請設為 `host.docker.internal`（而非 `localhost`）。
+
+---
+
 ## 🏗️ Docker 建置與部署
 
 ### 建置映像並推送
@@ -181,6 +201,7 @@ boss-timing/
 ├── alembic/                    # DB Migration 腳本
 ├── docker-compose.yaml         # 建置用（含 build 指令）
 ├── docker-compose.dev.yaml     # 開發用（只啟動 Redis）
+├── docker-compose.local.yaml   # 本機容器化（後端+前端+Redis，DB 連外部）
 ├── docker-compose.prod.yaml    # 正式環境（全容器化）
 ├── pyproject.toml              # Python 套件定義 (uv)
 └── uv.lock
