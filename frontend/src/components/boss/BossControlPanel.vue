@@ -80,6 +80,7 @@
             :key="status.type"
             :type="status.type"
             :disabled="loading"
+            :compact="isCompact"
             @click="onSelectStatus(status.type)"
         />
       </div>
@@ -113,7 +114,13 @@ const { roomId } = storeToRefs(roomStore)
 const { bossTypes, selectedChannel, selectedBossTypeId } = storeToRefs(bossStore)
 const { isLoggedIn, anonymousId, anonymousName } = storeToRefs(userStore)
 
+const props = defineProps<{
+  colSpan?: 1 | 2 | 3 | 4
+}>()
+
 const { favoriteBossIds, toggleFavorite } = useFavoriteBosses()
+
+const isCompact = computed(() => [1,2].includes(props.colSpan))
 
 const bossLabel = (boss: any) => locale.value === 'zh' ? boss.name_zh : boss.name_en
 

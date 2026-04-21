@@ -41,7 +41,7 @@
             @decrease-col-span="decreaseColSpan(item.id)"
             @toggle-collapsed="toggleCollapsed(item.id)"
           >
-            <BossControlPanel v-if="item.id === 'controlPanel'" />
+            <BossControlPanel v-if="item.id === 'controlPanel'" :col-span="item.colSpan" />
             <BossInfo v-else-if="item.id === 'bossInfo'" />
             <ChannelView v-else-if="item.id === 'channelView'" />
             <RecommendedChannels v-else-if="item.id === 'recommendedChannels'" />

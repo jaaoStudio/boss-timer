@@ -7,7 +7,7 @@
     class="flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed select-none"
   >
     <component :is="buttonConfig.icon" class="w-5 h-5 shrink-0" fill="currentColor"/>
-    <span class="text-xs font-medium leading-tight text-center whitespace-nowrap">
+    <span v-if="!compact" class="text-xs font-medium leading-tight text-center whitespace-nowrap">
       {{ buttonConfig.title }}
     </span>
   </div>
@@ -25,6 +25,7 @@ const { t } = useI18n()
 const props = defineProps<{
   type: 'alive' | 'killed' | 'not_found'
   disabled?: boolean
+  compact?: boolean
 }>()
 
 defineEmits<{

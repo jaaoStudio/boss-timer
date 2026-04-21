@@ -24,7 +24,7 @@ const REQUIRED_IDS: LayoutItemId[] = ['controlPanel', 'bossInfo', 'channelView',
 
 export const MIN_COL_SPAN: Record<LayoutItemId, 1 | 2> = {
   controlPanel:        1,
-  bossInfo:            1,
+  bossInfo:            2,
   channelView:         2,
   recommendedChannels: 2,
   recordHistory:       2,
