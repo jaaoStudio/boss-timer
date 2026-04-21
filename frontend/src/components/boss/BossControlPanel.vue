@@ -28,6 +28,15 @@
               clearable
               class="w-full"
           >
+            <el-option-group v-if="customBossTypes.length" :label="t('bossControlPanel.customBosses')">
+              <el-option
+                  v-for="boss in customBossTypes"
+                  :key="boss.id"
+                  :label="boss.name_zh"
+                  :value="boss.id"
+              />
+            </el-option-group>
+
             <el-option-group v-if="favoriteOptions.length" :label="t('bossControlPanel.favorites')">
               <el-option
                   v-for="boss in favoriteOptions"
@@ -45,7 +54,7 @@
               </el-option>
             </el-option-group>
 
-            <el-option-group :label="favoriteOptions.length ? t('bossControlPanel.otherBosses') : ''">
+            <el-option-group :label="favoriteOptions.length || customBossTypes.length ? t('bossControlPanel.otherBosses') : ''">
               <el-option
                   v-for="boss in otherOptions"
                   :key="boss.id"
@@ -62,14 +71,7 @@
               </el-option>
             </el-option-group>
 
-            <el-option-group v-if="customBossTypes.length" :label="t('bossControlPanel.customBosses')">
-              <el-option
-                  v-for="boss in customBossTypes"
-                  :key="boss.id"
-                  :label="boss.name_zh"
-                  :value="boss.id"
-              />
-            </el-option-group>
+
           </el-select>
         </el-form-item>
       </div>

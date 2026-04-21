@@ -142,6 +142,6 @@ onUnmounted(() => {
     })
   }
   roomStore.setRoomId(null)
-  bossStore.setBossRecords([])
+  bossStore.clearRoomState()
 })
 </script>

@@ -1,5 +1,34 @@
 import { defineStore } from 'pinia'
 
+function resolveBossTypeId(types: BossType[]): number | null {
+  if (!types.length) return null
+
+  const lastId = Number(localStorage.getItem('lastSelectedBossTypeId'))
+  const lastIsCustom = localStorage.getItem('lastSelectedBossTypeIsCustom') === 'true'
+
+  // 1. 上次選的存在於新房間
+  if (lastId) {
+    const found = types.find(t => t.id === lastId)
+    if (found) return found.id
+  }
+
+  // 2. 上次選的是自訂 Boss → 找新房間第一個自訂 Boss
+  if (lastIsCustom) {
+    const firstCustom = types.find(t => !!t.room_id)
+    if (firstCustom) return firstCustom.id
+  }
+
+  // 3. 收藏第一個
+  try {
+    const favorites: number[] = JSON.parse(localStorage.getItem('favorite-boss-ids') || '[]')
+    const firstFav = favorites.find(id => types.some(t => t.id === id))
+    if (firstFav) return firstFav
+  } catch {}
+
+  // 4. 退路
+  return types[0].id
+}
+
 export interface BossType {
   id: number
   name_zh: string
@@ -59,12 +88,15 @@ export const useBossStore = defineStore('boss', {
   actions: {
     setBossTypes(types: BossType[]) {
       this.bossTypes = types
-      if (this.selectedBossTypeId === null && types.length > 0) {
-        this.selectedBossTypeId = types[0].id
-      }
+      this.selectedBossTypeId = resolveBossTypeId(types)
     },
     setSelectedBossTypeId(id: number | null) {
       this.selectedBossTypeId = id
+      if (id !== null) {
+        const isCustom = !!this.bossTypes.find(t => t.id === id)?.room_id
+        localStorage.setItem('lastSelectedBossTypeId', String(id))
+        localStorage.setItem('lastSelectedBossTypeIsCustom', String(isCustom))
+      }
     },
     setBossRecords(records: BossRecord[]) {
       this.bossRecords = records
@@ -107,6 +139,13 @@ export const useBossStore = defineStore('boss', {
         this.selectedBossTypeId = null
       }
       this.bossRecords = this.bossRecords.filter(r => r.boss_type_id !== bossTypeId)
+    },
+
+    clearRoomState() {
+      this.bossTypes = []
+      this.bossRecords = []
+      this.selectedBossTypeId = null
+      this.selectedChannel = null
     },
 
     setLoading(status: boolean) {
