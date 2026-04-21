@@ -260,6 +260,18 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_6_1": {
+      "title": "v2.6.1",
+      "date": "2026-04-21",
+      "items": [
+        "Enhancement: Numeric keyboard now appears automatically when entering a channel number on mobile",
+        "Enhancement: Status buttons now display icon + label directly with color coding (green / red / gray) — no more hover-only tooltips",
+        "Enhancement: When the control panel is at ¼ width, status buttons automatically switch to icon-only compact mode",
+        "Fix: Clicking outside the status buttons no longer accidentally triggers a submission",
+        "Fix: Custom Bosses from a previous room no longer carry over when switching rooms",
+        "Enhancement: When entering a new room, the previously selected Boss is automatically restored; if it was a custom Boss, the first custom Boss in the new room is tried next, then favorites, then the default"
+      ]
+    },
     "v2_6_0": {
       "title": "v2.6.0",
       "date": "2026-04-20",
