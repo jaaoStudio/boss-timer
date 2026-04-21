@@ -1,13 +1,13 @@
 <template>
   <div
+    type="button"
     :class="buttonClass"
     :disabled="disabled"
-    :title="buttonConfig.title"
     @click="$emit('click')"
-    class="flex-1 p-2 rounded transition-colors group relative disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-600 cursor-pointer"
+    class="flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed select-none"
   >
-    <component :is="buttonConfig.icon" class="w-5 h-5 mx-auto" fill="currentColor"/>
-    <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 text-xs bg-black text-white rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+    <component :is="buttonConfig.icon" class="w-5 h-5 shrink-0" fill="currentColor"/>
+    <span class="text-xs font-medium leading-tight text-center whitespace-nowrap">
       {{ buttonConfig.title }}
     </span>
   </div>
@@ -35,23 +35,20 @@ const buttonConfigs = computed(() => ({
   alive: {
     title: t('bossStatusButton.alive'),
     icon: SearchIcon,
-    baseClass: 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-700'
+    baseClass: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 active:bg-emerald-300 dark:bg-emerald-900/30 dark:text-emerald-400 dark:hover:bg-emerald-900/50'
   },
   killed: {
     title: t('bossStatusButton.killed'),
     icon: SkullIcon,
-    baseClass: 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-700'
+    baseClass: 'bg-red-100 text-red-700 hover:bg-red-200 active:bg-red-300 dark:bg-red-900/30 dark:text-red-400 dark:hover:bg-red-900/50'
   },
   not_found: {
     title: t('bossStatusButton.notFound'),
     icon: QuestionIcon,
-    baseClass: 'bg-gray-200 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-700'
+    baseClass: 'bg-gray-100 text-gray-600 hover:bg-gray-200 active:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600'
   }
 }))
 
 const buttonConfig = computed(() => buttonConfigs.value[props.type])
-
-const buttonClass = computed(() => {
-  return buttonConfig.value.baseClass
-})
+const buttonClass = computed(() => buttonConfig.value.baseClass)
 </script>
