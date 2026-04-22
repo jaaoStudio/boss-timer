@@ -6,7 +6,7 @@ from typing import List
 from app.database.database import get_db
 from app.database.models import BossType, BossRecord
 from app.dependencies import limiter, verify_user_session, get_connection_manager
-from app.schemas.boss import BossTypeResponse
+from app.schemas.boss import BossTypeResponse, CustomBossTypeCreate
 from app.celery_app import celery_app
 from app.websocket.manager import ConnectionManager
 
@@ -16,7 +16,70 @@ router = APIRouter(prefix="/boss", tags=["boss"])
 @router.get("/boss-types", response_model=List[BossTypeResponse])
 @limiter.limit("15/minute")
 async def get_boss_types(request: Request, db: Session = Depends(get_db)):
-    return db.query(BossType).all()
+    """取得全域 Boss 種類（不含房間自訂）"""
+    return db.query(BossType).filter(BossType.room_id == None).all()
+
+
+@router.post("/room/{room_id}/boss-types", response_model=BossTypeResponse)
+@limiter.limit("30/minute")
+async def create_custom_boss_type(
+    request: Request,
+    room_id: str,
+    payload: CustomBossTypeCreate,
+    db: Session = Depends(get_db),
+    _ = Depends(verify_user_session)
+):
+    """新增房間自訂 Boss"""
+    from app.services.room_service import get_room_by_id
+    if not get_room_by_id(db, room_id):
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    custom = BossType(
+        room_id=room_id,
+        name_en=payload.name,
+        name_zh=payload.name,
+        min_respawn_minutes=payload.min_respawn_minutes,
+        max_respawn_minutes=payload.max_respawn_minutes,
+    )
+    db.add(custom)
+    db.commit()
+    db.refresh(custom)
+    return custom
+
+
+@router.delete("/room/{room_id}/boss-types/{boss_type_id}")
+@limiter.limit("30/minute")
+async def delete_custom_boss_type(
+    request: Request,
+    room_id: str,
+    boss_type_id: int,
+    db: Session = Depends(get_db),
+    _ = Depends(verify_user_session)
+):
+    """刪除房間自訂 Boss（只能刪自己房間的）"""
+    boss = db.query(BossType).filter(
+        BossType.id == boss_type_id,
+        BossType.room_id == room_id
+    ).first()
+
+    if not boss:
+        raise HTTPException(status_code=404, detail="Custom boss type not found")
+
+    # 撤銷所有關聯記錄的 Celery 預警任務
+    related_records = db.query(BossRecord).filter(
+        BossRecord.boss_type_id == boss_type_id,
+        BossRecord.is_archived == False
+    ).all()
+    for record in related_records:
+        if record.celery_task_ids:
+            for task_id in record.celery_task_ids.values():
+                if task_id:
+                    celery_app.control.revoke(task_id, terminate=False)
+
+    # FK ondelete="CASCADE" 會自動刪除關聯的 BossRecord
+    db.delete(boss)
+    db.commit()
+    return {"message": "Custom boss type deleted"}
 
 @router.delete("/room/{room_id}/records/{record_id}")
 @limiter.limit("15/minute")

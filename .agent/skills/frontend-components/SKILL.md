@@ -23,17 +23,58 @@ description: 新增或修改 Vue 3 元件、Element Plus UI、多語系 i18n 鍵
 ```
 frontend/src/
 ├── components/
-│   ├── AppHeader.vue
-│   ├── BossControlPanel.vue
-│   ├── BossInfo.vue
-│   ├── BossStatusButton.vue
-│   ├── ChannelCard.vue
-│   ├── ChannelOverview.vue
-│   ├── RecordHistory.vue
-│   ├── RecordItem.vue
-│   ├── SettingsModal.vue     ← Discord Webhook 設定、通知、音效
-│   ├── StatusBadge.vue
+│   ├── AppHeader.vue             ← 全域頂部導覽列（保留頂層）
+│   ├── AppFooter.vue             ← 全域頁尾（保留頂層）
+│   │
+│   ├── boss/                     ← Boss 相關
+│   │   ├── BossControlPanel.vue
+│   │   ├── BossInfo.vue
+│   │   ├── BossInfoItem.vue
+│   │   └── BossStatusButton.vue
+│   │
+│   ├── channel/                  ← 頻道相關
+│   │   ├── ChannelCard.vue
+│   │   ├── ChannelOverview.vue
+│   │   ├── ChannelTimeline.vue
+│   │   ├── ChannelView.vue
+│   │   └── RecommendedChannels.vue
+│   │
+│   ├── layout/                   ← 版面結構
+│   │   ├── EditModeToolbar.vue   ← 編輯模式工具列（props/emits 與父溝通）
+│   │   └── LayoutItemWrapper.vue ← Widget 容器（寬度、收合、拖曳把手）
+│   │
+│   ├── record/                   ← 擊殺紀錄
+│   │   ├── RecordHistory.vue
+│   │   └── RecordItem.vue
+│   │
+│   ├── room/                     ← 房間操作
+│   │   └── RoomManager.vue
+│   │
+│   ├── settings/                 ← 設定彈窗（通知、音效、Webhook、自訂 Boss）
+│   │   ├── SettingsModal.vue
+│   │   ├── SettingsPreferences.vue
+│   │   ├── SettingsChangelog.vue
+│   │   ├── SettingsSupport.vue
+│   │   └── SettingsCustomBosses.vue
+│   │
+│   └── ui/                       ← 通用 UI 元件
+│       ├── AdBanner.vue
+│       ├── CountdownTimer.vue
+│       ├── GoogleLoginButton.vue
+│       ├── MaintenanceBanner.vue
+│       ├── RecommendedSection.vue
+│       └── StatusBadge.vue
+│
+├── composables/
+│   ├── useElementPlus.ts     ← showMessage / showMessageBox 封裝（已轉 .ts）
+│   ├── useTheme.ts           ← isDark / toggleDark（已轉 .ts）
+│   ├── useLayoutConfig.ts    ← 版面 Widget 排列、寬度、收合狀態管理
 │   └── ...
+│
+├── axios/
+│   ├── index.ts              ← 強型別 AxiosInstance class
+│   └── handlingErrors.ts     ← 全域 Axios 錯誤處理（已轉 .ts）
+│
 ├── locales/
 │   ├── zh.json               ← 繁體中文翻譯
 │   └── en.json               ← 英文翻譯
@@ -42,6 +83,11 @@ frontend/src/
     ├── BossTracker.vue
     └── ...
 ```
+
+> **⚠️ Import 路徑規則**：
+> - 跨子目錄引用元件一律使用 `@/components/<子目錄>/元件名.vue`，禁止使用相對路徑
+> - **不加副檔名**：`import { showMessage } from '@/composables/useElementPlus'`（勿加 `.js` 或 `.ts`）
+> - `@/` 路徑由 `tsconfig.app.json` 的 `baseUrl` + `paths` 解析，**不是** root `tsconfig.json`
 
 ---
 
@@ -81,6 +127,112 @@ const props = defineProps<{
 
 ---
 
+## TypeScript 型別規範
+
+### Store 型別從 Store 引入
+
+`bossStore.ts` 已匯出 `BossType` 與 `BossRecord` 介面，**不要在元件內自己重定義**：
+
+```typescript
+import { type BossType, type BossRecord } from '@/stores/bossStore'
+```
+
+`BossRecord` 的重點欄位：
+
+| 欄位 | 型別 | 說明 |
+|---|---|---|
+| `id` | `number` | 主鍵 |
+| `channel` | `number` | 頻道 |
+| `boss_type_id` | `number` | Boss 種類 ID |
+| `status` | `string` | 原始狀態（`killed/alive/not_found`） |
+| `current_status` | `string` | 動態狀態（`respawning/may_respawn/alive/not_found`） |
+| `respawn_min_time` | `string \| null` | 最早重生時間（ISO string） |
+| `respawn_max_time` | `string \| null` | 最晚重生時間（ISO string） |
+| `recorder_info` | `object \| null` | 匿名記錄者資訊 |
+
+> ⚠️ `respawn_min_time` / `respawn_max_time` 可能為 `null`，使用前須 null check 或 `!` 非空斷言。
+
+---
+
+## 版面系統（useLayoutConfig）
+
+### 資料結構
+
+```typescript
+interface LayoutItem {
+  id: LayoutItemId       // 'controlPanel' | 'bossInfo' | 'channelView' | 'recommendedChannels' | 'recordHistory'
+  colSpan: 1 | 2 | 3 | 4  // 在 4 欄 Grid 中佔幾欄（¼ ½ ¾ 全寬）
+  collapsed: boolean       // 是否收合
+}
+```
+
+### 各 Widget 最小寬度限制（`MIN_COL_SPAN`）
+
+```typescript
+// channelView / recommendedChannels / recordHistory 最小 2/4，不可縮到 1/4
+import { MIN_COL_SPAN } from '@/composables/useLayoutConfig'
+```
+
+| Widget | 最小 colSpan |
+|---|---|
+| controlPanel | 1 |
+| bossInfo | 1 |
+| channelView | 2 |
+| recommendedChannels | 2 |
+| recordHistory | 2 |
+
+### 使用方式
+
+```typescript
+const {
+  layout,
+  isEditMode,
+  moveItem,
+  increaseColSpan,   // ← 取代舊 toggleColSpan
+  decreaseColSpan,   // ← 取代舊 toggleColSpan
+  toggleCollapsed,   // ← 收合/展開，立即持久化
+  enterEditMode,
+  exitEditMode,
+  resetLayout,
+} = useLayoutConfig()
+```
+
+### BossTracker Grid 結構
+
+```vue
+<VueDraggable
+  v-model="layout"
+  :disabled="!isEditMode"
+  handle=".drag-handle"
+  class="grid grid-cols-1 md:grid-cols-4 gap-6"
+>
+  <LayoutItemWrapper
+    v-for="(item, index) in layout"
+    :key="item.id"
+    :item="item"
+    :index="index"
+    :total-items="layout.length"
+    :is-edit-mode="isEditMode"
+    :visible="isItemVisible(item.id)"
+    @move-up="moveItem(index, index - 1)"
+    @move-down="moveItem(index, index + 1)"
+    @increase-col-span="increaseColSpan(item.id)"
+    @decrease-col-span="decreaseColSpan(item.id)"
+    @toggle-collapsed="toggleCollapsed(item.id)"
+  >
+    <!-- slot content -->
+  </LayoutItemWrapper>
+</VueDraggable>
+```
+
+### LayoutItemWrapper 行為說明
+
+- **編輯模式**：顯示拖曳把手、上下移動、`[−] n/4 [+]` 寬度控制；**無**收合按鈕
+- **非編輯模式（展開）**：Widget 右上角有浮動 chevron 收合按鈕（hover 才顯現）
+- **非編輯模式（收合）**：顯示薄 header bar，點擊展開
+
+---
+
 ## 國際化 (i18n) — ⚠️ 所有使用者可見文字必須使用
 
 ### 使用方式
@@ -107,17 +259,7 @@ const { t } = useI18n()
 ```json
 {
   "settings": {
-    "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
     "webhookUrl": "Webhook URL",
-    "webhookNotifyEvents": "發送即時紀錄通知",
-    "webhookNotifyKilled": "擊殺",
-    "webhookNotifyAlive": "存活",
-    "webhookNotifyNotFound": "未發現",
-    "webhookAlertMode": "預警模式 (約 5 分鐘前通知)",
-    "webhookAlertBoth": "最小重生與最大重生時間 (皆通知)",
-    "webhookAlertMin": "只通知最小重生時間",
-    "webhookAlertMax": "只通知最大重生時間",
-    "webhookAlertNone": "不預警 (關閉)",
     "webhookUpdated": "Webhook 設定已更新",
     "webhookUpdateFailed": "更新失敗"
   }
@@ -139,6 +281,7 @@ const { t } = useI18n()
 | `bossInfo.*` | Boss 詳細資訊 |
 | `bossStatusButton.*` | Boss 狀態按鈕 |
 | `channelOverview.*` | 頻道總覽 |
+| `channelTimeline.*` | 重生時間軸 |
 | `recommendedChannels.*` | 推薦頻道 |
 | `recordHistory.*` | 擊殺紀錄 |
 | `recordItem.*` | 單筆紀錄 |
@@ -146,10 +289,13 @@ const { t } = useI18n()
 | `recentRooms.*` | 最近房間 |
 | `settings.*` | 設定彈窗（通知、音效、Webhook） |
 | `notification.*` | 瀏覽器通知文字 |
+| `layout.*` | 版面編輯模式工具列與自訂版面（含 `collapse/expand/narrower/wider`） |
 | `appFooter.*` | 頁尾 |
 | `credits.*` | 致謝頁 |
 | `legal.*` | 法律聲明頁 |
 | `privacy.*` | 隱私政策頁 |
+| `changelog.*` | 更新日誌內容 |
+| `globalErrors.*` | 全域錯誤提示 |
 
 ---
 
@@ -159,11 +305,9 @@ const { t } = useI18n()
 - 圖示需手動引入：`import { VideoPlay } from '@element-plus/icons-vue'`
 - Checkbox group 的 `value` vs `label`：
   ```vue
-  <!-- value 是實際綁定值，label 是顯示文字 -->
   <el-checkbox-group v-model="webhookNotifyEvents">
     <el-checkbox value="killed" :label="t('settings.webhookNotifyKilled')" />
     <el-checkbox value="alive" :label="t('settings.webhookNotifyAlive')" />
-    <el-checkbox value="not_found" :label="t('settings.webhookNotifyNotFound')" />
   </el-checkbox-group>
   ```
 - Switch 顏色覆寫：`style="--el-switch-on-color: #6366f1;"`
@@ -175,12 +319,24 @@ const { t } = useI18n()
 不直接使用 `ElMessage`，改用封裝後的工具：
 
 ```typescript
-import { showMessage } from '@/composables/useElementPlus.js'
+import { showMessage } from '@/composables/useElementPlus'
 
 showMessage.success(t('settings.webhookUpdated'))
 showMessage.error(t('settings.webhookUpdateFailed'))
 showMessage.warning(t('settings.fileTooLarge'))
 ```
+
+> `useElementPlus.ts` 已完整型別化（`MessageType`、`ShowMessage` class）。
+
+---
+
+## 深色模式
+
+```typescript
+import { isDark, toggleDark } from '@/composables/useTheme'
+```
+
+> `useTheme.ts` 已完整型別化。`isDark` 為 `Ref<boolean>`，`toggleDark` 為切換函式。
 
 ---
 
@@ -192,3 +348,5 @@ showMessage.warning(t('settings.fileTooLarge'))
 | `@images` | `src/assets/images/` |
 | `@icons` | `src/assets/icons/` |
 | `@public` | `public/` |
+
+> `@/` alias 定義在 `tsconfig.app.json` 的 `compilerOptions.paths`（**非** root `tsconfig.json`），Vite 端定義在 `vite.config.ts`。

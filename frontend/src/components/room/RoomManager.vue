@@ -56,15 +56,15 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import SettingsModal from '@/components/SettingsModal.vue'
+import SettingsModal from '@/components/settings/SettingsModal.vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
-import { useRoomStore } from '@/stores/roomStore.js'
-import { isDark, toggleDark } from '@/composables/useTheme.js'
-import { useUserStore } from '@/stores/userStore.js'
+import { useRoomStore } from '@/stores/roomStore'
+import { isDark, toggleDark } from '@/composables/useTheme'
+import { useUserStore } from '@/stores/userStore'
 import { useI18n } from 'vue-i18n'
 import { ElLoading } from 'element-plus'
-import { showMessage } from "@/composables/useElementPlus.js"
+import { showMessage } from "@/composables/useElementPlus"
 import { ArrowDown, CopyDocument, Moon, Sunny, Switch, SwitchButton, Setting } from '@element-plus/icons-vue'
 
 const { t, locale } = useI18n()

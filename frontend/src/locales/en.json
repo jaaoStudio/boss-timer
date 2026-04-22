@@ -58,7 +58,9 @@
     "credits": "Attributions & Credits",
     "legal": "Legal Disclaimer",
     "privacy": "Privacy Policy",
+    "guide": "User Guide",
     "contactUs": "Contact Us",
+    "backToHome": "Back to Home",
     "copyright": "Copyright © 2025 boss-timer.jaao.tw. All Rights Reserved."
   },
   "bossControlPanel": {
@@ -67,8 +69,11 @@
     "status": "Status",
     "selectBoss": "Select BOSS",
     "sendRecordFailed": "Failed to send record, please try again.",
+    "selectBossFirst": "Please select a Boss first",
+    "enterChannelFirst": "Please enter a channel first",
     "favorites": "⭐ Favorites",
-    "otherBosses": "All Bosses"
+    "otherBosses": "All Bosses",
+    "customBosses": "Custom Bosses"
   },
   "bossInfo": {
     "details": "Details",
@@ -87,9 +92,9 @@
     "notAvailable": "N/A"
   },
   "bossStatusButton": {
-    "alive": "Found alive BOSS",
-    "killed": "Just killed BOSS",
-    "notFound": "Did not find BOSS"
+    "alive": "alive",
+    "killed": "Just killed",
+    "notFound": "not found"
   },
   "channelOverview": {
     "title": "Channel Overview"
@@ -140,7 +145,24 @@
     "tabs": {
       "preferences": "Preferences",
       "changelog": "Changelog",
-      "support": "Support"
+      "support": "Support",
+      "customBoss": "Custom Boss"
+    },
+    "customBoss": {
+      "addTitle": "Add Custom Boss",
+      "namePlaceholder": "Boss Name",
+      "minRespawn": "Min Respawn (min)",
+      "maxRespawn": "Max Respawn (min)",
+      "add": "Add",
+      "addSuccess": "Custom boss added",
+      "addFailed": "Failed to add",
+      "existing": "Existing Custom Bosses",
+      "delete": "Delete",
+      "deleteSuccess": "Deleted",
+      "deleteFailed": "Failed to delete",
+      "deleteConfirmTitle": "Delete Custom Boss",
+      "deleteConfirmMessage": "This will permanently delete the boss and all its kill records. This action cannot be undone. Continue?",
+      "empty": "No custom bosses yet"
     },
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
     "webhookInfoTooltip": "Enabling this will only notify for new records. Past records will not be notified.",
@@ -238,6 +260,30 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_6_1": {
+      "title": "v2.6.1",
+      "date": "2026-04-21",
+      "items": [
+        "Enhancement: Numeric keyboard now appears automatically when entering a channel number on mobile",
+        "Enhancement: Status buttons now display icon + label directly with color coding (green / red / gray) — no more hover-only tooltips",
+        "Enhancement: When the control panel is at ¼ width, status buttons automatically switch to icon-only compact mode",
+        "Fix: Clicking outside the status buttons no longer accidentally triggers a submission",
+        "Fix: Custom Bosses from a previous room no longer carry over when switching rooms",
+        "Enhancement: When entering a new room, the previously selected Boss is automatically restored; if it was a custom Boss, the first custom Boss in the new room is tried next, then favorites, then the default"
+      ]
+    },
+    "v2_6_0": {
+      "title": "v2.6.0",
+      "date": "2026-04-20",
+      "items": [
+        "New: Custom Boss per room — define room-specific bosses with a custom name and respawn range (Room Settings > Custom Bosses)",
+        "New: Draggable layout — reorder widgets and resize them across 4 width steps (¼ to full width)",
+        "New: Widget collapse — collapse any widget to a slim title bar; click to expand",
+        "New: User Guide page (footer > User Guide) explaining how to use the main features",
+        "Enhancement: Layout upgraded to a 4-column grid for more flexible widget placement",
+        "Enhancement: Deleting a custom Boss now clears related records and Discord alert schedules, with a confirmation prompt"
+      ]
+    },
     "v2_5_0": {
       "title": "v2.5.0",
       "date": "2026-04-16",
@@ -322,6 +368,82 @@
         "Support for cross-device real-time WebSocket synchronization",
         "Credits page and attributions section added"
       ]
+    }
+  },
+  "guide": {
+    "title": "User Guide",
+    "subtitle": "Get started with Artale Boss Timer",
+    "sections": {
+      "start": {
+        "title": "Create or Join a Room",
+        "steps": [
+          "On the home page, enter any room name and click \"Create New Room\", or enter a room code shared by a friend and click \"Join\".",
+          "Share the room code with your teammates — all actions within the same room sync in real time.",
+          "You can sign in with Google (to save preferences) or join as a guest by entering a nickname."
+        ]
+      },
+      "record": {
+        "title": "Report Boss Status",
+        "steps": [
+          "In the \"Control Panel\", select a Boss from the dropdown (supports search) and enter the channel number.",
+          "Click \"Killed\", \"Alive\", or \"Not Found\" to submit — the system calculates respawn times automatically.",
+          "Click the star icon next to a Boss to favorite it. Favorited bosses appear at the top of the dropdown."
+        ]
+      },
+      "view": {
+        "title": "View Respawn Info",
+        "steps": [
+          "\"Channel Overview\" offers two views: Card mode (quick countdown per channel) and Gantt Timeline (visual respawn windows).",
+          "The timeline supports status filters (may respawn / respawning / alive / expired) and scrollable rows.",
+          "\"Recommended Channels\" automatically highlights channels worth visiting (may respawn) and those to avoid (respawning)."
+        ]
+      },
+      "history": {
+        "title": "History & Undo",
+        "steps": [
+          "\"Record History\" lists all reports in the room, filterable by Boss.",
+          "If you submitted a wrong report, click the trash icon to undo it — this also cancels any scheduled Discord alerts."
+        ]
+      },
+      "layout": {
+        "title": "Customize Layout",
+        "steps": [
+          "Click \"Customize Layout\" in the top-right to enter edit mode. Drag widgets (desktop) or use the arrow buttons (mobile) to reorder.",
+          "On desktop, use the \"−\" and \"+\" buttons to adjust widget width (¼, ½, ¾, or full). Some widgets have a minimum width of ½.",
+          "In normal view, each widget has a collapse button in its top-right corner (visible on hover). Click to fold it into a thin bar.",
+          "Layout is saved automatically — locally for guests, synced to your account if signed in with Google."
+        ]
+      },
+      "settings": {
+        "title": "Notifications, Sound & Discord",
+        "steps": [
+          "Click the gear icon in the top-right to open Settings. Toggle browser notifications and sound alerts, adjust volume and reminder timing.",
+          "In the \"Discord Webhook\" tab, paste a channel Webhook URL to receive kill notifications and respawn alerts (~5 min before).",
+          "In the \"Custom Bosses\" tab, add room-specific non-standard bosses with custom names and respawn time ranges."
+        ]
+      }
+    },
+    "tip": "Tip",
+    "tipContent": "The room code can be copied directly from the URL bar. Inside a room, clicking the room code in the top-left corner copies it to your clipboard."
+  },
+  "layout": {
+    "customize": "Customize Layout",
+    "editModeHint": "Drag or use arrows to reorder. Adjust width (¼ ½ ¾ full) on desktop.",
+    "reset": "Reset",
+    "done": "Done",
+    "moveUp": "Move Up",
+    "moveDown": "Move Down",
+    "narrower": "Narrower",
+    "wider": "Wider",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "hidden": "Hidden",
+    "items": {
+      "controlPanel": "Control Panel",
+      "bossInfo": "Boss Info",
+      "channelView": "Channel Overview",
+      "recommendedChannels": "Recommended Channels",
+      "recordHistory": "Record History"
     }
   }
 }

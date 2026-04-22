@@ -58,7 +58,9 @@
     "credits": "貢獻者 & 致謝",
     "legal": "法律聲明",
     "privacy": "隱私權政策",
+    "guide": "使用教學",
     "contactUs": "聯絡我們",
+    "backToHome": "回到首頁",
     "copyright": "Copyright © 2025 boss-timer.jaao.tw. All Rights Reserved."
   },
   "bossControlPanel": {
@@ -67,8 +69,11 @@
     "status": "狀態",
     "selectBoss": "選擇 BOSS",
     "sendRecordFailed": "發送紀錄失敗，請重試。",
+    "selectBossFirst": "請先選擇 Boss",
+    "enterChannelFirst": "請先輸入頻道",
     "favorites": "⭐ 收藏",
-    "otherBosses": "全部 Boss"
+    "otherBosses": "全部 Boss",
+    "customBosses": "自訂 Boss"
   },
   "bossInfo": {
     "details": "詳細資訊",
@@ -140,7 +145,24 @@
     "tabs": {
       "preferences": "系統設定",
       "changelog": "更新日誌",
-      "support": "支持開發"
+      "support": "支持開發",
+      "customBoss": "自訂 Boss"
+    },
+    "customBoss": {
+      "addTitle": "新增自訂 Boss",
+      "namePlaceholder": "Boss 名稱",
+      "minRespawn": "最短重生（分鐘）",
+      "maxRespawn": "最長重生（分鐘）",
+      "add": "新增",
+      "addSuccess": "自訂 Boss 已新增",
+      "addFailed": "新增失敗",
+      "existing": "已新增的自訂 Boss",
+      "delete": "刪除",
+      "deleteSuccess": "已刪除",
+      "deleteFailed": "刪除失敗",
+      "deleteConfirmTitle": "刪除自訂 Boss",
+      "deleteConfirmMessage": "刪除後，此 Boss 及所有相關擊殺紀錄將永久移除，無法復原。確定要繼續嗎？",
+      "empty": "尚無自訂 Boss"
     },
     "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
     "webhookInfoTooltip": "開啟後僅對「新建立」的擊殺紀錄生效，過去已記錄的王不會補發通知喔！",
@@ -238,6 +260,30 @@
     "recordNotFound": "找不到此紀錄（可能已被刪除）"
   },
   "changelog": {
+    "v2_6_1": {
+      "title": "v2.6.1",
+      "date": "2026-04-21",
+      "items": [
+        "優化：手機填寫頻道號碼時，鍵盤自動切換為數字鍵盤",
+        "優化：狀態按鈕改為圖示 + 文字直接顯示，並以顏色區分（綠 / 紅 / 灰），不再需要 hover 才看到說明",
+        "優化：操作面板縮至 1/4 寬時，狀態按鈕自動切換為僅圖示的緊湊模式",
+        "修復：點擊狀態按鈕以外的區域不再意外觸發送出",
+        "修復：切換房間後不再殘留上個房間的自訂 Boss",
+        "優化：進入新房間時自動恢復上次選取的 Boss；若上次為自訂 Boss 則優先尋找新房間的自訂 Boss，其次收藏清單，最後才退回預設"
+      ]
+    },
+    "v2_6_0": {
+      "title": "v2.6.0",
+      "date": "2026-04-20",
+      "items": [
+        "新增：支援房間自訂 Boss，可設定名稱與重生時間範圍（房間設定 > 自訂 Boss）",
+        "新增：可拖曳自訂版面，調整 Widget 排列順序與寬度（¼ 至全寬共四段）",
+        "新增：Widget 收合功能，收合後僅顯示標題列，點擊可展開",
+        "新增：使用教學頁面（頁腳 > 使用教學），說明各主要功能操作方式",
+        "優化：版面升級為 4 欄 Grid，可更靈活分配各 Widget 寬度",
+        "優化：刪除自訂 Boss 時同步清除相關紀錄與 Discord 預警排程，並加入確認提示"
+      ]
+    },
     "v2_5_0": {
       "title": "v2.5.0",
       "date": "2026-04-16",
@@ -322,6 +368,82 @@
         "支援跨裝置 WebSocket 即時連線同步",
         "新增致謝頁面與貢獻者列表"
       ]
+    }
+  },
+  "guide": {
+    "title": "使用教學",
+    "subtitle": "快速上手 Artale Boss 計時器",
+    "sections": {
+      "start": {
+        "title": "建立或加入房間",
+        "steps": [
+          "在首頁輸入任意房間名稱後點擊「建立新房間」，或輸入朋友分享的房間代碼後點擊「加入」。",
+          "分享房間代碼給隊友，所有人在同一個房間內的操作會即時同步。",
+          "可選擇以 Google 帳號登入（儲存偏好設定）或直接以訪客身份進入，訪客只需輸入暱稱即可。"
+        ]
+      },
+      "record": {
+        "title": "回報 Boss 狀態",
+        "steps": [
+          "在「控制面板」從下拉選單選擇 Boss（支援搜尋），輸入頻道號碼。",
+          "點擊「擊殺」、「存活」或「未發現」按鈕完成回報，系統自動計算重生時間。",
+          "可點擊 Boss 圖示旁的星星收藏常用 Boss，收藏清單會排在下拉選單最前面。"
+        ]
+      },
+      "view": {
+        "title": "查看重生資訊",
+        "steps": [
+          "「頻道總覽」提供兩種視角：卡片模式（快速掃瞄所有頻道倒數）與甘特時間軸（視覺化重生區間）。",
+          "時間軸可用篩選器過濾狀態（即將重生／重生中／存活／已過期），也可滾動捲軸查看更多頻道。",
+          "「推薦頻道」自動顯示最值得優先去的頻道（即將重生）與應避開的頻道（正在重生中）。"
+        ]
+      },
+      "history": {
+        "title": "歷史紀錄與撤銷",
+        "steps": [
+          "「歷史紀錄」列出房間內所有回報，可用 Boss 下拉選單篩選。",
+          "若不小心回報錯誤，點擊紀錄右側的垃圾桶圖示可撤銷該筆記錄，同時取消 Discord 預警排程。"
+        ]
+      },
+      "layout": {
+        "title": "自訂版面",
+        "steps": [
+          "點擊右上角「自訂版面」按鈕進入編輯模式，可用滑鼠拖曳（桌電）或點擊上下箭頭（手機）調整各區塊順序。",
+          "桌電版可用「−」「+」按鈕調整各區塊寬度（¼、½、¾、全寬四段），部分區塊最小為半寬。",
+          "在一般瀏覽模式下，每個區塊右上角有收合按鈕（hover 才顯現），點擊可折疊為薄條節省空間。",
+          "版面設定會自動儲存：訪客存在瀏覽器本機，Google 登入者同步到帳號偏好。"
+        ]
+      },
+      "settings": {
+        "title": "通知、音效與 Discord",
+        "steps": [
+          "點擊右上角齒輪圖示開啟設定，可開關瀏覽器推播通知與音效，並調整音量與重生提醒時間點。",
+          "在「Discord Webhook」分頁貼上頻道 Webhook URL，即可在 Boss 被擊殺時自動推播到 Discord，並在重生前 5 分鐘預警。",
+          "在「自訂 Boss」分頁可新增房間專屬的非標準 Boss，設定中文／英文名稱與重生時間範圍。"
+        ]
+      }
+    },
+    "tip": "小提示",
+    "tipContent": "房間代碼可直接從網址列複製分享。進入房間後左上角的房間代碼點擊即可複製到剪貼簿。"
+  },
+  "layout": {
+    "customize": "自訂版面",
+    "editModeHint": "拖曳或點擊箭頭調整順序，桌面端可調整寬度（¼ ½ ¾ 全寬）",
+    "reset": "重設",
+    "done": "完成",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "narrower": "縮窄",
+    "wider": "加寬",
+    "collapse": "收合",
+    "expand": "展開",
+    "hidden": "已隱藏",
+    "items": {
+      "controlPanel": "控制面板",
+      "bossInfo": "Boss 資訊",
+      "channelView": "頻道總覽",
+      "recommendedChannels": "推薦頻道",
+      "recordHistory": "歷史紀錄"
     }
   }
 }

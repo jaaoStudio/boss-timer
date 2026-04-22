@@ -6,28 +6,28 @@
 
     <!-- Toolbar: filter chips + expand button -->
     <div class="flex items-center justify-between gap-2">
-      <div class="flex items-center gap-1 flex-wrap">
-        <button
+      <div class="flex items-center gap-2 flex-wrap">
+        <div
           v-for="s in filterableStatuses"
           :key="s.key"
           @click="toggleFilter(s.key)"
-          class="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs border transition-opacity cursor-pointer select-none"
-          :class="isFilterActive(s.key) ? '' : 'opacity-30'"
-          :style="{ borderColor: s.color, color: s.color }"
+          class="flex items-center gap-1 text-xs transition-opacity cursor-pointer select-none"
+          :class="isFilterActive(s.key) ? 'opacity-100' : 'opacity-30'"
+          :style="{ color: s.color }"
         >
-          <span class="w-1.5 h-1.5 rounded-full shrink-0" :style="{ backgroundColor: s.color }" />
+          <span class="w-2 h-2 rounded-full shrink-0" :style="{ backgroundColor: s.color }" />
           {{ t(s.i18nKey) }}
-        </button>
+        </div>
       </div>
-      <button
+      <div
         v-if="filteredData.length > MAX_VISIBLE_ROWS"
         @click="isExpanded = !isExpanded"
-        class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors shrink-0"
+        class="text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors shrink-0 cursor-pointer"
         :title="isExpanded ? t('channelTimeline.collapse') : t('channelTimeline.expand')"
       >
         <ArrowsPointingInIcon v-if="isExpanded" class="w-4 h-4" />
         <ArrowsPointingOutIcon v-else class="w-4 h-4" />
-      </button>
+      </div>
     </div>
 
     <!-- No results after filter -->
@@ -90,12 +90,11 @@ const filterableStatuses = [
   { key: 'may_respawn', color: '#eab308', i18nKey: 'status.mayRespawn' },
   { key: 'respawning',  color: '#3b82f6', i18nKey: 'status.respawning' },
   { key: 'alive',       color: '#16a34a', i18nKey: 'status.alive' },
-  { key: 'not_found',   color: '#9ca3af', i18nKey: 'status.notFound' },
   { key: 'expired',     color: '#d1d5db', i18nKey: 'status.expired' },
 ] as const
 
 // Filter state (all active by default)
-const activeFilters = ref<string[]>(['may_respawn', 'respawning', 'alive', 'not_found', 'expired'])
+const activeFilters = ref<string[]>(['may_respawn', 'respawning', 'alive', 'expired'])
 const isExpanded = ref(false)
 
 function isFilterActive(key: string): boolean {
@@ -138,13 +137,13 @@ const timelineData = computed<TimelineRow[]>(() => {
     const aOrd = STATUS_ORDER[a.current_status] ?? 4
     const bOrd = STATUS_ORDER[b.current_status] ?? 4
     if (aOrd !== bOrd) return aOrd - bOrd
-    return new Date(a.respawn_min_time).getTime() - new Date(b.respawn_min_time).getTime()
+    return new Date(a.respawn_min_time!).getTime() - new Date(b.respawn_min_time!).getTime()
   })
 
   return sorted.map((r) => ({
     channel: r.channel,
-    minTime: new Date(r.respawn_min_time).getTime(),
-    maxTime: new Date(r.respawn_max_time).getTime(),
+    minTime: new Date(r.respawn_min_time!).getTime(),
+    maxTime: new Date(r.respawn_max_time!).getTime(),
     status: r.current_status,
     isExpired: isExpiredRecord(r, now),
   }))
@@ -291,12 +290,13 @@ const chartOption = computed(() => {
     series: [
       {
         type: 'custom',
-        renderItem: (_params: any, api: any) => {
+        renderItem: (params: any, api: any) => {
           const catIndex = api.value(0)
           const start = api.coord([api.value(1), catIndex])
           const end = api.coord([api.value(2), catIndex])
           const bandWidth = api.size([0, 1])[1]
           const barHeight = bandWidth * 0.55
+          const itemStyle = barData[params.dataIndex]?.itemStyle ?? {}
           return {
             type: 'rect',
             shape: {
@@ -304,8 +304,12 @@ const chartOption = computed(() => {
               y: start[1] - barHeight / 2,
               width: Math.max(end[0] - start[0], 4),
               height: barHeight,
+              r: itemStyle.borderRadius ?? 0,
             },
-            style: { ...api.style() },
+            style: {
+              fill: itemStyle.color,
+              opacity: itemStyle.opacity,
+            },
           }
         },
         encode: { x: [1, 2], y: 0 },

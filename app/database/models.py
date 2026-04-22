@@ -3,7 +3,6 @@ from sqlalchemy import (
     Column, String, Integer, DateTime, Text, ForeignKey, Index, Boolean,
     CheckConstraint, func, BigInteger
 )
-from sqlalchemy.sql.schema import UniqueConstraint
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
 from datetime import datetime, timezone
@@ -24,7 +23,6 @@ class User(Base):
     last_login_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     records = relationship("BossRecord", back_populates="recorder")
-    room_associations = relationship("RoomUser", back_populates="user")
 
     # 關聯
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
@@ -43,19 +41,19 @@ class Room(Base):
     webhook_alert_type = Column(String(20), default="none", nullable=True) # min, max, both, none
 
     boss_records = relationship("BossRecord", back_populates="room", cascade="all, delete-orphan")
-    user_associations = relationship("RoomUser", back_populates="room", cascade="all, delete-orphan")
 
 
 class BossType(Base):
     __tablename__ = "boss_types"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    name_en = Column(String(50), unique=True, nullable=False)
+    room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=True)
+    name_en = Column(String(50), nullable=False)
     name_zh = Column(String(50), nullable=False)
     min_respawn_minutes = Column(Integer, nullable=False)
     max_respawn_minutes = Column(Integer, nullable=False)
     description = Column(Text)
 
-    records = relationship("BossRecord", back_populates="boss_type")
+    records = relationship("BossRecord", back_populates="boss_type", passive_deletes=True)
 
 
 class BossRecord(Base):
@@ -64,7 +62,7 @@ class BossRecord(Base):
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=False)
     channel = Column(Integer, nullable=False)
-    boss_type_id = Column(Integer, ForeignKey("boss_types.id"), nullable=False)
+    boss_type_id = Column(Integer, ForeignKey("boss_types.id", ondelete="CASCADE"), nullable=False)
     status = Column(String(20), nullable=False)
     recorded_at = Column(DateTime(timezone=True), server_default=func.now())
     respawn_min_time = Column(DateTime(timezone=True))
@@ -99,27 +97,6 @@ class BossRecord(Base):
     boss_type = relationship("BossType", back_populates="records")
     recorder = relationship("User", back_populates="records")
 
-
-class RoomUser(Base):
-    __tablename__ = "room_users"
-
-    id = Column(BigInteger, primary_key=True)
-    room_id = Column(String(10), ForeignKey("rooms.room_id", ondelete="CASCADE"), nullable=False)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"))
-    anonymous_session_id = Column(String(100))
-    joined_at = Column(DateTime(timezone=True), server_default=func.now())
-    last_seen = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-
-    __table_args__ = (
-        UniqueConstraint('room_id', 'user_id', name='room_users_room_user_unique'),
-        UniqueConstraint('room_id', 'anonymous_session_id', name='room_users_room_anonymous_unique'),
-        CheckConstraint('user_id IS NOT NULL OR anonymous_session_id IS NOT NULL', name='chk_user_or_anonymous'),
-        Index('idx_room_users_room_id', 'room_id'),
-        Index('idx_room_users_user_id', 'user_id'),
-    )
-
-    room = relationship("Room", back_populates="user_associations")
-    user = relationship("User", back_populates="room_associations")
 
 
 class RefreshToken(Base):

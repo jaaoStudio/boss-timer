@@ -22,7 +22,7 @@ services:
     container_name: boss_service
     ports:
       - "1254:1254"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips="*"
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
     env_file:
       - .env
     volumes:

@@ -43,43 +43,6 @@ def update_room_last_active(db: Session, room_id: str):
         db.commit()
 
 
-def upsert_room_user(db: Session, room_id: str, user_id: Optional[int], anonymous_id: Optional[str]):
-    """更新或插入房間使用者記錄"""
-    if not user_id and not anonymous_id:
-        return
-
-    query = db.query(models.RoomUser).filter_by(room_id=room_id)
-    if user_id:
-        room_user = query.filter_by(user_id=user_id).first()
-    else:
-        room_user = query.filter_by(anonymous_session_id=anonymous_id).first()
-
-    if room_user:
-        room_user.last_seen = datetime.now(timezone.utc)
-    else:
-        new_user_data = {"room_id": room_id}
-        if user_id:
-            new_user_data["user_id"] = user_id
-        else:
-            new_user_data["anonymous_session_id"] = anonymous_id
-        db.add(models.RoomUser(**new_user_data))
-    db.commit()
-
-
-def remove_room_user(db: Session, room_id: str, user_id: Optional[int], anonymous_id: Optional[str]):
-    """從房間移除使用者"""
-    query = db.query(models.RoomUser).filter_by(room_id=room_id)
-    if user_id:
-        query.filter_by(user_id=user_id).delete()
-    elif anonymous_id:
-        query.filter_by(anonymous_session_id=anonymous_id).delete()
-    db.commit()
-
-
-def get_room_user_count(db: Session, room_id: str) -> int:
-    """獲取房間當前用戶數量"""
-    return db.query(models.RoomUser).filter_by(room_id=room_id).count()
-
 
 def get_room_state(db: Session, room_id: str) -> dict:
     """獲取房間的完整初始狀態"""
@@ -109,7 +72,9 @@ def get_room_state(db: Session, room_id: str) -> dict:
     ]
     
     boss_types_response = [
-        boss_schemas.BossTypeResponse.model_validate(bt) for bt in db.query(models.BossType).all()
+        boss_schemas.BossTypeResponse.model_validate(bt) for bt in db.query(models.BossType).filter(
+            (models.BossType.room_id == None) | (models.BossType.room_id == room_id)
+        ).all()
     ]
 
     return {

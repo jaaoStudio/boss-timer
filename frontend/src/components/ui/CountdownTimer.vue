@@ -6,7 +6,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useTimer } from '../composables/useTimer'
+import { useTimer } from '@/composables/useTimer'
 
 const props = withDefaults(defineProps<{
   targetTime: string | null | undefined
@@ -31,9 +31,9 @@ const displayTime = computed(() => {
 })
 
 const timeClass = computed(() => {
-  if (timeLeft.value <= 0) return 'text-green-400' // 倒數結束
-  if (timeLeft.value <= 300000) return 'text-red-400' // 5分鐘內
-  if (timeLeft.value <= 600000) return 'text-yellow-300' // 10分鐘內
-  return 'text-gray-300' // 預設顏色
+  if (timeLeft.value <= 0) return 'text-green-500 dark:text-green-400'
+  if (timeLeft.value <= 300000) return 'text-red-500 dark:text-red-400'
+  if (timeLeft.value <= 600000) return 'text-yellow-500 dark:text-yellow-300'
+  return 'text-gray-600 dark:text-gray-300'
 })
 </script>

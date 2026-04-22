@@ -1,7 +1,7 @@
 <template>
   <div class="rounded-lg p-4" :class="containerClass">
     <h3 class="font-bold mb-3" :class="titleClass">{{ title }}</h3>
-    <div v-if="channels.length > 0" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+    <div v-if="channels.length > 0" class="grid gap-2 [grid-template-columns:repeat(auto-fill,minmax(6rem,1fr))]">
       <div v-for="record in channels" :key="record.channel" class="p-2 rounded-md text-center" :class="itemClass">
         <div class="font-semibold">CH {{ record.channel }}</div>
         <div class="text-xs">
@@ -29,27 +29,19 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import CountdownTimer from './CountdownTimer.vue'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, type BossRecord } from '@/stores/bossStore'
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
 const bossStore = useBossStore()
 
-interface ChannelRecord {
-  id?: number | string
-  channel: number
-  respawn_min_time: string
-  respawn_max_time: string
-  [key: string]: any
-}
-
 const props = defineProps<{
   title: string
-  channels: ChannelRecord[]
+  channels: BossRecord[]
   type: 'priority' | 'avoid'
 }>()
 
-const handleTimerEnd = (record: ChannelRecord) => {
+const handleTimerEnd = (record: BossRecord) => {
   bossStore.updateBossStatusOnTimerEnd(record)
 }
 

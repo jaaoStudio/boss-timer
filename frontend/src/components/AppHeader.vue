@@ -1,10 +1,10 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4 mb-6">
+  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
     <div class="flex flex-col sm:flex-row items-center sm:justify-between gap-y-4 sm:gap-x-2.5">
       <div class="flex flex-row sm:flex-col items-center gap-2.5 sm:gap-x-4">
         <div class="flex items-center">
           <img src="/leaf24px.png" alt="Logo" class="h-8 w-8 mr-3">
-          <h1 class=" text-2xl sm:block hidden font-bold text-gray-900 dark:text-white">{{ t('appHeader.title') }}</h1>
+          <h2 class=" text-2xl sm:block hidden font-bold text-gray-900 dark:text-white">{{ t('appHeader.title') }}</h2>
         </div>
         <div v-if="roomId" class="cursor-pointer" @click="copyRoomId">
           <p class="text-gray-500 dark:text-gray-400 text-sm">{{ t('appHeader.room') }} <span class="font-mono bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">{{ roomId }}</span></p>
@@ -48,12 +48,10 @@ import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
 import { useUserStore } from '@/stores/userStore'
 import { UsersIcon } from '@heroicons/vue/24/outline'
-import RoomManager from '@/components/RoomManager.vue'
-import GoogleLoginButton from "@/components/GoogleLoginButton.vue"
+import RoomManager from '@/components/room/RoomManager.vue'
+import GoogleLoginButton from "@/components/ui/GoogleLoginButton.vue"
 import { showMessage } from "@/composables/useElementPlus"
 import { useI18n } from "vue-i18n"
-import { computed, ref, watch, nextTick, onMounted } from 'vue'
-import { isDark } from '@/composables/useTheme'
 
 const { t } = useI18n()
 

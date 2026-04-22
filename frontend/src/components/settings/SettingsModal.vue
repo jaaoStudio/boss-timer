@@ -11,6 +11,10 @@
         <SettingsPreferences :visible="visible" />
       </el-tab-pane>
 
+      <el-tab-pane v-if="inRoom" :label="t('settings.tabs.customBoss')" name="customBoss">
+        <SettingsCustomBosses />
+      </el-tab-pane>
+
       <el-tab-pane :label="t('settings.tabs.changelog')" name="changelog">
         <SettingsChangelog />
       </el-tab-pane>
@@ -23,14 +27,19 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import SettingsPreferences from '@/components/SettingsPreferences.vue'
-import SettingsChangelog from '@/components/SettingsChangelog.vue'
-import SettingsSupport from '@/components/SettingsSupport.vue'
+import { storeToRefs } from 'pinia'
+import { useRoomStore } from '@/stores/roomStore'
+import SettingsPreferences from '@/components/settings/SettingsPreferences.vue'
+import SettingsChangelog from '@/components/settings/SettingsChangelog.vue'
+import SettingsSupport from '@/components/settings/SettingsSupport.vue'
+import SettingsCustomBosses from '@/components/settings/SettingsCustomBosses.vue'
 
 const { t } = useI18n()
+const { roomId } = storeToRefs(useRoomStore())
 
 const visible = defineModel<boolean>({ default: false })
 const activeTab = ref('preferences')
+const inRoom = computed(() => !!roomId.value)
 </script>
