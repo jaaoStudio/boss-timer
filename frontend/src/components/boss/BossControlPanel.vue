@@ -76,7 +76,7 @@
         </el-form-item>
       </div>
 
-      <div class="flex gap-2">
+      <div class="flex gap-1 @[360px]:gap-2">
         <BossStatusButton
             v-for="status in statuses"
             :key="status.type"

@@ -4,10 +4,10 @@
     :class="buttonClass"
     :disabled="disabled"
     @click="$emit('click')"
-    class="flex-1 flex flex-col items-center justify-center gap-1.5 py-3 px-2 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed select-none"
+    class="flex-1 flex flex-col items-center justify-center gap-1 @[360px]:gap-1.5 py-2 @[360px]:py-3 px-1 @[360px]:px-2 rounded-lg transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed select-none"
   >
     <component :is="buttonConfig.icon" class="w-5 h-5 shrink-0" fill="currentColor"/>
-    <span v-if="!compact" class="text-xs font-medium leading-tight text-center whitespace-nowrap">
+    <span v-if="!compact" class="hidden @[360px]:inline-block text-xs font-medium leading-tight text-center whitespace-nowrap">
       {{ buttonConfig.title }}
     </span>
   </div>

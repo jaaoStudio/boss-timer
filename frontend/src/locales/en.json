@@ -92,9 +92,9 @@
     "notAvailable": "N/A"
   },
   "bossStatusButton": {
-    "alive": "Found alive BOSS",
-    "killed": "Just killed BOSS",
-    "notFound": "Did not find BOSS"
+    "alive": "alive",
+    "killed": "Just killed",
+    "notFound": "not found"
   },
   "channelOverview": {
     "title": "Channel Overview"
