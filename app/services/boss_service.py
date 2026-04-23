@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Optional
+from typing import Optional, List
 from app.database.models import Room, BossRecord, BossType
 from app.schemas.boss import BossRecordResponse, BossRecordCreate
 from app.websocket.manager import ConnectionManager
@@ -10,6 +10,37 @@ from app.tasks.webhook_tasks import send_discord_webhook
 
 
 class BossService:
+
+    @staticmethod
+    def get_room_records_history(
+        db: Session,
+        room_id: str,
+        before_id: Optional[int] = None,
+        limit: int = 50,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        boss_type_id: Optional[int] = None,
+    ) -> tuple[List[BossRecord], bool]:
+        """撈取房間歷史紀錄（cursor-based，依 id desc）。多撈 1 筆判斷是否還有更多。"""
+        query = db.query(BossRecord).options(
+            joinedload(BossRecord.recorder),
+            joinedload(BossRecord.boss_type),
+        ).filter(
+            BossRecord.room_id == room_id,
+            BossRecord.is_archived == False,
+        )
+        if before_id is not None:
+            query = query.filter(BossRecord.id < before_id)
+        if start is not None:
+            query = query.filter(BossRecord.recorded_at >= start)
+        if end is not None:
+            query = query.filter(BossRecord.recorded_at <= end)
+        if boss_type_id is not None:
+            query = query.filter(BossRecord.boss_type_id == boss_type_id)
+
+        rows = query.order_by(BossRecord.id.desc()).limit(limit + 1).all()
+        has_more = len(rows) > limit
+        return rows[:limit], has_more
 
     @staticmethod
     async def _validate_room_exists(db: Session, room_id: str) -> Room:
@@ -106,7 +137,8 @@ class BossService:
     async def record_boss_from_websocket(db: Session, record: BossRecordCreate, user_id: Optional[str], manager: ConnectionManager):
         """Handles boss recording initiated from a WebSocket message."""
         try:
-            await BossService._validate_room_exists(db, record.room_id)
+            room = await BossService._validate_room_exists(db, record.room_id)
+            room.last_active = datetime.now(timezone.utc)
             boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
             respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
             boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)

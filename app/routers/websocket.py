@@ -69,6 +69,7 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         if not room_service.get_room_by_id(db, room_id):
             await websocket.send_text(json.dumps({"type": "error", "message": "Room not found"}))
             return
+        room_service.update_room_last_active(db, room_id)
         manager.subscribe_to_room(websocket, room_id)
         initial_state = room_service.get_room_state(db, room_id)
         await websocket.send_text(json.dumps(initial_state, default=str))
