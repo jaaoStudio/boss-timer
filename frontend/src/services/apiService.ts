@@ -74,6 +74,22 @@ class ApiService {
     return this.client.delete(`/boss/room/${roomId}/records/${recordId}`).then(res => res.data);
   }
 
+  getRoomRecordsHistory(
+    roomId: string,
+    params: {
+      before_id?: number
+      limit?: number
+      start?: string
+      end?: string
+      boss_type_id?: number
+    } = {},
+    signal?: AbortSignal,
+  ) {
+    return this.client
+      .get(`/boss/room/${roomId}/records`, { params, signal })
+      .then(res => res.data);
+  }
+
   createCustomBossType(roomId: string, payload: { name: string; min_respawn_minutes: number; max_respawn_minutes: number }) {
     return this.client.post(`/boss/room/${roomId}/boss-types`, payload).then(res => res.data);
   }

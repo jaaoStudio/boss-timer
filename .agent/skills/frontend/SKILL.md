@@ -64,6 +64,7 @@ frontend/
     │   ├── userStore.ts          # 使用者認證狀態 (Google 登入/登出、匿名、BroadcastChannel)
     │   ├── roomStore.ts          # 房間狀態 (roomId, userCount, 連線狀態)
     │   ├── bossStore.ts          # Boss 資料 (bossTypes, bossRecords, 篩選/排序/刪除)
+    │   ├── recordHistoryStore.ts # 歷史紀錄 (cursor 分頁、日期/Boss 篩選、race-free upsert/remove)
     │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連/心跳/訊息佇列)
     │
     ├── services/
@@ -172,6 +173,25 @@ frontend/
 - `calculateCurrentStatus(record)` — 根據目前時間動態計算 Boss 狀態
 - `updateBossStatusOnTimerEnd(record)` — 倒數計時結束時更新 Boss 狀態
 
+### `recordHistoryStore` — 歷史紀錄（audit log）
+**風格**: Setup (Composition API)
+
+| State | 說明 |
+|---|---|
+| `records` | `shallowRef<Map<id, BossRecord>>` — 由 id 索引，避免插入重複 |
+| `deletedIds` | `shallowRef<Set<number>>` — 本地刪除集合，抑制 race 到達的 upsert |
+| `hasMore` / `nextCursor` | cursor 分頁狀態 |
+| `isLoading` | 避免並發載入 |
+| `filters` | `{ start?, end?, bossTypeId? }` |
+| `sortedRecords` | `computed` — 由 id 降冪 |
+
+**核心 Actions**:
+- `setRoomId(id)` / `setFilters(filters)` — 任一變動都會 `reset()` 並中斷 in-flight 請求
+- `loadMore()` — 用 `AbortController` 可中斷；回傳後以 `currentAbort === abort` 守門，舊請求結果不覆蓋
+- `upsertRecord(record)` — WebSocket 收到 `boss_update` 時呼叫；被 `deletedIds` 或 `filters` 過濾掉會直接略過
+- `removeRecord(id)` — WebSocket 收到 `record_deleted` 時呼叫；先加入 `deletedIds`，之後即使 race 回來也不會復活
+- `reset()` — 中斷 in-flight、清空 Map/Set、重置 cursor
+
 ### `websocketStore` — WebSocket 連線
 **風格**: Setup (Composition API)
 
@@ -188,8 +208,8 @@ frontend/
 | `pong` | 忽略 |
 | `maintenance_status_update` | → `appInfoStore.setMaintenanceInfo()` |
 | `room_state` | → `bossStore.setBossRecords()` + `roomStore.setUserCount()` |
-| `boss_update` | → `bossStore.updateBossRecord()` |
-| `record_deleted` | → `bossStore.deleteBossRecord(record_id)` |
+| `boss_update` | → `bossStore.updateBossRecord()` + `recordHistoryStore.upsertRecord()` |
+| `record_deleted` | → `bossStore.deleteBossRecord(record_id)` + `recordHistoryStore.removeRecord(record_id)` |
 | `user_count_update` | → `roomStore.setUserCount()` |
 | `error` | `console.error` |
 

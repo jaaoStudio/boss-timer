@@ -118,7 +118,16 @@
     "deleteFailed": "作廢失敗",
     "deleteConfirmTitle": "作廢紀錄",
     "deleteConfirmMessage": "這項操作將會作廢此筆紀錄並撤銷 Discord 預警，確認嗎？",
-    "deleteSuccess": "紀錄已作廢"
+    "deleteSuccess": "紀錄已作廢",
+    "startDate": "開始日期",
+    "endDate": "結束日期",
+    "dateRangeSeparator": "至",
+    "last1Day": "最近 1 天",
+    "last7Days": "最近 7 天",
+    "last30Days": "最近 30 天",
+    "loadingMore": "載入中...",
+    "noMore": "沒有更多紀錄了",
+    "empty": "沒有符合條件的紀錄"
   },
   "recordItem": {
     "by": "by",
@@ -260,6 +269,16 @@
     "recordNotFound": "找不到此紀錄（可能已被刪除）"
   },
   "changelog": {
+    "v2_6_2": {
+      "title": "v2.6.2",
+      "date": "2026-04-23",
+      "items": [
+        "新增：歷史紀錄改為完整 audit log，支援日期區間（最長 30 天）與 Boss 篩選、無限滾動載入",
+        "優化：頻道總覽在背後改以資料庫端去重（DISTINCT ON）並限制為近 3 天內活躍紀錄，長期開著的房間畫面不再越用越雜",
+        "優化：進入房間與回報紀錄時會更新房間活躍時間，避免活躍房間被誤判為閒置而提前清除",
+        "修復：不再每日自動封存紀錄，紀錄僅在房間閒置 7 天或使用者手動撤銷時才消失"
+      ]
+    },
     "v2_6_1": {
       "title": "v2.6.1",
       "date": "2026-04-21",

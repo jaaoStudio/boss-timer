@@ -2,7 +2,7 @@ import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from app.database.database import SessionLocal
-from app.database.models import Room, BossRecord
+from app.database.models import Room
 
 async def cleanup_inactive_rooms():
     while True:
@@ -21,14 +21,6 @@ async def cleanup_inactive_rooms():
                     for record in room.boss_records:
                         record.is_archived = True
                 logging.info(f"Marked {len(inactive_rooms)} inactive rooms as archived.")
-
-                # 封存超過 1 天的過期紀錄（不論房間是否活躍）
-                cutoff_record = now - timedelta(days=1)
-                expired_count = db.query(BossRecord).filter(
-                    BossRecord.recorded_at < cutoff_record,
-                    BossRecord.is_archived == False
-                ).update({"is_archived": True})
-                logging.info(f"Archived {expired_count} expired boss records.")
 
                 db.commit()
             finally:
