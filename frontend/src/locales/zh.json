@@ -118,7 +118,16 @@
     "deleteFailed": "作廢失敗",
     "deleteConfirmTitle": "作廢紀錄",
     "deleteConfirmMessage": "這項操作將會作廢此筆紀錄並撤銷 Discord 預警，確認嗎？",
-    "deleteSuccess": "紀錄已作廢"
+    "deleteSuccess": "紀錄已作廢",
+    "startDate": "開始日期",
+    "endDate": "結束日期",
+    "dateRangeSeparator": "至",
+    "last1Day": "最近 1 天",
+    "last7Days": "最近 7 天",
+    "last30Days": "最近 30 天",
+    "loadingMore": "載入中...",
+    "noMore": "沒有更多紀錄了",
+    "empty": "沒有符合條件的紀錄"
   },
   "recordItem": {
     "by": "by",

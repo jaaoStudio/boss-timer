@@ -4,6 +4,7 @@ import apiService from '@/services/apiService'
 import { useAppInfoStore } from './appInfo'
 import { useBossStore } from './bossStore'
 import { useRoomStore } from './roomStore'
+import { useRecordHistoryStore } from './recordHistoryStore'
 
 interface WSMessage {
   type: string
@@ -23,6 +24,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const appInfoStore = useAppInfoStore()
   const bossStore = useBossStore()
   const roomStore = useRoomStore()
+  const recordHistoryStore = useRecordHistoryStore()
   const { isConnected } = storeToRefs(roomStore)
 
   function processMessageQueue() {
@@ -120,9 +122,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
         break
       case 'boss_update':
         bossStore.updateBossRecord(message.data).then()
+        recordHistoryStore.upsertRecord(message.data)
         break
       case 'record_deleted':
         bossStore.deleteBossRecord(message.data.record_id)
+        recordHistoryStore.removeRecord(message.data.record_id)
         break
       case 'user_count_update':
         roomStore.setUserCount(message.count)

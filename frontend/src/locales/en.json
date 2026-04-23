@@ -118,7 +118,16 @@
     "deleteFailed": "Failed to void record",
     "deleteConfirmTitle": "Void Record",
     "deleteConfirmMessage": "This action will void this record and cancel its Discord alerts. Are you sure?",
-    "deleteSuccess": "Record voided successfully"
+    "deleteSuccess": "Record voided successfully",
+    "startDate": "Start date",
+    "endDate": "End date",
+    "dateRangeSeparator": "to",
+    "last1Day": "Last 1 day",
+    "last7Days": "Last 7 days",
+    "last30Days": "Last 30 days",
+    "loadingMore": "Loading...",
+    "noMore": "No more records",
+    "empty": "No records match the filter"
   },
   "recordItem": {
     "by": "by",

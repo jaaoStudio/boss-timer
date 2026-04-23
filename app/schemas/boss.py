@@ -53,3 +53,9 @@ class BossRecordResponse(BaseModel):
     boss_type: BossTypeResponse
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class BossRecordHistoryPage(BaseModel):
+    records: list[BossRecordResponse]
+    has_more: bool
+    next_cursor: Optional[int] = None
