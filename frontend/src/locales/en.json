@@ -405,8 +405,10 @@
         "title": "Report Boss Status",
         "steps": [
           "In the \"Control Panel\", select a Boss from the dropdown (supports search) and enter the channel number.",
-          "Click \"Killed\", \"Alive\", or \"Not Found\" to submit — the system calculates respawn times automatically.",
-          "Click the star icon next to a Boss to favorite it. Favorited bosses appear at the top of the dropdown."
+          "Click a status button to submit: green \"Killed\", red \"Alive\", or grey \"Not Found\" — the system calculates respawn times automatically.",
+          "The control panel adapts to its container width: status buttons show icons only when narrow, icons + text when wide.",
+          "Click the star icon next to a Boss to favorite it. Favorited bosses appear at the top of the dropdown.",
+          "When switching rooms, the last selected Boss is remembered automatically; rooms with custom Bosses will prefer the custom one."
         ]
       },
       "view": {
@@ -420,7 +422,9 @@
       "history": {
         "title": "History & Undo",
         "steps": [
-          "\"Record History\" lists all reports in the room, filterable by Boss.",
+          "\"Record History\" shows reports from the last 1 day by default — scroll down to infinitely load older records.",
+          "Use the date picker to choose a custom range (up to 30 days), or use the shortcut buttons: \"Last 1 Day\", \"Last 7 Days\", \"Last 30 Days\".",
+          "You can also filter by a specific Boss using the dropdown.",
           "If you submitted a wrong report, click the trash icon to undo it — this also cancels any scheduled Discord alerts."
         ]
       },
