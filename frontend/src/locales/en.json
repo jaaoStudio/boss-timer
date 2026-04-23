@@ -269,6 +269,16 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_6_2": {
+      "title": "v2.6.2",
+      "date": "2026-04-23",
+      "items": [
+        "New: Record History is now a full audit log with date-range (up to 30 days) and Boss filters, plus infinite scroll",
+        "Enhancement: Channel Overview now dedupes at the database level (DISTINCT ON) and only shows records from the past 3 days — long-running rooms stay clean",
+        "Enhancement: Joining a room or recording a kill now updates the room's last-active timestamp, preventing active rooms from being mistakenly cleaned up early",
+        "Fix: Records are no longer auto-archived daily — they persist until the room is inactive for 7 days or the user manually deletes them"
+      ]
+    },
     "v2_6_1": {
       "title": "v2.6.1",
       "date": "2026-04-21",

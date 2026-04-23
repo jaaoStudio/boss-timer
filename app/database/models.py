@@ -91,6 +91,14 @@ class BossRecord(Base):
         Index('idx_boss_records_room_boss_type', 'room_id', 'boss_type_id'),
         Index('idx_boss_records_time', 'recorded_at'),
         Index('idx_boss_records_recorder_id', 'recorder_id'),
+        Index(
+            'idx_boss_records_room_latest',
+            'room_id', 'channel', 'boss_type_id', 'recorded_at',
+        ),
+        Index(
+            'idx_boss_records_room_history',
+            'room_id', 'id',
+        ),
     )
 
     room = relationship("Room", back_populates="boss_records")

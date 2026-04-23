@@ -77,6 +77,16 @@ def current_status(self) -> str:
     return self.status
 ```
 
+**索引**:
+| 索引 | 欄位 | 用途 |
+|---|---|---|
+| `idx_boss_records_room_channel` | `(room_id, channel)` | 一般頻道過濾 |
+| `idx_boss_records_room_boss_type` | `(room_id, boss_type_id)` | Boss 種類過濾 |
+| `idx_boss_records_time` | `(recorded_at)` | 時間範圍 |
+| `idx_boss_records_recorder_id` | `(recorder_id)` | 記錄者查詢 |
+| `idx_boss_records_room_latest` | `(room_id, channel, boss_type_id, recorded_at)` | 支援 `get_room_state` 的 `DISTINCT ON (channel, boss_type_id)` 走 index scan |
+| `idx_boss_records_room_history` | `(room_id, id)` | 支援歷史紀錄 cursor 分頁（`WHERE room_id=? AND id<? ORDER BY id DESC`） |
+
 ### User
 | 欄位 | 類型 | 備註 |
 |---|---|---|

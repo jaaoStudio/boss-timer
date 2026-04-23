@@ -292,6 +292,8 @@ ConnectionManager
 - 函式直接導出 (非類別)
 - `get_room_state()` 使用 `joinedload` 避免 N+1 查詢
 - 預先載入 `BossRecord.recorder` 和 `BossRecord.boss_type`
+- 使用 PostgreSQL `DISTINCT ON (channel, boss_type_id)` 在 DB 端去重，回傳筆數被 `channels × boss_types` 綁定
+- 以 `ROOM_STATE_WINDOW_DAYS = 3` 過濾 `recorded_at`，讓頻道總覽只反映近期活躍頻道（歷史紀錄 API 不受影響）
 
 ### auth_service.py 模式
 - Google Token 驗證: 支援 credential (ID Token 直接驗證) 和 code (Authorization Code 交換)
@@ -324,6 +326,7 @@ ConnectionManager
 | Method | Path | Auth | 說明 |
 |---|---|---|---|
 | GET | `/boss/boss-types` | 無 | 取得所有 Boss 類型列表 |
+| GET | `/boss/room/{room_id}/records` | Session | 歷史紀錄 cursor 分頁（`before_id` / `limit` / `start` / `end` / `boss_type_id`） |
 | DELETE | `/boss/room/{room_id}/records/{record_id}` | Session | 撤銷紀錄 + 撤銷 Celery 預警任務 |
 
 ### 系統 (`/system`)
