@@ -19,6 +19,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const isManualDisconnect = ref(false)
   const reconnectAttempts = ref(0)
   const maxReconnectAttempts = 5
+  const isMaxReconnectReached = ref(false)
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
 
   const appInfoStore = useAppInfoStore()
@@ -55,6 +56,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         isConnected.value = true
         reconnectAttempts.value = 0
         isManualDisconnect.value = false
+        isMaxReconnectReached.value = false
         processMessageQueue()
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
@@ -155,6 +157,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }, 2000 * (reconnectAttempts.value + 1))
     } else {
       console.error('WebSocket max reconnect attempts reached.')
+      isMaxReconnectReached.value = true
     }
   }
 
@@ -168,6 +171,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   return {
     isConnected,
+    isMaxReconnectReached,
     connect,
     disconnect,
     sendMessage,

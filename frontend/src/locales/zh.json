@@ -52,7 +52,8 @@
   },
   "bossTracker": {
     "roomNotFound": "房間不存在",
-    "failedToEnter": "進入房間失敗，請重新嘗試"
+    "failedToEnter": "進入房間失敗，請重新嘗試",
+    "connectionLost": "連線已中斷，請重新加入房間"
   },
   "appFooter": {
     "credits": "貢獻者 & 致謝",

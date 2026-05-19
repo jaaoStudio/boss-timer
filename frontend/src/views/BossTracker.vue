@@ -59,7 +59,8 @@
 </template>
 
 <script setup>
-import { onMounted, onUnmounted } from 'vue'
+import { onMounted, onUnmounted, watch } from 'vue'
+import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { useRoomStore } from '@/stores/roomStore.js'
 import { useBossStore } from '@/stores/bossStore.js'
@@ -89,6 +90,14 @@ const bossStore = useBossStore()
 const userStore = useUserStore()
 const websocketStore = useWebSocketStore()
 const { addRecentRoom } = useRecentRooms()
+const { isMaxReconnectReached } = storeToRefs(websocketStore)
+
+watch(isMaxReconnectReached, (reached) => {
+  if (reached) {
+    router.push({ name: 'RoomSelection' })
+    showMessage.error(t('bossTracker.connectionLost'))
+  }
+})
 
 useBossAlerts()
 

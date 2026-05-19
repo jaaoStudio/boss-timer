@@ -12,7 +12,7 @@ from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.database import models
-from app.database.database import get_db
+from app.database.database import SessionLocal
 from app.websocket.manager import ConnectionManager
 from app.services.auth_service import get_current_user # 引入 get_current_user
 def get_user_identifier(request: Request) -> str:
@@ -73,8 +73,6 @@ async def get_current_user_from_ws(
     如果 token 無效或不存在，則返回 None，代表匿名使用者。
     使用短暫的 DB session，不長持連線。
     """
-    from app.database.database import SessionLocal
-
     token = websocket.cookies.get("access_token")
     if not token:
         return None
