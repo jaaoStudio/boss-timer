@@ -42,7 +42,7 @@ app/
 ├── maintenance.json       # 維護模式開關設定檔 (JSON)
 │
 ├── database/
-│   ├── database.py        # SQLAlchemy engine、SessionLocal、Base、get_db()
+│   ├── database.py        # SQLAlchemy engine（pool_pre_ping=True）、SessionLocal、Base、get_db()
 │   └── models.py          # ORM 模型定義 (User, Room, BossType, BossRecord, RoomUser, RefreshToken)
 │
 ├── schemas/
@@ -273,6 +273,8 @@ ConnectionManager
 └── socket_to_user: Dict[WS, int]            # WS → user_id
 ```
 
+**⚠️ Dead connection 清除**: `broadcast_to_room` / `broadcast_to_all` 廣播時若 `send_text` 拋出例外，會立刻呼叫 `disconnect()` 移除死連線，防止殭屍連線堆積佔用記憶體。
+
 ---
 
 ## 服務層模式
@@ -416,6 +418,8 @@ ConnectionManager
 - 新增訊息類型: 在 `routers/websocket.py` 的 `handle_message()` 中加入新的 `if msg_type == "..."` 分支
 - 廣播: 使用 `manager.broadcast_to_room()` 或 `manager.broadcast_to_all()`
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
+- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 在每個需要 DB 的 message handler 內短暫取用，用完即還給 pool
+- **`ping` 訊息**在進入 `SessionLocal` 之前直接 `continue`，不觸碰 DB
 
 ### 錯誤處理
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼
