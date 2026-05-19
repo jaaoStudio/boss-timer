@@ -1,4 +1,5 @@
 # app/routers/websocket.py
+import asyncio
 import json
 import logging
 import time
@@ -19,6 +20,10 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 # --- Per-connection rate limiting for record_boss ---
 RATE_LIMIT_WINDOW = 60  # seconds
 RATE_LIMIT_MAX = 30     # max record_boss messages per window
+
+# --- Server-side heartbeat ---
+# 客戶端每 30 秒送一次 ping，90 秒內沒有任何訊息視為靜默斷線
+HEARTBEAT_TIMEOUT = 90  # seconds
 
 
 class RateLimiter:
@@ -109,7 +114,19 @@ async def websocket_endpoint(
 
     try:
         while True:
-            data = await websocket.receive_text()
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=HEARTBEAT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                logging.info("WebSocket heartbeat timeout, closing dead connection.")
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+                break
+
             message = json.loads(data)
             message_type = message.get("type")
 
