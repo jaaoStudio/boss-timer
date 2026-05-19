@@ -14,9 +14,10 @@ interface UserState {
   user: User | null;
   isLoggedIn: boolean;
   isLoading?: boolean;
-  anonymousId: string | null; // Add anonymousId to the state
+  anonymousId: string | null;
   anonymousName: string | null;
   _channel?: BroadcastChannel;
+  _initialized: boolean;
 }
 
 export const useUserStore = defineStore('user', {
@@ -27,6 +28,7 @@ export const useUserStore = defineStore('user', {
     anonymousId: null,
     anonymousName: null,
     _channel: undefined,
+    _initialized: false,
   }),
   getters: {
     isAdmin(): boolean {
@@ -63,19 +65,24 @@ export const useUserStore = defineStore('user', {
     },
 
     async initializeAuth() {
+      const websocketStore = useWebSocketStore();
+
+      // 只在第一次進行 API 初始化，後續路由切換僅確保 WS 連線
+      if (this._initialized) {
+        websocketStore.connect();
+        return;
+      }
+
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        // 1. 確保後端 session 已建立並取得 session data
         const session = await apiService.initSession();
 
-        // 2. 將後端給予的 anonymous_user_id 存起來
         if (session.anonymous_user_id) {
           this.anonymousId = session.anonymous_user_id;
           localStorage.setItem('anonymous_id', session.anonymous_user_id);
         }
 
-        // 3. 嘗試驗證登入 token
         const res = await apiService.validateToken();
         if (res.valid) {
           this.user = res.user;
@@ -83,17 +90,15 @@ export const useUserStore = defineStore('user', {
           localStorage.setItem('user_info', JSON.stringify(res.user));
         } else {
           this.clearAuth();
-          // 如果未登入，則載入匿名使用者的名稱
           this.anonymousName = this.getAnonymousName();
         }
       } catch (error) {
         console.error('Auth initialization failed:', error);
         this.clearAuth();
-        // 即使API出錯，也嘗試讀取本地的匿名名稱
         this.anonymousName = this.getAnonymousName();
       } finally {
         this.isLoading = false;
-        const websocketStore = useWebSocketStore();
+        this._initialized = true;
         websocketStore.connect();
       }
     },
