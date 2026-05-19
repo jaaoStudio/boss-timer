@@ -70,17 +70,16 @@ class ConnectionManager:
             logging.info(f"Connection unsubscribed from room {room_id}")
 
     async def broadcast_to_room(self, room_id: str, message: dict):
-        if room_id in self.room_subscriptions:
-            message_str = json.dumps(message, default=str)
-            # Create a list of tasks for sending messages
-            tasks = [
-                conn.send_text(message_str) for conn in self.room_subscriptions[room_id]
-            ]
-            # Run all send tasks concurrently
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-            for result in results:
-                if isinstance(result, Exception):
-                    logging.error(f"Error sending message to room {room_id}: {result}")
+        if room_id not in self.room_subscriptions:
+            return
+        message_str = json.dumps(message, default=str)
+        connections = list(self.room_subscriptions[room_id])
+        tasks = [conn.send_text(message_str) for conn in connections]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        dead = [conn for conn, result in zip(connections, results) if isinstance(result, Exception)]
+        for conn in dead:
+            logging.warning(f"Dead connection detected in room {room_id}, removing.")
+            self.disconnect(conn)
 
     async def broadcast_to_all(self, message: dict):
         """Broadcasts a message to all connected WebSocket clients."""
@@ -88,11 +87,13 @@ class ConnectionManager:
             return
 
         message_str = json.dumps(message, default=str)
-        tasks = [conn.send_text(message_str) for conn in self.active_connections]
+        connections = list(self.active_connections)
+        tasks = [conn.send_text(message_str) for conn in connections]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for result in results:
-            if isinstance(result, Exception):
-                logging.error(f"Error broadcasting to all connections: {result}")
+        dead = [conn for conn, result in zip(connections, results) if isinstance(result, Exception)]
+        for conn in dead:
+            logging.warning(f"Dead connection detected during broadcast_to_all, removing.")
+            self.disconnect(conn)
 
     def get_room_user_count(self, room_id: str) -> int:
         return len(self.room_subscriptions.get(room_id, set()))

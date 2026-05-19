@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.database import models
-from app.database.database import get_db
+from app.database.database import SessionLocal
 from app.services import room_service, boss_service, auth_service
 from app.dependencies import get_current_user_from_ws, get_connection_manager
 from app.websocket.manager import ConnectionManager
@@ -101,7 +101,6 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
 @router.websocket("/")
 async def websocket_endpoint(
     websocket: WebSocket,
-    db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
@@ -114,15 +113,20 @@ async def websocket_endpoint(
             message = json.loads(data)
             message_type = message.get("type")
 
+            if message_type == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}))
+                continue
+
             if message_type == "authenticate":
                 token = message.get("token")
                 if token:
                     try:
-                        new_user = auth_service.get_current_user_from_token(token, db)
-                        if new_user:
-                            user_id = new_user.id
-                            manager.update_user_id(websocket, user_id)
-                            logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
+                        with SessionLocal() as db:
+                            new_user = auth_service.get_current_user_from_token(token, db)
+                            if new_user:
+                                user_id = new_user.id
+                                manager.update_user_id(websocket, user_id)
+                                logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
                     except Exception as e:
                         logging.warning(f"WebSocket authentication failed: {e}")
                 continue
@@ -133,7 +137,8 @@ async def websocket_endpoint(
                 logging.info("WebSocket de-authenticated.")
                 continue
 
-            await handle_message(websocket, message, db, manager, user_id)
+            with SessionLocal() as db:
+                await handle_message(websocket, message, db, manager, user_id)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")

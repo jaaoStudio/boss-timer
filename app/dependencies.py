@@ -67,17 +67,18 @@ async def get_current_admin_user(current_user: models.User = Depends(get_current
 
 async def get_current_user_from_ws(
     websocket: WebSocket,
-    db: Session = Depends(get_db)
 ) -> Optional[models.User]:
     """
     從 WebSocket 連線的 cookie 中解析 JWT，並返回使用者物件。
     如果 token 無效或不存在，則返回 None，代表匿名使用者。
+    使用短暫的 DB session，不長持連線。
     """
+    from app.database.database import SessionLocal
+
     token = websocket.cookies.get("access_token")
     if not token:
-        return None # 匿名使用者
+        return None
 
-    # Cookie 中的 token 可能包含 "Bearer " 前綴
     if token.startswith("Bearer "):
         token = token.split(" ")[1]
 
@@ -85,14 +86,14 @@ async def get_current_user_from_ws(
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         user_id: str = payload.get("sub")
         if user_id is None:
-            return None # 無效的 payload
+            return None
 
-        user = db.query(models.User).filter(models.User.id == int(user_id)).first()
-        return user # 返回 User 物件或 None
+        with SessionLocal() as db:
+            user = db.query(models.User).filter(models.User.id == int(user_id)).first()
+            return user
 
     except (JWTError, ValueError):
-        # JWT 錯誤或 user_id 無法轉換為 int
-        return None # 無法驗證，視為匿名
+        return None
 
 
 async def verify_user_session(
