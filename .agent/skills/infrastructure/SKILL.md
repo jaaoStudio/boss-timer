@@ -96,7 +96,7 @@ ENV PYTHONUNBUFFERED=1
 
 ```dockerfile
 # 多階段建置
-FROM node:18-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -109,7 +109,9 @@ COPY ./nginx/nginx.conf /etc/nginx/nginx.conf
 COPY --from=builder /app/dist /usr/share/nginx/html
 ```
 
-**注意**: `npm run build` 使用 `.env.production`，WebSocket URL 會指向正式環境 (`boss-timer.jaao.tw`)。
+**注意**:
+- `npm run build` 使用 `.env.production`，WebSocket URL 會指向正式環境 (`boss-timer.jaao.tw`)
+- Node base image 固定用 `node:22-alpine`（Node 18 已於 2025/04 EOL）；`nginx:alpine` 使用 floating tag，每次 `--no-cache` build 即可取得最新安全版本
 
 ---
 

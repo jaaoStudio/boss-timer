@@ -8,7 +8,9 @@ import i18n from '@/i18n'
 export const handleError = (axiosInstance: AxiosInstance, error: AxiosError): void | Promise<unknown> => {
   if (!error.response) {
     console.error('Network Error:', error)
-    router.push({ name: 'Maintenance' })
+    if (router.currentRoute.value.name !== 'Maintenance') {
+      router.push({ name: 'Maintenance' })
+    }
     return
   }
 
@@ -62,9 +64,13 @@ const callRefreshToken = async (axiosInstance: AxiosInstance, originalRequestCon
 }
 
 const handleServiceUnavailable = () => {
-  router.push({ name: 'Maintenance' })
+  if (router.currentRoute.value.name !== 'Maintenance') {
+    router.push({ name: 'Maintenance' })
+  }
 }
 
 const handleServerError = () => {
-  router.push({ name: 'Error' })
+  if (router.currentRoute.value.name !== 'Error') {
+    router.push({ name: 'Error' })
+  }
 }

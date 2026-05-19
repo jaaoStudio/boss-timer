@@ -1,4 +1,5 @@
 # app/routers/websocket.py
+import asyncio
 import json
 import logging
 import time
@@ -8,7 +9,7 @@ from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.database import models
-from app.database.database import get_db
+from app.database.database import SessionLocal
 from app.services import room_service, boss_service, auth_service
 from app.dependencies import get_current_user_from_ws, get_connection_manager
 from app.websocket.manager import ConnectionManager
@@ -19,6 +20,10 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 # --- Per-connection rate limiting for record_boss ---
 RATE_LIMIT_WINDOW = 60  # seconds
 RATE_LIMIT_MAX = 30     # max record_boss messages per window
+
+# --- Server-side heartbeat ---
+# 客戶端每 30 秒送一次 ping，90 秒內沒有任何訊息視為靜默斷線
+HEARTBEAT_TIMEOUT = 90  # seconds
 
 
 class RateLimiter:
@@ -101,7 +106,6 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
 @router.websocket("/")
 async def websocket_endpoint(
     websocket: WebSocket,
-    db: Session = Depends(get_db),
     current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
@@ -110,19 +114,36 @@ async def websocket_endpoint(
 
     try:
         while True:
-            data = await websocket.receive_text()
+            try:
+                data = await asyncio.wait_for(
+                    websocket.receive_text(),
+                    timeout=HEARTBEAT_TIMEOUT
+                )
+            except asyncio.TimeoutError:
+                logging.info("WebSocket heartbeat timeout, closing dead connection.")
+                try:
+                    await websocket.close()
+                except Exception:
+                    pass
+                break
+
             message = json.loads(data)
             message_type = message.get("type")
+
+            if message_type == "ping":
+                await websocket.send_text(json.dumps({"type": "pong"}))
+                continue
 
             if message_type == "authenticate":
                 token = message.get("token")
                 if token:
                     try:
-                        new_user = auth_service.get_current_user_from_token(token, db)
-                        if new_user:
-                            user_id = new_user.id
-                            manager.update_user_id(websocket, user_id)
-                            logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
+                        with SessionLocal() as db:
+                            new_user = auth_service.get_current_user_from_token(token, db)
+                            if new_user:
+                                user_id = new_user.id
+                                manager.update_user_id(websocket, user_id)
+                                logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
                     except Exception as e:
                         logging.warning(f"WebSocket authentication failed: {e}")
                 continue
@@ -133,7 +154,8 @@ async def websocket_endpoint(
                 logging.info("WebSocket de-authenticated.")
                 continue
 
-            await handle_message(websocket, message, db, manager, user_id)
+            with SessionLocal() as db:
+                await handle_message(websocket, message, db, manager, user_id)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
