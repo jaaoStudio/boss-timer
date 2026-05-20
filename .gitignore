@@ -34,5 +34,6 @@ app/.env
 
 node_modules
 .env
-.claude
+.agent
+.agents
 CLAUDE.md
