@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { calculateCurrentStatus } from '@/composables/useCurrentStatus'
 
 function resolveBossTypeId(types: BossType[]): number | null {
   if (!types.length) return null
@@ -154,22 +155,6 @@ export const useBossStore = defineStore('boss', {
     setSelectedChannel(channel: number | null) {
       this.selectedChannel = channel
     },
-    calculateCurrentStatus(record: BossRecord): string {
-      const now = new Date()
-      const respawnMinTime = record.respawn_min_time ? new Date(record.respawn_min_time) : null
-      const respawnMaxTime = record.respawn_max_time ? new Date(record.respawn_max_time) : null
-
-      if (record.status === 'killed') {
-        if (respawnMaxTime && now >= respawnMaxTime) {
-          return 'alive'
-        }
-        if (respawnMinTime && now >= respawnMinTime) {
-          return 'may_respawn'
-        }
-        return 'respawning'
-      }
-      return record.status
-    },
     updateBossStatusOnTimerEnd(record: BossRecord) {
       const index = this.bossRecords.findIndex(
         r => r.channel === record.channel && r.boss_type_id === record.boss_type_id
@@ -177,7 +162,7 @@ export const useBossStore = defineStore('boss', {
 
       if (index !== -1) {
         const currentRecord = { ...this.bossRecords[index] }
-        currentRecord.current_status = this.calculateCurrentStatus(currentRecord)
+        currentRecord.current_status = calculateCurrentStatus(currentRecord)
         this.bossRecords.splice(index, 1, currentRecord)
       }
     },
