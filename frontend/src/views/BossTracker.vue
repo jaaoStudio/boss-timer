@@ -58,15 +58,12 @@
   </div>
 </template>
 
-<script setup>
+<script setup lang="ts">
 import { onMounted, onUnmounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
-import { useRoomStore } from '@/stores/roomStore.js'
-import { useBossStore } from '@/stores/bossStore.js'
-import { useUserStore } from '@/stores/userStore.js'
+import { useUserStore } from '@/stores/userStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
-import ApiService from '@/services/apiService.ts'
 import AppHeader from '@/components/AppHeader.vue'
 import BossControlPanel from '@/components/boss/BossControlPanel.vue'
 import BossInfo from '@/components/boss/BossInfo.vue'
@@ -77,20 +74,18 @@ import LayoutItemWrapper from '@/components/layout/LayoutItemWrapper.vue'
 import EditModeToolbar from '@/components/layout/EditModeToolbar.vue'
 import { showMessage } from '@/composables/useElementPlus'
 import { useI18n } from 'vue-i18n'
-import { useRecentRooms } from '@/composables/useRecentRooms'
 import { useBossAlerts } from '@/composables/useBossAlerts'
 import { useLayoutConfig } from '@/composables/useLayoutConfig'
+import { useRoomSession, RoomNotFoundError } from '@/composables/useRoomSession'
 import AdBanner from '@/components/ui/AdBanner.vue'
 import { VueDraggable } from 'vue-draggable-plus'
 
 const { t } = useI18n()
 const router = useRouter()
-const roomStore = useRoomStore()
-const bossStore = useBossStore()
 const userStore = useUserStore()
 const websocketStore = useWebSocketStore()
-const { addRecentRoom } = useRecentRooms()
 const { isMaxReconnectReached } = storeToRefs(websocketStore)
+const { enter, leave } = useRoomSession()
 
 watch(isMaxReconnectReached, (reached) => {
   if (reached) {
@@ -103,54 +98,29 @@ useBossAlerts()
 
 const { layout, isEditMode, moveItem, increaseColSpan, decreaseColSpan, toggleCollapsed, enterEditMode, exitEditMode, resetLayout } = useLayoutConfig()
 
-function isItemVisible(id) {
+function isItemVisible(id: string): boolean {
   if (id === 'recordHistory') {
-    return userStore.user?.preferences?.showRecordHistory ?? true
+    return (userStore.user?.preferences?.showRecordHistory as boolean) ?? true
   }
   return true
 }
 
-const props = defineProps({
-  roomId: {
-    type: String,
-    required: true,
-  },
-})
+const props = defineProps<{ roomId: string }>()
 
 onMounted(async () => {
   try {
-    roomStore.setRoomId(props.roomId)
-
-    const roomExistResponse = await ApiService.checkRoomExists(props.roomId)
-    if (roomExistResponse.exists) {
-      const types = await ApiService.getBossTypes()
-      bossStore.setBossTypes(types)
-
-      websocketStore.sendMessage({
-        type: 'join_room',
-        payload: { room_id: props.roomId },
-      })
-
-      addRecentRoom(props.roomId)
-    } else {
-      await router.push({ name: 'RoomSelection' })
-      showMessage.error(t('bossTracker.roomNotFound'))
-    }
+    await enter(props.roomId)
   } catch (error) {
-    console.error('Failed to initialize BossTracker:', error)
     await router.push({ name: 'RoomSelection' })
-    showMessage.error(t('bossTracker.failedToEnter'))
+    showMessage.error(
+      error instanceof RoomNotFoundError
+        ? t('bossTracker.roomNotFound')
+        : t('bossTracker.failedToEnter')
+    )
   }
 })
 
 onUnmounted(() => {
-  if (props.roomId) {
-    websocketStore.sendMessage({
-      type: 'leave_room',
-      payload: { room_id: props.roomId },
-    })
-  }
-  roomStore.setRoomId(null)
-  bossStore.clearRoomState()
+  leave()
 })
 </script>
