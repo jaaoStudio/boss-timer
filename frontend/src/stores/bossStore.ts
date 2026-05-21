@@ -76,7 +76,7 @@ export const useBossStore = defineStore('boss', {
   getters: {
     priorityChannels(state): BossRecord[] {
       return state.bossRecords
-        .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'may_respawn')
+        .filter(record => record.boss_type_id === state.selectedBossTypeId && (record.current_status === 'may_respawn' || record.current_status === 'alive'))
         .sort((a, b) => ts(a.respawn_min_time) - ts(b.respawn_min_time))
     },
     avoidChannels(state): BossRecord[] {
