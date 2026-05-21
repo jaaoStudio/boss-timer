@@ -31,8 +31,8 @@ class AxiosInstance {
     return this.axiosInstance.delete<T>(url, config)
   }
 
-  patch<T = unknown>(url: string, config: AxiosRequestConfig = {}) {
-    return this.axiosInstance.patch<T>(url, config)
+  patch<T = unknown>(url: string, data: unknown = {}, config: AxiosRequestConfig = {}) {
+    return this.axiosInstance.patch<T>(url, data, config)
   }
 }
 

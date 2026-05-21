@@ -2,30 +2,36 @@ import { defineStore } from 'pinia'
 import { useWebSocketStore } from './websocketStore'
 
 export const useRoomStore = defineStore('room', {
-  state: () => ({
+  state: (): {
+    roomId: string
+    userCount: number
+    isConnected: boolean
+    ws: WebSocket | null
+    isManualDisconnect: boolean
+  } => ({
     roomId: '',
     userCount: 0,
     isConnected: false,
     ws: null,
-    isManualDisconnect: false, // 新增手動斷開標誌
+    isManualDisconnect: false,
   }),
   actions: {
-    setRoomId(id) {
+    setRoomId(id: string) {
       this.roomId = id
     },
-    setUserCount(count) {
+    setUserCount(count: number) {
       this.userCount = count
     },
-    setConnected(status) {
+    setConnected(status: boolean) {
       this.isConnected = status
     },
-    setWebSocket(websocket) {
+    setWebSocket(websocket: WebSocket | null) {
       this.ws = websocket
     },
     clearRoomId() {
       this.roomId = ''
     },
-    setManualDisconnect(status) { // 新增設定手動斷開標誌的 action
+    setManualDisconnect(status: boolean) {
       this.isManualDisconnect = status
     },
     leaveRoomAction() {

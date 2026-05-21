@@ -60,7 +60,7 @@ const router: Router = createRouter({
   ],
 });
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore();
   await userStore.initializeAuth(); // 確保用戶認證狀態已載入
 

@@ -72,10 +72,10 @@ const { selectedBossTypeId } = storeToRefs(bossStore)
 const isDark = useDark()
 
 const filterableStatuses = [
-  { key: 'may_respawn', color: STATUS_COLORSS.may_respawn, i18nKey: 'status.mayRespawn' },
-  { key: 'respawning',  color: STATUS_COLORSS.respawning,  i18nKey: 'status.respawning' },
-  { key: 'alive',       color: STATUS_COLORSS.alive,       i18nKey: 'status.alive' },
-  { key: 'expired',     color: STATUS_COLORSS.expired,     i18nKey: 'status.expired' },
+  { key: 'may_respawn', color: STATUS_COLORS.may_respawn, i18nKey: 'status.mayRespawn' },
+  { key: 'respawning',  color: STATUS_COLORS.respawning,  i18nKey: 'status.respawning' },
+  { key: 'alive',       color: STATUS_COLORS.alive,       i18nKey: 'status.alive' },
+  { key: 'expired',     color: STATUS_COLORS.expired,     i18nKey: 'status.expired' },
 ] as const
 
 // Filter state (all active by default)

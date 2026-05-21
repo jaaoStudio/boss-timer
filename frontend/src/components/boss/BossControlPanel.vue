@@ -123,7 +123,7 @@ const props = defineProps<{
 
 const { favoriteBossIds, toggleFavorite } = useFavoriteBosses()
 
-const isCompact = computed(() => [1,2].includes(props.colSpan))
+const isCompact = computed(() => props.colSpan != null && [1, 2].includes(props.colSpan))
 
 const bossLabel = (boss: BossType) => locale.value === 'zh' ? boss.name_zh : boss.name_en
 

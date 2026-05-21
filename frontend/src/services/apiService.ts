@@ -1,77 +1,110 @@
-import { bossService } from '@/axios';
+import type { AxiosResponse } from 'axios'
+import { bossService } from '@/axios'
+import type { BossType, BossRecord } from '@/stores/bossStore'
+import type { User } from '@/stores/userStore'
+import type { MaintenanceInfo } from '@/stores/appInfo'
 
-const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`;
+const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`
 
+interface ValidateTokenResponse {
+  valid: boolean
+  user?: User
+}
+
+interface InitSessionResponse {
+  anonymous_user_id?: string
+}
+
+interface LoginResponse {
+  user: User
+  access_token: string
+}
+
+interface RoomCreateResponse {
+  room_id: string
+}
+
+interface RoomExistsResponse {
+  exists: boolean
+  discord_webhook_url?: string | null
+  discord_webhook_enabled?: boolean
+  webhook_notify_events?: string[]
+  webhook_alert_type?: string
+}
+
+interface RecordHistoryPage {
+  records: BossRecord[]
+  has_more: boolean
+  next_cursor: number | null
+}
+
+interface WebSocketCountResponse {
+  count: number
+}
 
 class ApiService {
-  client: any;
+  private client: typeof bossService
 
   constructor() {
-    this.client = bossService;
+    this.client = bossService
   }
 
-  // 驗證 token (現在依賴 cookie，不需傳遞 token)
-  async validateToken() {
+  async validateToken(): Promise<ValidateTokenResponse> {
     try {
-      const response = await this.client.post('/auth/validate');
-      return response.data;
-    } catch (error) {
-      return { valid: false };
+      const res = await this.client.post<ValidateTokenResponse>('/auth/validate')
+      return res.data
+    } catch {
+      return { valid: false }
     }
   }
 
-  // --- Auth ---
-  async loginWithGoogle(payload: { credential?: string; code?: string }) {
-    const response = await this.client.post('/auth/google', payload);
-    return response.data;
+  async loginWithGoogle(payload: { credential?: string; code?: string }): Promise<LoginResponse> {
+    const res = await this.client.post<LoginResponse>('/auth/google', payload)
+    return res.data
   }
 
-  // 登出
-  async logout() {
-    const response = await this.client.post('/auth/logout')
-    return response.data;
+  async logout(): Promise<void> {
+    await this.client.post('/auth/logout')
   }
 
-  async initSession() {
-    const response = await this.client.post('/auth/session');
-    return response.data;
+  async initSession(): Promise<InitSessionResponse> {
+    const res = await this.client.post<InitSessionResponse>('/auth/session')
+    return res.data
   }
 
-  async getMe() {
-    const response = await this.client.get('/auth/me');
-    return response.data;
+  async getMe(): Promise<User> {
+    const res = await this.client.get<User>('/auth/me')
+    return res.data
   }
 
-  async refresh_token() {
-    const response = await this.client.post('auth/refresh');
-    return response.data;
+  async refresh_token(): Promise<{ status?: number }> {
+    const res = await this.client.post<{ status?: number }>('auth/refresh')
+    return res.data
   }
 
-  async updateMyPreferences(preferences: Record<string, any>) {
-    const response = await this.client.put('/auth/me/preferences', preferences);
-    return response.data;
+  async updateMyPreferences(preferences: Record<string, unknown>): Promise<User> {
+    const res = await this.client.put<User>('/auth/me/preferences', preferences)
+    return res.data
   }
 
-  // --- Boss & Room ---
-  getBossTypes() {
-    return this.client.get('/boss/boss-types').then(res => res.data);
+  getBossTypes(): Promise<BossType[]> {
+    return this.client.get<BossType[]>('/boss/boss-types').then(res => res.data)
   }
 
-
-  createRoom(roomId: string) {
-    return this.client.post('/room/', { room_id: roomId }).then(res => res.data);
+  createRoom(roomId?: string): Promise<RoomCreateResponse> {
+    return this.client.post<RoomCreateResponse>('/room/', roomId ? { room_id: roomId } : {}).then(res => res.data)
   }
 
-  checkRoomExists(roomId: string) {
-    return this.client.get(`/room/${roomId}/exists`).then(res => res.data);
+  checkRoomExists(roomId: string): Promise<RoomExistsResponse> {
+    return this.client.get<RoomExistsResponse>(`/room/${roomId}/exists`).then(res => res.data)
   }
 
-  updateRoomSettings(roomId: string, settings: Record<string, any>) {
-    return this.client.patch(`/room/${roomId}/settings`, settings).then(res => res.data);
+  updateRoomSettings(roomId: string, settings: Record<string, unknown>): Promise<RoomExistsResponse> {
+    return this.client.patch<RoomExistsResponse>(`/room/${roomId}/settings`, settings).then(res => res.data)
   }
 
-  deleteBossRecord(roomId: string, recordId: number) {
-    return this.client.delete(`/boss/room/${roomId}/records/${recordId}`).then(res => res.data);
+  deleteBossRecord(roomId: string, recordId: number): Promise<void> {
+    return this.client.delete(`/boss/room/${roomId}/records/${recordId}`).then(() => undefined)
   }
 
   getRoomRecordsHistory(
@@ -84,40 +117,40 @@ class ApiService {
       boss_type_id?: number
     } = {},
     signal?: AbortSignal,
-  ) {
+  ): Promise<RecordHistoryPage> {
     return this.client
-      .get(`/boss/room/${roomId}/records`, { params, signal })
-      .then(res => res.data);
+      .get<RecordHistoryPage>(`/boss/room/${roomId}/records`, { params, signal })
+      .then(res => res.data)
   }
 
-  createCustomBossType(roomId: string, payload: { name: string; min_respawn_minutes: number; max_respawn_minutes: number }) {
-    return this.client.post(`/boss/room/${roomId}/boss-types`, payload).then(res => res.data);
+  createCustomBossType(
+    roomId: string,
+    payload: { name: string; min_respawn_minutes: number; max_respawn_minutes: number },
+  ): Promise<BossType> {
+    return this.client.post<BossType>(`/boss/room/${roomId}/boss-types`, payload).then(res => res.data)
   }
 
-  deleteCustomBossType(roomId: string, bossTypeId: number) {
-    return this.client.delete(`/boss/room/${roomId}/boss-types/${bossTypeId}`).then(res => res.data);
+  deleteCustomBossType(roomId: string, bossTypeId: number): Promise<void> {
+    return this.client.delete(`/boss/room/${roomId}/boss-types/${bossTypeId}`).then(() => undefined)
   }
 
-  // --- WebSocket ---
-  createWebSocket() {
-    // The HttpOnly cookie will be sent automatically by the browser.
-    // No need to manually attach a token.
-    return new WebSocket(`${WS_URL}/ws/`);
+  createWebSocket(): WebSocket {
+    return new WebSocket(`${WS_URL}/ws/`)
   }
 
-  async getMaintenanceStatus() {
-    const response = await this.client.get('/system/maintenance-info');
-    return response.data;
+  async getMaintenanceStatus(): Promise<MaintenanceInfo> {
+    const res = await this.client.get<MaintenanceInfo>('/system/maintenance-info')
+    return res.data
   }
 
-  async updateMaintenanceConfig(updatedConfig: Dict<string, any>) {
-    return await this.client.post('/system/maintenance-config', updatedConfig);
+  async updateMaintenanceConfig(updatedConfig: Record<string, unknown>): Promise<AxiosResponse<MaintenanceInfo>> {
+    return this.client.post<MaintenanceInfo>('/system/maintenance-config', updatedConfig)
   }
 
-  async getWebSocketConnectionsCount() {
-    const response = await this.client.get('/ws/connections/count');
-    return response.data.count;
+  async getWebSocketConnectionsCount(): Promise<number> {
+    const res = await this.client.get<WebSocketCountResponse>('/ws/connections/count')
+    return res.data.count
   }
 }
 
-export default new ApiService();
+export default new ApiService()

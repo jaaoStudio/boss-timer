@@ -51,13 +51,8 @@ onMounted(async () => {
 const updateMaintenanceConfig = async () => {
   try {
     const response = await apiService.updateMaintenanceConfig(config.value);
-    if (response.status === 200) {
-      showMessage.success('維護配置更新成功！');
-      // 更新 store 中的狀態，確保前端橫幅即時更新
-      appInfoStore.maintenanceInfo = response.data;
-    } else {
-      showMessage.error('更新失敗: ' + response.data.detail);
-    }
+    showMessage.success('維護配置更新成功！');
+    appInfoStore.maintenanceInfo = response.data;
   } catch (error: unknown) {
     console.error('更新維護配置失敗:', error);
     const e = error as { response?: { data?: { detail?: string } }; message?: string }
