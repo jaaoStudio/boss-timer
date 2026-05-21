@@ -13,25 +13,10 @@ import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
 import ChannelCard from './ChannelCard.vue'
+import { STATUS_ORDER, isExpiredRecord } from '@/composables/useStatusConfig'
 
 const bossStore = useBossStore()
 const { selectedBossTypeId } = storeToRefs(bossStore)
-
-const STATUS_ORDER: Record<string, number> = {
-  may_respawn: 0,
-  respawning: 1,
-  alive: 2,
-  not_found: 3,
-  unknown: 4,
-}
-
-function isExpiredRecord(record: any): boolean {
-  if (record.current_status !== 'alive') return false
-  if (!record.respawn_min_time || !record.respawn_max_time) return false
-  const windowDuration = new Date(record.respawn_max_time).getTime() - new Date(record.respawn_min_time).getTime()
-  const timeSinceMax = Date.now() - new Date(record.respawn_max_time).getTime()
-  return timeSinceMax > windowDuration
-}
 
 const recordedChannels = computed<number[]>(() => {
   if (bossStore.bossRecords.length === 0) return []

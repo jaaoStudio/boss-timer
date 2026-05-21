@@ -54,6 +54,7 @@ import { useBossStore } from '@/stores/bossStore'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
+import { STATUS_COLORSS, STATUS_ORDER } from '@/composables/useStatusConfig'
 
 // ECharts tree-shaking imports
 import { use } from 'echarts/core'
@@ -69,28 +70,11 @@ const bossStore = useBossStore()
 const { selectedBossTypeId } = storeToRefs(bossStore)
 const isDark = useDark()
 
-const STATUS_COLOR: Record<string, string> = {
-  may_respawn: '#eab308',
-  respawning:  '#3b82f6',
-  alive:       '#16a34a',
-  not_found:   '#9ca3af',
-  expired:     '#d1d5db',
-  unknown:     '#d1d5db',
-}
-
-const STATUS_ORDER: Record<string, number> = {
-  may_respawn: 0,
-  respawning:  1,
-  alive:       2,
-  not_found:   3,
-  unknown:     4,
-}
-
 const filterableStatuses = [
-  { key: 'may_respawn', color: '#eab308', i18nKey: 'status.mayRespawn' },
-  { key: 'respawning',  color: '#3b82f6', i18nKey: 'status.respawning' },
-  { key: 'alive',       color: '#16a34a', i18nKey: 'status.alive' },
-  { key: 'expired',     color: '#d1d5db', i18nKey: 'status.expired' },
+  { key: 'may_respawn', color: STATUS_COLORSS.may_respawn, i18nKey: 'status.mayRespawn' },
+  { key: 'respawning',  color: STATUS_COLORSS.respawning,  i18nKey: 'status.respawning' },
+  { key: 'alive',       color: STATUS_COLORSS.alive,       i18nKey: 'status.alive' },
+  { key: 'expired',     color: STATUS_COLORSS.expired,     i18nKey: 'status.expired' },
 ] as const
 
 // Filter state (all active by default)
@@ -185,7 +169,7 @@ const chartOption = computed(() => {
   const barData = rows.map((r, i) => ({
     value: [i, Math.max(r.minTime, now), r.maxTime, r.status, r.channel, r.isExpired, r.minTime],
     itemStyle: {
-      color: r.isExpired ? STATUS_COLOR['expired'] : (STATUS_COLOR[r.status] ?? '#9ca3af'),
+      color: r.isExpired ? STATUS_COLORS['expired'] : (STATUS_COLORS[r.status] ?? '#9ca3af'),
       opacity: r.isExpired ? 0.5 : 0.85,
       borderRadius: 3,
     },
@@ -251,7 +235,7 @@ const chartOption = computed(() => {
           expired: 'status.expired',
         }
         const statusText = t(i18nMap[displayKey] ?? `status.${displayKey}`)
-        const dotColor = expired ? STATUS_COLOR['expired'] : (STATUS_COLOR[status] ?? '#9ca3af')
+        const dotColor = expired ? STATUS_COLORS['expired'] : (STATUS_COLORS[status] ?? '#9ca3af')
         const dot = `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${dotColor};margin-right:4px;opacity:${expired ? 0.5 : 1}"></span>`
         return `<b>CH ${channel}</b><br/>${dot}${statusText}<br/>${t('recordItem.respawnWindow')} ${fmt(start)} ~ ${fmt(end)}`
       },
