@@ -1,4 +1,4 @@
-import { ref, watch } from 'vue'
+import { useLocalStorage } from '@/composables/useLocalStorage'
 
 export interface BossTimerSettings {
   notificationEnabled: boolean
@@ -10,8 +10,6 @@ export interface BossTimerSettings {
   maxRespawnSound: string  // 'default' | 'gentle' | 'urgent' | 'custom'
 }
 
-const STORAGE_KEY = 'boss-timer-settings'
-
 const DEFAULT_SETTINGS: BossTimerSettings = {
   notificationEnabled: false,
   soundEnabled: false,
@@ -22,25 +20,11 @@ const DEFAULT_SETTINGS: BossTimerSettings = {
   maxRespawnSound: 'urgent',
 }
 
-function loadSettings(): BossTimerSettings {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      return { ...DEFAULT_SETTINGS, ...JSON.parse(stored) }
-    }
-  } catch { /* ignore */ }
-  return { ...DEFAULT_SETTINGS }
-}
-
-// Singleton refs so all components share the same state
-const settings = ref<BossTimerSettings>(loadSettings())
-
-function persist() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings.value))
-}
-
-// Auto-persist on any change
-watch(settings, persist, { deep: true })
+const settings = useLocalStorage<BossTimerSettings>(
+  'boss-timer-settings',
+  DEFAULT_SETTINGS,
+  (raw) => ({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) }),
+)
 
 export function useSettings() {
   return {
