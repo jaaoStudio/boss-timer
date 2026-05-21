@@ -1,5 +1,13 @@
 import { defineStore } from 'pinia'
-import { calculateCurrentStatus } from '@/composables/useCurrentStatus'
+
+function calculateCurrentStatus(record: BossRecord, now = new Date()): string {
+  if (record.status !== 'killed') return record.status
+  const min = record.respawn_min_time ? new Date(record.respawn_min_time) : null
+  const max = record.respawn_max_time ? new Date(record.respawn_max_time) : null
+  if (max && now >= max) return 'alive'
+  if (min && now >= min) return 'may_respawn'
+  return 'respawning'
+}
 
 function resolveBossTypeId(types: BossType[]): number | null {
   if (!types.length) return null
