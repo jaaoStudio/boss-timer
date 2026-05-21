@@ -63,6 +63,12 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { CustomChart } from 'echarts/charts'
 import { GridComponent, TooltipComponent, DataZoomComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
+import type {
+  CallbackDataParams,
+  CustomSeriesRenderItemParams,
+  CustomSeriesRenderItemAPI,
+  ECElementEvent,
+} from 'echarts/types/dist/shared'
 
 use([CanvasRenderer, CustomChart, GridComponent, TooltipComponent, DataZoomComponent])
 
@@ -219,9 +225,11 @@ const chartOption = computed(() => {
       backgroundColor: isDark.value ? '#1f2937' : '#fff',
       borderColor: isDark.value ? '#374151' : '#e5e7eb',
       textStyle: { color: isDark.value ? '#e5e7eb' : '#374151', fontSize: 12 },
-      formatter: (params: any) => {
-        if (!params.data?.value) return ''
-        const [, , end, status, channel, expired, originalMin] = params.data.value
+      formatter: (params: CallbackDataParams) => {
+        type RowTuple = [number, number, number, string, number, boolean, number]
+        const row = (params.data as { value?: RowTuple } | null)?.value
+        if (!row) return ''
+        const [, , end, status, channel, expired, originalMin] = row
         const start = originalMin
         const fmt = (ms: number) => {
           const d = new Date(ms)
@@ -275,11 +283,11 @@ const chartOption = computed(() => {
     series: [
       {
         type: 'custom',
-        renderItem: (params: any, api: any) => {
-          const catIndex = api.value(0)
-          const start = api.coord([api.value(1), catIndex])
-          const end = api.coord([api.value(2), catIndex])
-          const bandWidth = api.size([0, 1])[1]
+        renderItem: (params: CustomSeriesRenderItemParams, api: CustomSeriesRenderItemAPI) => {
+          const catIndex = api.value(0) as number
+          const start = api.coord!([api.value(1) as number, catIndex])
+          const end = api.coord!([api.value(2) as number, catIndex])
+          const bandWidth = (api.size!([0, 1]) as number[])[1]
           const barHeight = bandWidth * 0.55
           const itemStyle = barData[params.dataIndex]?.itemStyle ?? {}
           return {
@@ -304,9 +312,11 @@ const chartOption = computed(() => {
   }
 })
 
-function handleChartClick(params: any) {
-  if (params.data?.value) {
-    const channel = params.data.value[4]
+function handleChartClick(params: ECElementEvent) {
+  type RowTuple = [number, number, number, string, number, boolean, number]
+  const row = (params.data as { value?: RowTuple } | null)?.value
+  if (row) {
+    const channel = row[4]
     if (channel != null) bossStore.setSelectedChannel(channel)
   }
 }

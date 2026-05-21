@@ -24,13 +24,14 @@ const adRef = ref<HTMLElement | null>(null)
 // 只在螢幕夠寬時顯示（側邊欄需要足夠空間）
 const isVisible = ref(window.innerWidth >= 1280)
 
+type AdSenseWindow = Window & { adsbygoogle: unknown[] }
+
 onMounted(() => {
   if (!isVisible.value) return
   try {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window as any).adsbygoogle = (window as any).adsbygoogle || []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    ;(window as any).adsbygoogle.push({})
+    const w = window as unknown as AdSenseWindow
+    w.adsbygoogle = w.adsbygoogle || []
+    w.adsbygoogle.push({})
   } catch (e) {
     console.error('AdSense error:', e)
   }
