@@ -1,6 +1,6 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import logging
 from typing import Optional, List
 from app.database.models import Room, BossRecord, BossType
@@ -69,10 +69,8 @@ class BossService:
 
         if record.status == "killed":
             base_time = now
-        elif record.status == "respawning":
-            base_time = await BossService._get_last_killed_time(db, record) or now
         else:
-            # 其他狀態不需要重生時間
+            # alive / not_found 不計算重生時間
             return {
                 "respawn_min_time": None,
                 "respawn_max_time": None,
@@ -119,19 +117,6 @@ class BossService:
         db.refresh(boss_record)
 
         return boss_record
-
-    @staticmethod
-    async def _get_last_killed_time(db: Session, record: BossRecordCreate) -> Optional[datetime]:
-        """獲取最後一次被殺死的時間"""
-        last_killed_record = db.query(BossRecord).filter(
-            BossRecord.room_id == record.room_id,
-            BossRecord.channel == record.channel,
-            BossRecord.boss_type_id == record.boss_type_id,
-            BossRecord.status == "killed",
-            BossRecord.is_archived == False  # 只考慮未歸檔的紀錄
-        ).order_by(BossRecord.recorded_at.desc()).first()
-
-        return last_killed_record.recorded_at if last_killed_record else None
 
     @staticmethod
     async def record_boss_from_websocket(db: Session, record: BossRecordCreate, user_id: Optional[str], manager: ConnectionManager):
