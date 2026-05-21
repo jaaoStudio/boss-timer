@@ -86,6 +86,24 @@ async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Opti
         await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
 
 
+async def _handle_authenticate(websocket: WebSocket, message: dict, manager: ConnectionManager) -> None:
+    token = message.get("token")
+    if not token:
+        return
+    try:
+        with SessionLocal() as db:
+            new_user = auth_service.get_current_user_from_token(token, db)
+            manager.update_user_id(websocket, new_user.id if new_user else None)
+            logging.info(f"WebSocket re-authenticated for user_id: {new_user.id if new_user else None}")
+    except Exception as e:
+        logging.warning(f"WebSocket authentication failed: {e}")
+
+
+async def _handle_deauthenticate(websocket: WebSocket, manager: ConnectionManager) -> None:
+    manager.update_user_id(websocket, None)
+    logging.info("WebSocket de-authenticated.")
+
+
 _HANDLERS: dict[str, Handler] = {
     "join_room": _handle_join_room,
     "leave_room": _handle_leave_room,
@@ -93,7 +111,7 @@ _HANDLERS: dict[str, Handler] = {
 }
 
 
-async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager, user_id: Optional[str]) -> None:
+async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager) -> None:
     msg_type = message.get("type")
     if not msg_type:
         logging.warning("Received message without type")
@@ -110,7 +128,10 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         logging.warning(f"Received message type '{msg_type}' without room_id")
         return
 
+    # user_id is the single source of truth in manager — no local variable needed
+    user_id = manager.socket_to_user.get(websocket)
     await handler(websocket, payload, room_id, db, manager, user_id)
+
 
 @router.websocket("/")
 async def websocket_endpoint(
@@ -118,8 +139,7 @@ async def websocket_endpoint(
     current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    user_id = current_user.id if current_user else None
-    await manager.connect(websocket, user_id)
+    await manager.connect(websocket, current_user.id if current_user else None)
 
     try:
         while True:
@@ -144,27 +164,15 @@ async def websocket_endpoint(
                 continue
 
             if message_type == "authenticate":
-                token = message.get("token")
-                if token:
-                    try:
-                        with SessionLocal() as db:
-                            new_user = auth_service.get_current_user_from_token(token, db)
-                            if new_user:
-                                user_id = new_user.id
-                                manager.update_user_id(websocket, user_id)
-                                logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
-                    except Exception as e:
-                        logging.warning(f"WebSocket authentication failed: {e}")
+                await _handle_authenticate(websocket, message, manager)
                 continue
 
-            elif message_type == "deauthenticate":
-                user_id = None
-                manager.update_user_id(websocket, None)
-                logging.info("WebSocket de-authenticated.")
+            if message_type == "deauthenticate":
+                await _handle_deauthenticate(websocket, manager)
                 continue
 
             with SessionLocal() as db:
-                await handle_message(websocket, message, db, manager, user_id)
+                await handle_message(websocket, message, db, manager)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
