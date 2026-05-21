@@ -1,6 +1,6 @@
 import { watch, onUnmounted } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, type BossType, type BossRecord } from '@/stores/bossStore'
 import { useSettings } from './useSettings'
 import { useNotification } from './useNotification'
 import { useSound } from './useSound'
@@ -18,12 +18,12 @@ export function useBossAlerts() {
   const firedAlerts = new Set<string>()
 
   function getBossName(bossTypeId: number): string {
-    const bossType = bossTypes.value.find((bt: any) => bt.id === bossTypeId)
+    const bossType = bossTypes.value.find((bt: BossType) => bt.id === bossTypeId)
     if (!bossType) return 'Unknown Boss'
     return locale.value === 'zh' ? bossType.name_zh : bossType.name_en
   }
 
-  function triggerAlert(record: any, type: 'min' | 'max') {
+  function triggerAlert(record: BossRecord, type: 'min' | 'max') {
     const bossName = getBossName(record.boss_type_id)
     const channel = record.channel
 

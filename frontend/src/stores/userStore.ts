@@ -6,7 +6,7 @@ interface User {
   id: number;
   display_name: string | null;
   avatar_url: string | null;
-  preferences: { [key: string]: any };
+  preferences: Record<string, unknown>;
   is_admin: boolean;
 }
 

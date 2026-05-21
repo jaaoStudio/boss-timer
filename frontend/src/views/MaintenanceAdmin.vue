@@ -58,9 +58,10 @@ const updateMaintenanceConfig = async () => {
     } else {
       showMessage.error('更新失敗: ' + response.data.detail);
     }
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('更新維護配置失敗:', error);
-    showMessage.error('更新維護配置失敗: ' + (error.response?.data?.detail || error.message));
+    const e = error as { response?: { data?: { detail?: string } }; message?: string }
+    showMessage.error('更新維護配置失敗: ' + (e.response?.data?.detail ?? e.message ?? String(error)));
   }
 };
 </script>

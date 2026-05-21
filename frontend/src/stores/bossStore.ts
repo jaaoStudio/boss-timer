@@ -37,7 +37,6 @@ export interface BossType {
   min_respawn_minutes: number
   max_respawn_minutes: number
   room_id?: string | null
-  [key: string]: any
 }
 
 export interface BossRecord {
@@ -50,7 +49,6 @@ export interface BossRecord {
   respawn_min_time: string | null
   respawn_max_time: string | null
   recorder_info?: { anonymous_id?: string; anonymous_name?: string } | null
-  [key: string]: any
 }
 
 interface BossState {

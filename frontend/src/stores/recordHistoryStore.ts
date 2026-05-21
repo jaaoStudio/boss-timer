@@ -99,8 +99,9 @@ export const useRecordHistoryStore = defineStore('recordHistory', () => {
       records.value = nextMap
       hasMore.value = !!data.has_more
       nextCursor.value = data.next_cursor ?? null
-    } catch (err: any) {
-      if (err?.name === 'CanceledError' || err?.code === 'ERR_CANCELED') return
+    } catch (err: unknown) {
+      const e = err as { name?: string; code?: string }
+      if (e?.name === 'CanceledError' || e?.code === 'ERR_CANCELED') return
       console.error('Failed to load record history:', err)
     } finally {
       if (currentAbort === abort) currentAbort = null

@@ -162,8 +162,9 @@ const handleDelete = async (recordId: number) => {
 
     await apiService.deleteBossRecord(roomStore.roomId, recordId)
     ElMessage.success(t('recordHistory.deleteSuccess'))
-  } catch (err: any) {
-    if (err !== 'cancel' && err?.response?.status !== 429 && err?.response?.status !== 404) {
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    if (err !== 'cancel' && status !== 429 && status !== 404) {
       ElMessage.error(t('recordHistory.deleteFailed'))
       console.error(err)
     }

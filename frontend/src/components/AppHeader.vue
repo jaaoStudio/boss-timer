@@ -63,7 +63,7 @@ const { roomId, isConnected, userCount } = storeToRefs(roomStore)
 const userStore = useUserStore()
 const { isLoggedIn } = storeToRefs(userStore)
 
-const handleLoginSuccess = async (response: any) => {
+const handleLoginSuccess = async (response: { code?: string; credential?: string }) => {
   console.log("Google sign-in success full response:", response);
   try {
     const payload = response.code ? { code: response.code } : { credential: response.credential };
@@ -73,7 +73,7 @@ const handleLoginSuccess = async (response: any) => {
   }
 }
 
-const handleLoginError = (error: any) => {
+const handleLoginError = (error: unknown) => {
   console.error("Google sign-in error:", error)
   showMessage.error(t('appHeader.loginFailed'))
 }

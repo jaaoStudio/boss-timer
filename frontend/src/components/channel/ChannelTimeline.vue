@@ -54,7 +54,8 @@ import { useBossStore } from '@/stores/bossStore'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
-import { STATUS_COLORSS, STATUS_ORDER } from '@/composables/useStatusConfig'
+import { STATUS_COLORS, STATUS_ORDER } from '@/composables/useStatusConfig'
+import { type BossRecord } from '@/stores/bossStore'
 
 // ECharts tree-shaking imports
 import { use } from 'echarts/core'
@@ -92,7 +93,7 @@ function toggleFilter(key: string) {
   }
 }
 
-function isExpiredRecord(record: any, now: number): boolean {
+function isExpiredRecord(record: BossRecord, now: number): boolean {
   if (record.current_status !== 'alive') return false
   if (!record.respawn_min_time || !record.respawn_max_time) return false
   const windowDuration = new Date(record.respawn_max_time).getTime() - new Date(record.respawn_min_time).getTime()

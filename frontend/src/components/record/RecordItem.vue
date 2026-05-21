@@ -58,7 +58,6 @@ interface RecordData {
   recorder_info?: {
     anonymous_name?: string
   } | null
-  [key: string]: any
 }
 
 const props = defineProps<{

@@ -8,8 +8,7 @@ import { useRecordHistoryStore } from './recordHistoryStore'
 
 interface WSMessage {
   type: string
-  payload?: Record<string, any>
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export const useWebSocketStore = defineStore('websocket', () => {
@@ -113,29 +112,35 @@ export const useWebSocketStore = defineStore('websocket', () => {
       case 'pong':
         break
       case 'maintenance_status_update':
-        appInfoStore.setMaintenanceInfo(message.data)
+        appInfoStore.setMaintenanceInfo(message.data as Parameters<typeof appInfoStore.setMaintenanceInfo>[0])
         break
-      case 'room_state':
-        if (message.boss_types) {
-          bossStore.setBossTypes(message.boss_types)
-        }
-        bossStore.setBossRecords(message.boss_records)
-        roomStore.setUserCount(message.user_count)
+      case 'room_state': {
+        const bossTypes = message.boss_types as import('@/stores/bossStore').BossType[] | undefined
+        const bossRecords = message.boss_records as import('@/stores/bossStore').BossRecord[]
+        if (bossTypes) bossStore.setBossTypes(bossTypes)
+        bossStore.setBossRecords(bossRecords)
+        roomStore.setUserCount(message.user_count as number)
         break
-      case 'boss_update':
-        bossStore.updateBossRecord(message.data).then()
-        recordHistoryStore.upsertRecord(message.data)
+      }
+      case 'boss_update': {
+        const record = message.data as import('@/stores/bossStore').BossRecord
+        bossStore.updateBossRecord(record).then()
+        recordHistoryStore.upsertRecord(record)
         break
-      case 'record_deleted':
-        bossStore.deleteBossRecord(message.data.record_id)
-        recordHistoryStore.removeRecord(message.data.record_id)
+      }
+      case 'record_deleted': {
+        const data = message.data as { record_id: number }
+        bossStore.deleteBossRecord(data.record_id)
+        recordHistoryStore.removeRecord(data.record_id)
         break
+      }
       case 'user_count_update':
-        roomStore.setUserCount(message.count)
+        roomStore.setUserCount(message.count as number)
         break
-      case 'error':
-        console.error('Received error from server:', message.message)
-        if (message.message === 'Rate limit exceeded. Please slow down.') {
+      case 'error': {
+        const errMsg = message.message as string
+        console.error('Received error from server:', errMsg)
+        if (errMsg === 'Rate limit exceeded. Please slow down.') {
           import('@/i18n').then(({ default: i18n }) => {
             import('@/composables/useElementPlus').then(({ showMessage }) => {
               showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
@@ -143,6 +148,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
           })
         }
         break
+      }
       default:
         console.warn('Received unknown message type:', message.type)
     }
