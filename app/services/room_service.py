@@ -44,7 +44,7 @@ def update_room_last_active(db: Session, room_id: str):
 
 
 
-ROOM_STATE_WINDOW_DAYS = 3
+ROOM_STATE_WINDOW_DAYS = 2
 
 
 def get_room_state(db: Session, room_id: str) -> dict:

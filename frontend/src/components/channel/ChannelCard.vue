@@ -12,9 +12,7 @@
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
-import { useI18n } from 'vue-i18n'
-
-const { t } = useI18n()
+import { useStatusConfig, isExpiredRecord } from '@/composables/useStatusConfig'
 
 const props = defineProps<{
   channelNumber: number
@@ -22,49 +20,20 @@ const props = defineProps<{
 
 const bossStore = useBossStore()
 const { bossRecords, selectedBossTypeId } = storeToRefs(bossStore)
+const { getStatusConfig } = useStatusConfig()
 
-const record = computed(() => {
-  return bossRecords.value.find(
+const record = computed(() =>
+  bossRecords.value.find(
     (r) => r.channel === props.channelNumber && r.boss_type_id === selectedBossTypeId.value
   )
-})
+)
 
-const status = computed(() => {
-  return record.value?.current_status || 'unknown'
-})
+const status = computed(() => record.value?.current_status || 'unknown')
+const isExpired = computed(() => isExpiredRecord(record.value))
 
-interface StatusConfig {
-  text: string
-  bg: string
-}
-
-const isExpired = computed(() => {
-  if (!record.value) return false
-  if (record.value.current_status !== 'alive') return false
-  if (!record.value.respawn_min_time || !record.value.respawn_max_time) return false
-  const windowDuration = new Date(record.value.respawn_max_time).getTime() - new Date(record.value.respawn_min_time).getTime()
-  const timeSinceMax = Date.now() - new Date(record.value.respawn_max_time).getTime()
-  return timeSinceMax > windowDuration
-})
-
-const statusMapping = computed<Record<string, StatusConfig>>(() => ({
-  alive: { text: t('status.alive'), bg: 'bg-green-700 text-white' },
-  killed: { text: t('status.killed'), bg: 'bg-red-700 text-white' },
-  may_respawn: { text: t('status.mayRespawn'), bg: 'bg-yellow-700 text-white' },
-  respawning: { text: t('status.respawning'), bg: 'bg-blue-700 text-white' },
-  not_found: { text: t('status.notFound'), bg: 'bg-gray-400 dark:bg-gray-700 text-white' },
-  unknown: { text: t('status.unknown'), bg: 'bg-gray-200 dark:bg-gray-600 text-gray-600 dark:text-gray-300' },
-}))
-
-const currentStatusConfig = computed(() => {
-  if (isExpired.value) {
-    return { text: t('status.expired'), bg: 'bg-green-700 text-white' }
-  }
-  return statusMapping.value[status.value] || statusMapping.value.unknown
-})
-
-const statusBackgroundClass = computed(() => currentStatusConfig.value.bg)
-const statusText = computed(() => currentStatusConfig.value.text)
+const config = computed(() => getStatusConfig(status.value, isExpired.value))
+const statusBackgroundClass = computed(() => config.value.bgClass)
+const statusText = computed(() => config.value.text)
 
 const selectChannel = () => {
   bossStore.setSelectedChannel(props.channelNumber)

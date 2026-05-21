@@ -132,7 +132,7 @@ const isCreating = ref(false);
 const isJoining = ref(false);
 const joiningRoomId = ref('');
 
-const { recentRooms, addRecentRoom, removeRecentRoom, clearAll: clearRecentRooms, refresh: refreshRecent } = useRecentRooms();
+const { recentRooms, addRecentRoom, removeRecentRoom, clearAll: clearRecentRooms } = useRecentRooms();
 
 const formatLastVisited = (isoString) => {
   try {

@@ -1,7 +1,7 @@
 import { defineStore } from "pinia";
 import apiService from "@/services/apiService";
 
-interface MaintenanceInfo {
+export interface MaintenanceInfo {
   is_maintenance: boolean;
   is_ready_for_maintenance: boolean;
   title: string;

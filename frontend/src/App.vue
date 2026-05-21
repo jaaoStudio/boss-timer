@@ -8,18 +8,21 @@ import { useAppInfoStore } from '@/stores/appInfo'; // 引入 store
 import { useWebSocketStore } from '@/stores/websocketStore'; // 引入 websocket store
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference';
 import { useFavoriteBosses } from '@/composables/useFavoriteBosses';
+import { useLayoutConfig } from '@/composables/useLayoutConfig';
 
 const userStore = useUserStore();
 const appInfoStore = useAppInfoStore(); // 實例化 store
 const websocketStore = useWebSocketStore(); // 實例化 websocket store
 const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
+const { syncFromUser: syncLayout } = useLayoutConfig();
 
 // 登入後將後端偏好設定同步到本地（含頁面載入時的 cookie 自動登入）
 watch(() => userStore.isLoggedIn, (loggedIn) => {
   if (loggedIn) {
     syncChannelView();
     syncFavoriteBosses();
+    syncLayout();
   }
 });
 

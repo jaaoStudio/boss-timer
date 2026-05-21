@@ -61,7 +61,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { ArrowLeftIcon } from '@heroicons/vue/24/outline'
-import AppFooter from '@/components/AppFooter.vue'
 
 const { t, tm } = useI18n()
 

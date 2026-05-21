@@ -102,6 +102,7 @@ import { useUserStore } from '@/stores/userStore'
 import { useWebSocketStore } from '@/stores/websocketStore'
 import { useI18n } from 'vue-i18n'
 import { useFavoriteBosses } from '@/composables/useFavoriteBosses'
+import { type BossType } from '@/stores/bossStore'
 import { StarIcon } from '@heroicons/vue/24/outline'
 import { StarIcon as StarSolidIcon } from '@heroicons/vue/24/solid'
 
@@ -122,9 +123,9 @@ const props = defineProps<{
 
 const { favoriteBossIds, toggleFavorite } = useFavoriteBosses()
 
-const isCompact = computed(() => [1,2].includes(props.colSpan))
+const isCompact = computed(() => props.colSpan != null && [1, 2].includes(props.colSpan))
 
-const bossLabel = (boss: any) => locale.value === 'zh' ? boss.name_zh : boss.name_en
+const bossLabel = (boss: BossType) => locale.value === 'zh' ? boss.name_zh : boss.name_en
 
 const globalBossTypes = computed(() => bossTypes.value.filter(b => !b.room_id))
 const customBossTypes = computed(() => bossTypes.value.filter(b => !!b.room_id))
@@ -194,19 +195,16 @@ const recordBoss = async () => {
 
   loading.value = true
   try {
-    const payload: any = {
+    const recorderInfo = (!isLoggedIn.value && anonymousName.value)
+      ? { anonymous_id: anonymousId.value, anonymous_name: anonymousName.value }
+      : null
+
+    const payload = {
       room_id: roomId.value,
       channel: typeof form.value.channel === 'string' ? parseInt(form.value.channel, 10) : form.value.channel,
       boss_type_id: form.value.boss_type_id,
       status: form.value.status,
-      recorder_info: null
-    }
-
-    if (!isLoggedIn.value && anonymousName.value) {
-      payload.recorder_info = {
-        anonymous_id: anonymousId.value,
-        anonymous_name: anonymousName.value,
-      }
+      recorder_info: recorderInfo,
     }
 
     websocketStore.sendMessage({

@@ -3,7 +3,7 @@ import asyncio
 import json
 import logging
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Callable, Awaitable
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
@@ -51,57 +51,87 @@ _rate_limiter = RateLimiter()
 async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
     return {"count": manager.get_total_connections()}
 
-async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager, user_id: Optional[str]):
-    msg_type = message.get("type")
-    payload = message.get("payload", {})
-    room_id = payload.get("room_id")
+Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, Optional[str]], Awaitable[None]]
 
+
+async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, user_id: Optional[str]) -> None:
+    if not room_service.get_room_by_id(db, room_id):
+        await websocket.send_text(json.dumps({"type": "error", "message": "Room not found"}))
+        return
+    room_service.update_room_last_active(db, room_id)
+    manager.subscribe_to_room(websocket, room_id)
+    initial_state = room_service.get_room_state(db, room_id)
+    await websocket.send_text(json.dumps(initial_state, default=str))
+    await manager.broadcast_user_count(room_id)
+
+
+async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, user_id: Optional[str]) -> None:
+    manager.unsubscribe_from_room(websocket)
+    await manager.broadcast_user_count(room_id)
+
+
+async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, user_id: Optional[str]) -> None:
+    current_room = manager.socket_to_room.get(websocket)
+    if not current_room or current_room != room_id:
+        await websocket.send_text(json.dumps({"type": "error", "message": "You are not in this room"}))
+        return
+    if not _rate_limiter.is_allowed(websocket):
+        await websocket.send_text(json.dumps({"type": "error", "message": "Rate limit exceeded. Please slow down."}))
+        return
+    try:
+        record_create = BossRecordCreate(**payload)
+        await boss_service.BossService.record_boss_from_websocket(db, record_create, user_id, manager)
+    except Exception as e:
+        logging.error(f"Error processing record_boss message: {e}", exc_info=True)
+        await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
+
+
+async def _handle_authenticate(websocket: WebSocket, message: dict, manager: ConnectionManager) -> None:
+    token = message.get("token")
+    if not token:
+        return
+    try:
+        with SessionLocal() as db:
+            new_user = auth_service.get_current_user_from_token(token, db)
+            manager.update_user_id(websocket, new_user.id if new_user else None)
+            logging.info(f"WebSocket re-authenticated for user_id: {new_user.id if new_user else None}")
+    except Exception as e:
+        logging.warning(f"WebSocket authentication failed: {e}")
+
+
+async def _handle_deauthenticate(websocket: WebSocket, manager: ConnectionManager) -> None:
+    manager.update_user_id(websocket, None)
+    logging.info("WebSocket de-authenticated.")
+
+
+_HANDLERS: dict[str, Handler] = {
+    "join_room": _handle_join_room,
+    "leave_room": _handle_leave_room,
+    "record_boss": _handle_record_boss,
+}
+
+
+async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager) -> None:
+    msg_type = message.get("type")
     if not msg_type:
         logging.warning("Received message without type")
         return
 
-    if msg_type == "ping":
-        await websocket.send_text(json.dumps({"type": "pong"}))
+    handler = _HANDLERS.get(msg_type)
+    if handler is None:
+        logging.warning(f"Unknown message type: '{msg_type}'")
         return
 
+    payload = message.get("payload", {})
+    room_id = payload.get("room_id")
     if not room_id:
-        if msg_type not in ["authenticate", "deauthenticate"]:
-             logging.warning(f"Received message type '{msg_type}' without room_id")
-             return
+        logging.warning(f"Received message type '{msg_type}' without room_id")
+        return
 
-    # Room-specific messages
-    if msg_type == "join_room":
-        if not room_service.get_room_by_id(db, room_id):
-            await websocket.send_text(json.dumps({"type": "error", "message": "Room not found"}))
-            return
-        room_service.update_room_last_active(db, room_id)
-        manager.subscribe_to_room(websocket, room_id)
-        initial_state = room_service.get_room_state(db, room_id)
-        await websocket.send_text(json.dumps(initial_state, default=str))
-        await manager.broadcast_user_count(room_id)
+    # user_id is the single source of truth in manager — no local variable needed
+    user_id = manager.socket_to_user.get(websocket)
+    await handler(websocket, payload, room_id, db, manager, user_id)
 
-    elif msg_type == "leave_room":
-        manager.unsubscribe_from_room(websocket)
-        await manager.broadcast_user_count(room_id)
-
-    elif msg_type == "record_boss":
-        # Security: verify the sender is subscribed to the target room
-        current_room = manager.socket_to_room.get(websocket)
-        if not current_room or current_room != room_id:
-            await websocket.send_text(json.dumps({"type": "error", "message": "You are not in this room"}))
-            return
-
-        # Rate limit: prevent spam
-        if not _rate_limiter.is_allowed(websocket):
-            await websocket.send_text(json.dumps({"type": "error", "message": "Rate limit exceeded. Please slow down."}))
-            return
-
-        try:
-            record_create = BossRecordCreate(**payload)
-            await boss_service.BossService.record_boss_from_websocket(db, record_create, user_id, manager)
-        except Exception as e:
-            logging.error(f"Error processing record_boss message: {e}", exc_info=True)
-            await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
 
 @router.websocket("/")
 async def websocket_endpoint(
@@ -109,8 +139,7 @@ async def websocket_endpoint(
     current_user: Optional[models.User] = Depends(get_current_user_from_ws),
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    user_id = current_user.id if current_user else None
-    await manager.connect(websocket, user_id)
+    await manager.connect(websocket, current_user.id if current_user else None)
 
     try:
         while True:
@@ -135,27 +164,15 @@ async def websocket_endpoint(
                 continue
 
             if message_type == "authenticate":
-                token = message.get("token")
-                if token:
-                    try:
-                        with SessionLocal() as db:
-                            new_user = auth_service.get_current_user_from_token(token, db)
-                            if new_user:
-                                user_id = new_user.id
-                                manager.update_user_id(websocket, user_id)
-                                logging.info(f"WebSocket re-authenticated for user_id: {user_id}")
-                    except Exception as e:
-                        logging.warning(f"WebSocket authentication failed: {e}")
+                await _handle_authenticate(websocket, message, manager)
                 continue
 
-            elif message_type == "deauthenticate":
-                user_id = None
-                manager.update_user_id(websocket, None)
-                logging.info("WebSocket de-authenticated.")
+            if message_type == "deauthenticate":
+                await _handle_deauthenticate(websocket, manager)
                 continue
 
             with SessionLocal() as db:
-                await handle_message(websocket, message, db, manager, user_id)
+                await handle_message(websocket, message, db, manager)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")

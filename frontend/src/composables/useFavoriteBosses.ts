@@ -1,21 +1,14 @@
-import { ref } from 'vue'
+import { useLocalStorage } from '@/composables/useLocalStorage'
 import { useUserStore } from '@/stores/userStore'
 
-const STORAGE_KEY = 'favorite-boss-ids'
-
-function loadFromStorage(): number[] {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (!stored) return []
-    const parsed = JSON.parse(stored)
-    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'number') : []
-  } catch {
-    return []
-  }
-}
-
-// Singleton
-const favoriteBossIds = ref<number[]>(loadFromStorage())
+const favoriteBossIds = useLocalStorage<number[]>(
+  'favorite-boss-ids',
+  [],
+  (raw) => {
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((v: unknown) => typeof v === 'number') : []
+  },
+)
 
 export function useFavoriteBosses() {
   const userStore = useUserStore()
@@ -31,7 +24,6 @@ export function useFavoriteBosses() {
     } else {
       favoriteBossIds.value = favoriteBossIds.value.filter((v) => v !== id)
     }
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(favoriteBossIds.value))
     if (userStore.isLoggedIn) {
       await userStore.updatePreferences({ favoriteBossIds: favoriteBossIds.value })
     }
@@ -40,7 +32,7 @@ export function useFavoriteBosses() {
   function syncFromUser() {
     const serverValue = userStore.user?.preferences?.favoriteBossIds
     if (Array.isArray(serverValue)) {
-      favoriteBossIds.value = serverValue.filter((v: any) => typeof v === 'number')
+      favoriteBossIds.value = serverValue.filter((v: unknown) => typeof v === 'number')
     }
   }
 

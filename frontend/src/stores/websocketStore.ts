@@ -8,8 +8,7 @@ import { useRecordHistoryStore } from './recordHistoryStore'
 
 interface WSMessage {
   type: string
-  payload?: Record<string, any>
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export const useWebSocketStore = defineStore('websocket', () => {
@@ -108,43 +107,65 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
+  // Each handler name declares which stores it touches.
+  // Handlers that update multiple stores make it explicit rather than hiding it in a case block.
+
+  function onRoomState(msg: WSMessage) {
+    const bossTypes = msg.boss_types as import('@/stores/bossStore').BossType[] | undefined
+    const bossRecords = msg.boss_records as import('@/stores/bossStore').BossRecord[]
+    if (bossTypes) bossStore.setBossTypes(bossTypes)
+    bossStore.setBossRecords(bossRecords)
+    roomStore.setUserCount(msg.user_count as number)
+  }
+
+  function onBossUpdate(msg: WSMessage) {
+    const record = msg.data as import('@/stores/bossStore').BossRecord
+    bossStore.updateBossRecord(record).then()
+    recordHistoryStore.upsertRecord(record)
+  }
+
+  function onRecordDeleted(msg: WSMessage) {
+    const data = msg.data as { record_id: number }
+    bossStore.deleteBossRecord(data.record_id)
+    recordHistoryStore.removeRecord(data.record_id)
+  }
+
+  function onMaintenanceStatusUpdate(msg: WSMessage) {
+    appInfoStore.setMaintenanceInfo(msg.data as Parameters<typeof appInfoStore.setMaintenanceInfo>[0])
+  }
+
+  function onUserCountUpdate(msg: WSMessage) {
+    roomStore.setUserCount(msg.count as number)
+  }
+
+  function onError(msg: WSMessage) {
+    const errMsg = msg.message as string
+    console.error('Received error from server:', errMsg)
+    if (errMsg === 'Rate limit exceeded. Please slow down.') {
+      import('@/i18n').then(({ default: i18n }) => {
+        import('@/composables/useElementPlus').then(({ showMessage }) => {
+          showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
+        })
+      })
+    }
+  }
+
+  const MESSAGE_HANDLERS: Record<string, (msg: WSMessage) => void> = {
+    pong: () => {},
+    room_state: onRoomState,
+    boss_update: onBossUpdate,
+    record_deleted: onRecordDeleted,
+    maintenance_status_update: onMaintenanceStatusUpdate,
+    user_count_update: onUserCountUpdate,
+    error: onError,
+  }
+
   function handleMessage(message: WSMessage) {
-    switch (message.type) {
-      case 'pong':
-        break
-      case 'maintenance_status_update':
-        appInfoStore.setMaintenanceInfo(message.data)
-        break
-      case 'room_state':
-        if (message.boss_types) {
-          bossStore.setBossTypes(message.boss_types)
-        }
-        bossStore.setBossRecords(message.boss_records)
-        roomStore.setUserCount(message.user_count)
-        break
-      case 'boss_update':
-        bossStore.updateBossRecord(message.data).then()
-        recordHistoryStore.upsertRecord(message.data)
-        break
-      case 'record_deleted':
-        bossStore.deleteBossRecord(message.data.record_id)
-        recordHistoryStore.removeRecord(message.data.record_id)
-        break
-      case 'user_count_update':
-        roomStore.setUserCount(message.count)
-        break
-      case 'error':
-        console.error('Received error from server:', message.message)
-        if (message.message === 'Rate limit exceeded. Please slow down.') {
-          import('@/i18n').then(({ default: i18n }) => {
-            import('@/composables/useElementPlus').then(({ showMessage }) => {
-              showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
-            })
-          })
-        }
-        break
-      default:
-        console.warn('Received unknown message type:', message.type)
+    const handler = MESSAGE_HANDLERS[message.type]
+    if (handler) {
+      handler(message)
+    } else {
+      console.warn('Received unknown message type:', message.type)
     }
   }
 

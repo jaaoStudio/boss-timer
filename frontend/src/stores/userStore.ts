@@ -2,11 +2,11 @@ import { defineStore } from 'pinia';
 import apiService from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 
-interface User {
+export interface User {
   id: number;
   display_name: string | null;
   avatar_url: string | null;
-  preferences: { [key: string]: any };
+  preferences: Record<string, unknown>;
   is_admin: boolean;
 }
 
@@ -85,7 +85,7 @@ export const useUserStore = defineStore('user', {
 
         const res = await apiService.validateToken();
         if (res.valid) {
-          this.user = res.user;
+          this.user = res.user ?? null;
           this.isLoggedIn = true;
           localStorage.setItem('user_info', JSON.stringify(res.user));
         } else {
@@ -159,7 +159,7 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async updatePreferences(preferences: Record<string, any>) {
+    async updatePreferences(preferences: Record<string, unknown>) {
       if (!this.user) return;
       try {
         this.user = await apiService.updateMyPreferences(preferences);
