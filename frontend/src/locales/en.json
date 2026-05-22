@@ -108,11 +108,9 @@
   },
   "recommendedChannels": {
     "title": "Recommended Channels",
-    "priorityTitle": "🎯 Priority Channels (May Respawn)",
-    "avoidTitle": "❌ Avoid Channels (Respawning)",
-    "noChannels": "No channels to display.",
-    "currentBoss": "Current Boss",
-    "allBosses": "All Bosses"
+    "headerTitle": "RECOMMENDED",
+    "statusLabel": "{n} CH · MAY_RESPAWN",
+    "noChannels": "No channels to display."
   },
   "recordHistory": {
     "title": "Record History",

@@ -86,20 +86,6 @@ export const useBossStore = defineStore('boss', {
     _now: Date.now(),
   }),
   getters: {
-    priorityChannels(state): BossRecord[] {
-      const now = new Date(state._now)
-      return state.bossRecords
-        .filter(r => r.boss_type_id === state.selectedBossTypeId &&
-          ['may_respawn', 'alive'].includes(calculateCurrentStatus(r, now)))
-        .sort((a, b) => ts(a.respawn_min_time) - ts(b.respawn_min_time))
-    },
-    avoidChannels(state): BossRecord[] {
-      const now = new Date(state._now)
-      return state.bossRecords
-        .filter(r => r.boss_type_id === state.selectedBossTypeId &&
-          calculateCurrentStatus(r, now) === 'respawning')
-        .sort((a, b) => ts(a.respawn_max_time) - ts(b.respawn_max_time))
-    },
     allBossPriorityRecords(state): BossRecord[] {
       const now = new Date(state._now)
       return state.bossRecords
