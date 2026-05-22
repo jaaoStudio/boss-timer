@@ -101,8 +101,8 @@ frontend/
     │   ├── CountdownTimer.vue    # 倒數計時器元件
     │   ├── GoogleLoginButton.vue # Google 登入按鈕
     │   ├── MaintenanceBanner.vue # 維護模式橫幅
-    │   ├── RecommendedChannels.vue # 推薦頻道列表
-    │   ├── RecommendedSection.vue  # 推薦頻道區塊 (含優先/避免)
+    │   ├── RecommendedChannels.vue # 跨 Boss 種類 may_respawn 聚合列表（戰術終端機風格）
+    │   ├── RecommendedSection.vue  # 推薦頻道區塊（已不被 RecommendedChannels 使用）
     │   ├── RecordHistory.vue     # 歷史紀錄列表 (含刪除功能)
     │   ├── RecordItem.vue        # 單筆歷史紀錄項目 (含垃圾桶刪除按鈕)
     │   ├── RoomManager.vue       # 房間管理元件 (建立/加入房間)
@@ -170,9 +170,7 @@ frontend/
 | `_now` | `number`（ms epoch）每秒 tick 一次，驅動全站 live status 計算 |
 
 **Getters**（均使用 `_now` 動態計算，秒級更新）:
-- `priorityChannels` — 當前選中 Boss 的 `may_respawn` 或 `alive` 記錄 (按最早重生時間排序)
-- `avoidChannels` — 當前選中 Boss 的 `respawning` 記錄 (按最晚重生時間排序)
-- `allBossPriorityRecords` — 所有 Boss 的 `may_respawn` 記錄 (按最早重生時間排序)
+- `allBossPriorityRecords` — 所有 Boss 的 `may_respawn` 記錄 (按最早重生時間排序)，供 `RecommendedChannels` 使用
 
 **核心 Actions**:
 - `updateBossRecord(record)` — 根據 `(channel, boss_type_id)` 更新或新增記錄

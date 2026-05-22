@@ -62,7 +62,7 @@ frontend/src/
 │       ├── CountdownTimer.vue
 │       ├── GoogleLoginButton.vue
 │       ├── MaintenanceBanner.vue
-│       ├── RecommendedSection.vue
+│       ├── RecommendedSection.vue  ← 已棄用，不再被 RecommendedChannels 使用
 │       └── StatusBadge.vue
 │
 ├── composables/
@@ -161,27 +161,43 @@ import { type BossType, type BossRecord } from '@/stores/bossStore'
 
 ## 通用元件 API
 
-### `RecommendedSection.vue`
+### `RecommendedChannels.vue`（戰術終端機風格）
 
-顯示推薦頻道清單，支援兩種渲染模式：
+跨所有 Boss 種類的 `may_respawn` 聚合列表，無模式切換。資料來源為 `bossStore.allBossPriorityRecords`，每秒隨 `bossStore._now` 更新。
 
-| Prop | 型別 | 預設 | 說明 |
+**視覺結構（每列由左到右）**:
+1. **放射倒數環**（SVG，18×18）— 進度比例 = `remaining / windowSec`，顏色跟隨 urgency
+2. **Crit 脈動點**（僅 `<30s` 出現）
+3. **頻道號** `CH{n}`（等寬，`padStart(3, ' ')`，用 `whitespace-pre` 保持對齊；標籤與內容**必須同行**，否則 `whitespace-pre` 會保留縮排空白）
+4. **Boss 名稱**（`flex-1 truncate`，中文等寬 fallback）
+5. **點線 leader**（`border-b border-dotted`）
+6. **倒數時間**（`m:ss` 格式，無前綴，urgency 色）
+
+**Urgency 色彩**（CSS 變數，支援深淺色模式自動切換）:
+
+| Remaining | 變數 | 深色值 | 淺色值 |
 |---|---|---|---|
-| `title` | `string` | — | 區塊標題 |
-| `channels` | `BossRecord[]` | — | 要顯示的記錄列表 |
-| `type` | `'priority' \| 'avoid'` | — | 決定背景色與計時器方向 |
-| `showBossName` | `boolean?` | `false` | `true` → 列表模式（顯示 Boss 名稱 + 頻道），`false` → 格線模式（僅頻道） |
-| `clickable` | `boolean?` | `false` | `true` → 點擊列表項目觸發 `record-click` emit |
+| `>= 90s` | `--rc-amber` | `#f59e0b` | `#b45309` |
+| `30–90s` | `--rc-warn` | `#fb923c` | `#c2410c` |
+| `< 30s` | `--rc-crit` | `#ef4444` | `#b91c1c` |
 
-| Emit | Payload | 說明 |
-|---|---|---|
-| `record-click` | `BossRecord` | 列表模式下點擊時觸發，用於帶入 BossControlPanel 的選擇狀態 |
+CSS 變數定義在 `src/style.css` 的 `:root` / `.dark` 區塊。
 
-**使用情境**:
-- `RecommendedChannels` 的「當前 Boss」模式使用格線模式（`showBossName` 預設 false）
-- 「全部 Boss」模式傳入 `bossStore.allBossPriorityRecords`，並啟用 `showBossName` + `clickable`，點擊後呼叫 `bossStore.setSelectedBossTypeId()` + `bossStore.setSelectedChannel()`
+**排序**：依 `remaining`（= `respawn_max_time - _now`）升冪，最緊急在上。
 
-> `CountdownTimer` 的 `@timer-end` 在 `RecommendedSection` 中**不再監聽**，狀態切換改由 `bossStore._now` 每秒驅動（`calculateCurrentStatus`），不依賴 UI timer 的存活狀態。
+**點擊行為**：呼叫 `bossStore.setSelectedBossTypeId()` + `bossStore.setSelectedChannel()`。
+
+**i18n keys**:
+- `recommendedChannels.headerTitle` — 標題（zh: `// 推薦頻道`，en: `// RECOMMENDED`）
+- `recommendedChannels.statusLabel` — 副標，含 `{n}` 插值（zh: `{n} 個頻道 · 可能重生`，en: `{n} CH · MAY_RESPAWN`）
+- `recommendedChannels.noChannels` — 空狀態文字
+
+---
+
+### `RecommendedSection.vue`（已棄用於 RecommendedChannels）
+
+此元件仍存在於 codebase，但 `RecommendedChannels.vue` 已完整重寫，不再使用它。
+如需新的推薦頻道展示邏輯，直接修改 `RecommendedChannels.vue`，勿重新引入此元件。
 
 ---
 
