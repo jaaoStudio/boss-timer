@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, calculateCurrentStatus } from '@/stores/bossStore'
 import ChannelCard from './ChannelCard.vue'
 import { STATUS_ORDER, isExpiredRecord } from '@/composables/useStatusConfig'
 
@@ -21,6 +21,7 @@ const { selectedBossTypeId } = storeToRefs(bossStore)
 const recordedChannels = computed<number[]>(() => {
   if (bossStore.bossRecords.length === 0) return []
 
+  const now = new Date(bossStore._now)
   const records = bossStore.bossRecords.filter(
     (r) => r.boss_type_id === selectedBossTypeId.value
   )
@@ -28,12 +29,14 @@ const recordedChannels = computed<number[]>(() => {
   return records
     .slice()
     .sort((a, b) => {
-      const aExpired = isExpiredRecord(a)
-      const bExpired = isExpiredRecord(b)
+      const aStatus = calculateCurrentStatus(a, now)
+      const bStatus = calculateCurrentStatus(b, now)
+      const aExpired = isExpiredRecord(a, aStatus)
+      const bExpired = isExpiredRecord(b, bStatus)
       if (aExpired !== bExpired) return aExpired ? 1 : -1
 
-      const aOrder = STATUS_ORDER[a.current_status] ?? 4
-      const bOrder = STATUS_ORDER[b.current_status] ?? 4
+      const aOrder = STATUS_ORDER[aStatus] ?? 4
+      const bOrder = STATUS_ORDER[bStatus] ?? 4
       if (aOrder !== bOrder) return aOrder - bOrder
 
       // 同狀態：依最早可重生時間升冪（越快出現的排越前）

@@ -1,9 +1,8 @@
 import { defineStore } from 'pinia'
 
-// Module-level — not reactive, so it doesn't pollute store state
 let _statusTickId: ReturnType<typeof setInterval> | null = null
 
-function calculateCurrentStatus(record: BossRecord, now = new Date()): string {
+export function calculateCurrentStatus(record: BossRecord, now = new Date()): string {
   if (record.status !== 'killed') return record.status
   const min = record.respawn_min_time ? new Date(record.respawn_min_time) : null
   const max = record.respawn_max_time ? new Date(record.respawn_max_time) : null
@@ -69,6 +68,7 @@ interface BossState {
   loading: boolean
   selectedBossTypeId: number | null
   selectedChannel: number | null
+  _now: number
 }
 
 function ts(value: string | null): number {
@@ -83,21 +83,27 @@ export const useBossStore = defineStore('boss', {
     loading: false,
     selectedBossTypeId: null,
     selectedChannel: null,
+    _now: Date.now(),
   }),
   getters: {
     priorityChannels(state): BossRecord[] {
+      const now = new Date(state._now)
       return state.bossRecords
-        .filter(record => record.boss_type_id === state.selectedBossTypeId && (record.current_status === 'may_respawn' || record.current_status === 'alive'))
+        .filter(r => r.boss_type_id === state.selectedBossTypeId &&
+          ['may_respawn', 'alive'].includes(calculateCurrentStatus(r, now)))
         .sort((a, b) => ts(a.respawn_min_time) - ts(b.respawn_min_time))
     },
     avoidChannels(state): BossRecord[] {
+      const now = new Date(state._now)
       return state.bossRecords
-        .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'respawning')
+        .filter(r => r.boss_type_id === state.selectedBossTypeId &&
+          calculateCurrentStatus(r, now) === 'respawning')
         .sort((a, b) => ts(a.respawn_max_time) - ts(b.respawn_max_time))
     },
     allBossPriorityRecords(state): BossRecord[] {
+      const now = new Date(state._now)
       return state.bossRecords
-        .filter(record => record.current_status === 'may_respawn')
+        .filter(r => calculateCurrentStatus(r, now) === 'may_respawn')
         .sort((a, b) => ts(a.respawn_min_time) - ts(b.respawn_min_time))
     },
   },
@@ -171,38 +177,15 @@ export const useBossStore = defineStore('boss', {
       this.selectedChannel = channel
     },
 
-    refreshAllStatuses() {
-      const now = new Date()
-      this.bossRecords.forEach((record, index) => {
-        if (record.status !== 'killed') return
-        const newStatus = calculateCurrentStatus(record, now)
-        if (newStatus !== record.current_status) {
-          this.bossRecords.splice(index, 1, { ...record, current_status: newStatus })
-        }
-      })
-    },
-
     startStatusTick() {
       if (_statusTickId !== null) return
-      _statusTickId = setInterval(() => { this.refreshAllStatuses() }, 10_000)
+      _statusTickId = setInterval(() => { this._now = Date.now() }, 1_000)
     },
 
     stopStatusTick() {
       if (_statusTickId !== null) {
         clearInterval(_statusTickId)
         _statusTickId = null
-      }
-    },
-
-    updateBossStatusOnTimerEnd(record: BossRecord) {
-      const index = this.bossRecords.findIndex(
-        r => r.channel === record.channel && r.boss_type_id === record.boss_type_id
-      )
-
-      if (index !== -1) {
-        const currentRecord = { ...this.bossRecords[index] }
-        currentRecord.current_status = calculateCurrentStatus(currentRecord)
-        this.bossRecords.splice(index, 1, currentRecord)
       }
     },
   },

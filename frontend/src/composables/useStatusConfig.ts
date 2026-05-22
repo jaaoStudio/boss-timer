@@ -31,9 +31,9 @@ type ExpiredCheckable = {
   respawn_max_time?: string | null
 } | null | undefined
 
-export function isExpiredRecord(record: ExpiredCheckable): boolean {
+export function isExpiredRecord(record: ExpiredCheckable, liveStatus?: string): boolean {
   if (!record) return false
-  if (record.current_status !== 'alive') return false
+  if ((liveStatus ?? record.current_status) !== 'alive') return false
   if (!record.respawn_min_time || !record.respawn_max_time) return false
   const window = new Date(record.respawn_max_time).getTime() - new Date(record.respawn_min_time).getTime()
   return Date.now() - new Date(record.respawn_max_time).getTime() > window

@@ -19,7 +19,6 @@
           <CountdownTimer
             :target-time="record.respawn_max_time"
             prefix="until"
-            @timer-end="handleTimerEnd(record)"
           />
         </div>
       </div>
@@ -34,13 +33,11 @@
             v-if="type === 'priority'"
             :target-time="record.respawn_max_time"
             prefix="until"
-            @timer-end="handleTimerEnd(record)"
           />
           <CountdownTimer
             v-if="type === 'avoid'"
             :target-time="record.respawn_min_time"
             prefix="in"
-            @timer-end="handleTimerEnd(record)"
           />
         </div>
       </div>
@@ -79,9 +76,6 @@ const getBossName = (bossTypeId: number): string => {
   return locale.value === 'zh' ? boss.name_zh : boss.name_en
 }
 
-const handleTimerEnd = (record: BossRecord) => {
-  bossStore.updateBossStatusOnTimerEnd(record)
-}
 
 const typeClasses = {
   priority: {

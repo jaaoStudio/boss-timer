@@ -11,7 +11,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, calculateCurrentStatus } from '@/stores/bossStore'
 import { useStatusConfig, isExpiredRecord } from '@/composables/useStatusConfig'
 
 const props = defineProps<{
@@ -28,8 +28,10 @@ const record = computed(() =>
   )
 )
 
-const status = computed(() => record.value?.current_status || 'unknown')
-const isExpired = computed(() => isExpiredRecord(record.value))
+const status = computed(() =>
+  record.value ? calculateCurrentStatus(record.value, new Date(bossStore._now)) : 'unknown'
+)
+const isExpired = computed(() => isExpiredRecord(record.value, status.value))
 
 const config = computed(() => getStatusConfig(status.value, isExpired.value))
 const statusBackgroundClass = computed(() => config.value.bgClass)
