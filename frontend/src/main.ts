@@ -1,10 +1,10 @@
 import { createApp } from 'vue'
 import { createPinia } from "pinia";
 import router from "./router";
+import 'element-plus/theme-chalk/dark/css-vars.css'
 import './style.css';
 import { createGtm } from '@gtm-support/vue-gtm';
 import clarity from '@microsoft/clarity';
-import 'element-plus/theme-chalk/dark/css-vars.css'
 import vue3GoogleLogin from 'vue3-google-login'
 import App from './App.vue'
 import i18n from './i18n';

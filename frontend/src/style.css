@@ -19,30 +19,34 @@ button:not(:disabled):not(.el-button),
 
 @tailwind utilities;
 
-/* 針對深色模式的設定 (如果你有做 Dark Mode) */
-html.dark {
-  --el-color-primary: #60a5fa;
-  /* Tailwind blue-400，深色模式下亮一點 */
-  --el-color-primary-light-9: #1e3a8a;
-  /* 深色模式下的背景色要深一點 */
-}
-
 :root {
   font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-
-  /* 這裡保留 color-scheme 讓瀏覽器知道我們支援兩種模式 */
   color-scheme: light dark;
-
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 
-  --el-color-primary: theme('colors.gray.300');
-  --el-color-primary-light-9: #eff6ff;
-  /* Tailwind blue-50 */
+  /* Element Plus primary → Tailwind gray (light mode) */
+  --el-color-primary:         #374151; /* gray-700 */
+  --el-color-primary-light-3: #737a85;
+  --el-color-primary-light-5: #9ba0a8;
+  --el-color-primary-light-7: #c3c6cb;
+  --el-color-primary-light-8: #d7d9dc;
+  --el-color-primary-light-9: #ebebee;
+  --el-color-primary-dark-2:  #2c3441;
+}
+
+html.dark {
+  /* Element Plus primary → Tailwind gray (dark mode) */
+  --el-color-primary:         #6b7280; /* gray-500 */
+  --el-color-primary-light-5: #4b5563; /* gray-600 */
+  --el-color-primary-light-7: #374151; /* gray-700 */
+  --el-color-primary-light-8: #1f2937; /* gray-800 */
+  --el-color-primary-light-9: #111827; /* gray-900 */
+  --el-color-primary-dark-2:  #d1d5db; /* gray-300 */
 }
 
 a {

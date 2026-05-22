@@ -110,7 +110,9 @@
     "title": "推薦頻道",
     "priorityTitle": "🎯 優先頻道 (可能重生)",
     "avoidTitle": "❌ 避免頻道 (重生中)",
-    "noChannels": "沒有可顯示的頻道。"
+    "noChannels": "沒有可顯示的頻道。",
+    "currentBoss": "當前 Boss",
+    "allBosses": "全部 Boss"
   },
   "recordHistory": {
     "title": "擊殺紀錄",

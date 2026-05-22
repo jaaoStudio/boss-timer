@@ -92,6 +92,11 @@ export const useBossStore = defineStore('boss', {
         .filter(record => record.boss_type_id === state.selectedBossTypeId && record.current_status === 'respawning')
         .sort((a, b) => ts(a.respawn_max_time) - ts(b.respawn_max_time))
     },
+    allBossPriorityRecords(state): BossRecord[] {
+      return state.bossRecords
+        .filter(record => record.current_status === 'may_respawn')
+        .sort((a, b) => ts(a.respawn_min_time) - ts(b.respawn_min_time))
+    },
   },
   actions: {
     setBossTypes(types: BossType[]) {

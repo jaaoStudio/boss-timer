@@ -6,6 +6,20 @@
         @submit.prevent
         label-position="top"
     >
+      <!-- 收藏 Boss 快速切換列 -->
+      <div v-if="favoriteOptions.length > 0" class="boss-chips flex flex-wrap gap-2 mb-3">
+        <el-button
+          v-for="boss in favoriteOptions"
+          :key="boss.id"
+          :type="form.boss_type_id === boss.id ? 'primary' : 'default'"
+          size="small"
+          round
+          @click="handleBossChange(boss.id)"
+        >
+          {{ bossLabel(boss) }}
+        </el-button>
+      </div>
+
       <div class="grid grid-cols-2 gap-3 mb-3">
         <el-form-item :label="t('bossControlPanel.channel')" class="mb-0">
           <el-input
@@ -235,3 +249,9 @@ onMounted(() => {
   form.value.boss_type_id = selectedBossTypeId.value
 })
 </script>
+
+<style scoped>
+.boss-chips :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+</style>

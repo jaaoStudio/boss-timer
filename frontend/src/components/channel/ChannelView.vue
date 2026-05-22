@@ -7,7 +7,6 @@
         :options="viewOptions"
         @change="setViewMode"
         size="small"
-        style="--el-segmented-item-selected-color: #6366f1; --el-segmented-item-selected-bg-color: #eef2ff;"
       >
         <template #default="{ item }">
           <div class="flex items-center gap-1">
