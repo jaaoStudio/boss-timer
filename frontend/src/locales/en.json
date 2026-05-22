@@ -280,6 +280,33 @@
         "Fix: Expired indicator (faded overlay on Alive channels) not updating reactively over time"
       ]
     },
+    "v2_6_5": {
+      "title": "v2.6.5",
+      "date": "2026-05-22",
+      "items": [
+        "New: Recommended Channels now shows may-respawn channels across all bosses, not just the currently selected one",
+        "Enhancement: Adjusted channel column width in Channel Overview for cleaner display"
+      ]
+    },
+    "v2_6_4": {
+      "title": "v2.6.4",
+      "date": "2026-05-21",
+      "items": [
+        "Fix: Recommended Channels no longer shows 'Alive' bosses (past max respawn time) — now correctly shows only 'May Respawn' channels",
+        "Enhancement: Channel Overview now shows only records from the past 2 days (down from 3), keeping the view cleaner for long-running rooms",
+        "Enhancement: Multiple internal architectural refactors improving overall stability and performance"
+      ]
+    },
+    "v2_6_3": {
+      "title": "v2.6.3",
+      "date": "2026-05-19",
+      "items": [
+        "Fix: WebSocket connection leak — improved server stability over long sessions",
+        "Fix: Automatically redirected to home on disconnect, preventing being stuck on an unusable empty room page",
+        "Fix: Router infinite loop when the backend was unreachable, causing the page to freeze",
+        "Enhancement: Server-side heartbeat detection now identifies dead connections more promptly"
+      ]
+    },
     "v2_6_2": {
       "title": "v2.6.2",
       "date": "2026-04-23",
