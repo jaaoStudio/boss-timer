@@ -31,7 +31,7 @@ const record = computed(() =>
 const status = computed(() =>
   record.value ? calculateCurrentStatus(record.value, new Date(bossStore._now)) : 'unknown'
 )
-const isExpired = computed(() => isExpiredRecord(record.value, status.value))
+const isExpired = computed(() => isExpiredRecord(record.value, status.value, bossStore._now))
 
 const config = computed(() => getStatusConfig(status.value, isExpired.value))
 const statusBackgroundClass = computed(() => config.value.bgClass)

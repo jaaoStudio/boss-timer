@@ -70,7 +70,7 @@ frontend/src/
 │   ├── useElementPlus.ts     ← showMessage / showMessageBox 封裝
 │   ├── useTheme.ts           ← isDark / toggleDark
 │   ├── useLayoutConfig.ts    ← 版面 Widget 排列、寬度、收合狀態管理（singleton）
-│   ├── useStatusConfig.ts    ← 狀態色彩映射、STATUS_ORDER、isExpiredRecord() 統一定義
+│   ├── useStatusConfig.ts    ← 狀態色彩映射、STATUS_ORDER、isExpiredRecord(record, liveStatus?, nowMs?) 統一定義
 │   ├── useRoomSession.ts     ← 房間進出封裝（enter/leave），BossTracker.vue 使用
 │   ├── useFavoriteBosses.ts  ← 收藏 Boss 列表（localStorage）
 │   ├── useChannelViewPreference.ts ← 頻道檢視偏好（localStorage）
@@ -180,6 +180,8 @@ import { type BossType, type BossRecord } from '@/stores/bossStore'
 **使用情境**:
 - `RecommendedChannels` 的「當前 Boss」模式使用格線模式（`showBossName` 預設 false）
 - 「全部 Boss」模式傳入 `bossStore.allBossPriorityRecords`，並啟用 `showBossName` + `clickable`，點擊後呼叫 `bossStore.setSelectedBossTypeId()` + `bossStore.setSelectedChannel()`
+
+> `CountdownTimer` 的 `@timer-end` 在 `RecommendedSection` 中**不再監聽**，狀態切換改由 `bossStore._now` 每秒驅動（`calculateCurrentStatus`），不依賴 UI timer 的存活狀態。
 
 ---
 

@@ -167,18 +167,38 @@ frontend/
 | `bossRecords` | 當前房間的 Boss 記錄 |
 | `selectedBossTypeId` | 目前選中的 Boss 種類 ID |
 | `selectedChannel` | 目前選中的頻道 |
+| `_now` | `number`（ms epoch）每秒 tick 一次，驅動全站 live status 計算 |
 
-**Getters**:
-- `priorityChannels` — 篩選**當前選中 Boss** 的 `may_respawn` 或 `alive` 記錄 (按最早重生時間排序，`respawn_min_time=null` 的 `alive` 置頂)
-- `avoidChannels` — 篩選**當前選中 Boss** 的 `respawning` 記錄 (按最晚重生時間排序)
-- `allBossPriorityRecords` — 篩選**所有 Boss** 的 `may_respawn` 記錄 (按最早重生時間排序，用於「全部 Boss」推薦列表)
+**Getters**（均使用 `_now` 動態計算，秒級更新）:
+- `priorityChannels` — 當前選中 Boss 的 `may_respawn` 或 `alive` 記錄 (按最早重生時間排序)
+- `avoidChannels` — 當前選中 Boss 的 `respawning` 記錄 (按最晚重生時間排序)
+- `allBossPriorityRecords` — 所有 Boss 的 `may_respawn` 記錄 (按最早重生時間排序)
 
 **核心 Actions**:
 - `updateBossRecord(record)` — 根據 `(channel, boss_type_id)` 更新或新增記錄
 - `deleteBossRecord(recordId)` — 從本地 `bossRecords` 中移除指定紀錄
-- `updateBossStatusOnTimerEnd(record)` — 倒數計時結束時呼叫私有函式補算 `current_status`
+- `startStatusTick()` / `stopStatusTick()` — 啟動/停止每秒 tick `_now` 的 interval（由 `useRoomSession` 管理生命週期）
 
-> ⚠️ `calculateCurrentStatus` 已不是公開 Action，現為 bossStore 內的私有輔助函式（不 export）。時間驅動的狀態更新請用 `updateBossStatusOnTimerEnd`。
+**`calculateCurrentStatus` (exported)**:
+```typescript
+import { calculateCurrentStatus } from '@/stores/bossStore'
+
+// 在元件 computed 中取得 live status（隨 _now 每秒更新）
+const status = computed(() =>
+  record.value ? calculateCurrentStatus(record.value, new Date(bossStore._now)) : 'unknown'
+)
+```
+> ⚠️ 元件顯示狀態一律用 `calculateCurrentStatus(record, new Date(bossStore._now))`，**不要讀 `record.current_status`**——後者是伺服器傳來的初始快照，不隨時間更新。
+
+**`isExpiredRecord` 的 `nowMs` 參數**：
+```typescript
+// ❌ status 穩定在 'alive' 後 isExpired 不再重算
+const isExpired = computed(() => isExpiredRecord(record.value, status.value))
+
+// ✅ 傳入 bossStore._now 讓 computed 每秒重算
+const isExpired = computed(() => isExpiredRecord(record.value, status.value, bossStore._now))
+```
+`isExpiredRecord(record, liveStatus?, nowMs?)` — 不傳 `nowMs` 時內部呼叫 `Date.now()`，但這是靜態快照，不會觸發 Vue 重算。凡是在 computed 內使用都必須傳入 `bossStore._now`。
 
 ### `recordHistoryStore` — 歷史紀錄（audit log）
 **風格**: Setup (Composition API)

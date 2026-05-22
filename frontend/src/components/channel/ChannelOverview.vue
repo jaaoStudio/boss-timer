@@ -31,8 +31,8 @@ const recordedChannels = computed<number[]>(() => {
     .sort((a, b) => {
       const aStatus = calculateCurrentStatus(a, now)
       const bStatus = calculateCurrentStatus(b, now)
-      const aExpired = isExpiredRecord(a, aStatus)
-      const bExpired = isExpiredRecord(b, bStatus)
+      const aExpired = isExpiredRecord(a, aStatus, bossStore._now)
+      const bExpired = isExpiredRecord(b, bStatus, bossStore._now)
       if (aExpired !== bExpired) return aExpired ? 1 : -1
 
       const aOrder = STATUS_ORDER[aStatus] ?? 4
