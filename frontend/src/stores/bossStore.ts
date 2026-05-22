@@ -1,5 +1,8 @@
 import { defineStore } from 'pinia'
 
+// Module-level — not reactive, so it doesn't pollute store state
+let _statusTickId: ReturnType<typeof setInterval> | null = null
+
 function calculateCurrentStatus(record: BossRecord, now = new Date()): string {
   if (record.status !== 'killed') return record.status
   const min = record.respawn_min_time ? new Date(record.respawn_min_time) : null
@@ -167,6 +170,30 @@ export const useBossStore = defineStore('boss', {
     setSelectedChannel(channel: number | null) {
       this.selectedChannel = channel
     },
+
+    refreshAllStatuses() {
+      const now = new Date()
+      this.bossRecords.forEach((record, index) => {
+        if (record.status !== 'killed') return
+        const newStatus = calculateCurrentStatus(record, now)
+        if (newStatus !== record.current_status) {
+          this.bossRecords.splice(index, 1, { ...record, current_status: newStatus })
+        }
+      })
+    },
+
+    startStatusTick() {
+      if (_statusTickId !== null) return
+      _statusTickId = setInterval(() => { this.refreshAllStatuses() }, 10_000)
+    },
+
+    stopStatusTick() {
+      if (_statusTickId !== null) {
+        clearInterval(_statusTickId)
+        _statusTickId = null
+      }
+    },
+
     updateBossStatusOnTimerEnd(record: BossRecord) {
       const index = this.bossRecords.findIndex(
         r => r.channel === record.channel && r.boss_type_id === record.boss_type_id

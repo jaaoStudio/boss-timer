@@ -26,6 +26,7 @@ export function useRoomSession() {
     roomStore.setRoomId(roomId)
     websocketStore.sendMessage({ type: 'join_room', payload: { room_id: roomId } })
     addRecentRoom(roomId)
+    bossStore.startStatusTick()
     // Boss types arrive via WS room_state — no redundant HTTP call needed
   }
 
@@ -34,6 +35,7 @@ export function useRoomSession() {
     if (currentRoomId) {
       websocketStore.sendMessage({ type: 'leave_room', payload: { room_id: currentRoomId } })
     }
+    bossStore.stopStatusTick()
     roomStore.clearRoomId()
     bossStore.clearRoomState()
   }
