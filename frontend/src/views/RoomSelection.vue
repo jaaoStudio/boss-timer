@@ -153,12 +153,6 @@ const joinRecentRoom = async (roomId) => {
   if (joiningRoomId.value) return;
 
   try {
-    const canConnect = await userStore.canEstablishWebSocket();
-    if (!canConnect) {
-      showMessage.error(t('roomSelection.errors.connectionLimit'));
-      return;
-    }
-
     joiningRoomId.value = roomId;
     const roomCheck = await apiService.checkRoomExists(roomId);
     if (roomCheck.exists) {
@@ -223,13 +217,6 @@ const createRoom = async () => {
   if (isCreating.value) return;
 
   try {
-    const canConnect = await userStore.canEstablishWebSocket();
-    if (!canConnect) {
-      showMessage.error(t('roomSelection.errors.connectionLimit'));
-      await router.push({name: 'RoomSelection'});
-      return;
-    }
-
     isCreating.value = true;
     const newRoom = await apiService.createRoom();
     roomStore.setRoomId(newRoom.room_id);
@@ -255,13 +242,6 @@ const joinRoom = async () => {
   if (isJoining.value) return;
 
   try {
-    const canConnect = await userStore.canEstablishWebSocket();
-    if (!canConnect) {
-      showMessage.error(t('roomSelection.errors.connectionLimit'));
-      await router.push({name: 'RoomSelection'});
-      return;
-    }
-
     isJoining.value = true;
     joinRoomError.value = '';
 

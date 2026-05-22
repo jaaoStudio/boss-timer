@@ -38,10 +38,6 @@ interface RecordHistoryPage {
   next_cursor: number | null
 }
 
-interface WebSocketCountResponse {
-  count: number
-}
-
 class ApiService {
   private client: typeof bossService
 
@@ -145,11 +141,6 @@ class ApiService {
 
   async updateMaintenanceConfig(updatedConfig: Record<string, unknown>): Promise<AxiosResponse<MaintenanceInfo>> {
     return this.client.post<MaintenanceInfo>('/system/maintenance-config', updatedConfig)
-  }
-
-  async getWebSocketConnectionsCount(): Promise<number> {
-    const res = await this.client.get<WebSocketCountResponse>('/ws/connections/count')
-    return res.data.count
   }
 }
 

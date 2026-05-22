@@ -199,15 +199,5 @@ export const useUserStore = defineStore('user', {
       if (name.length > 20) return false;
       return true;
     },
-
-    async canEstablishWebSocket() {
-      try {
-        const currentConnections = await apiService.getWebSocketConnectionsCount();
-        return currentConnections < 1000;
-      } catch (error) {
-        console.error('Error checking WebSocket connections:', error);
-        return false;
-      }
-    },
   },
 });
