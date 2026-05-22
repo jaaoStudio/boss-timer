@@ -35,7 +35,7 @@
         </div>
         <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.status') }}</span>
-          <StatusBadge :status="selectedRecord?.current_status" />
+          <StatusBadge :status="selectedStatus" />
         </div>
         <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.recordTime') }}</span>
@@ -64,7 +64,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, calculateCurrentStatus } from '@/stores/bossStore'
 import StatusBadge from '@/components/ui/StatusBadge.vue'
 import CountdownTimer from '@/components/ui/CountdownTimer.vue'
 import { useI18n } from 'vue-i18n'
@@ -81,6 +81,10 @@ const selectedBoss = computed(() => {
 const selectedRecord = computed(() => {
   return bossRecords.value.find(r => r.boss_type_id === selectedBossTypeId.value && r.channel === selectedChannel.value)
 })
+
+const selectedStatus = computed(() =>
+  selectedRecord.value ? calculateCurrentStatus(selectedRecord.value, new Date(bossStore._now)) : undefined
+)
 
 const formatTime = (timeString: string | null | undefined) => {
   if (!timeString) return t('bossInfo.notAvailable')

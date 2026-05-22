@@ -50,7 +50,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useBossStore } from '@/stores/bossStore'
+import { useBossStore, calculateCurrentStatus } from '@/stores/bossStore'
 import { useI18n } from 'vue-i18n'
 import { useDark } from '@vueuse/core'
 import { ArrowsPointingOutIcon, ArrowsPointingInIcon } from '@heroicons/vue/24/outline'
@@ -99,8 +99,8 @@ function toggleFilter(key: string) {
   }
 }
 
-function isExpiredRecord(record: BossRecord, now: number): boolean {
-  if (record.current_status !== 'alive') return false
+function isExpiredInTimeline(record: BossRecord, liveStatus: string, now: number): boolean {
+  if (liveStatus !== 'alive') return false
   if (!record.respawn_min_time || !record.respawn_max_time) return false
   const windowDuration = new Date(record.respawn_max_time).getTime() - new Date(record.respawn_min_time).getTime()
   return now - new Date(record.respawn_max_time).getTime() > windowDuration
@@ -115,29 +115,35 @@ interface TimelineRow {
 }
 
 const timelineData = computed<TimelineRow[]>(() => {
-  const now = Date.now()
+  const nowMs = bossStore._now
+  const nowDate = new Date(nowMs)
   const records = bossStore.bossRecords.filter(
     (r) => r.boss_type_id === selectedBossTypeId.value && r.respawn_min_time && r.respawn_max_time
   )
   if (records.length === 0) return []
 
   const sorted = records.slice().sort((a, b) => {
-    const aExp = isExpiredRecord(a, now)
-    const bExp = isExpiredRecord(b, now)
+    const aStatus = calculateCurrentStatus(a, nowDate)
+    const bStatus = calculateCurrentStatus(b, nowDate)
+    const aExp = isExpiredInTimeline(a, aStatus, nowMs)
+    const bExp = isExpiredInTimeline(b, bStatus, nowMs)
     if (aExp !== bExp) return aExp ? 1 : -1
-    const aOrd = STATUS_ORDER[a.current_status] ?? 4
-    const bOrd = STATUS_ORDER[b.current_status] ?? 4
+    const aOrd = STATUS_ORDER[aStatus] ?? 4
+    const bOrd = STATUS_ORDER[bStatus] ?? 4
     if (aOrd !== bOrd) return aOrd - bOrd
     return new Date(a.respawn_min_time!).getTime() - new Date(b.respawn_min_time!).getTime()
   })
 
-  return sorted.map((r) => ({
-    channel: r.channel,
-    minTime: new Date(r.respawn_min_time!).getTime(),
-    maxTime: new Date(r.respawn_max_time!).getTime(),
-    status: r.current_status,
-    isExpired: isExpiredRecord(r, now),
-  }))
+  return sorted.map((r) => {
+    const liveStatus = calculateCurrentStatus(r, nowDate)
+    return {
+      channel: r.channel,
+      minTime: new Date(r.respawn_min_time!).getTime(),
+      maxTime: new Date(r.respawn_max_time!).getTime(),
+      status: liveStatus,
+      isExpired: isExpiredInTimeline(r, liveStatus, nowMs),
+    }
+  })
 })
 
 const filteredData = computed<TimelineRow[]>(() => {

@@ -24,7 +24,8 @@ app/
 │   ├── cleanup.py          # 背景定時任務 (清理過期房間)
 │   └── webhook_tasks.py    # Discord Webhook Celery 任務
 └── services/
-    └── boss_service.py     # Webhook 推播邏輯在此觸發
+    ├── boss_service.py          # 建立紀錄後呼叫 NotificationPolicy.notify()
+    └── notification_policy.py  # Webhook 推播邏輯（即時 + 預警排程）
 ```
 
 ---
@@ -91,7 +92,13 @@ def send_discord_webhook(self, webhook_url: str, content: str = None, embeds: li
 
 ---
 
-## Webhook 推播流程 (`boss_service.py`)
+## Webhook 推播流程 (`notification_policy.py`)
+
+推播邏輯已從 `boss_service.py` 提取為 `NotificationPolicy` class。`boss_service` 建立紀錄後呼叫：
+```python
+NotificationPolicy.notify(record, room, db)
+```
+Discord 失敗透過 `try/except` 隔離，不影響 `BossRecord` 建立。
 
 ### 欄位控制邏輯
 
@@ -106,40 +113,30 @@ def send_discord_webhook(self, webhook_url: str, content: str = None, embeds: li
 ### 推播判斷邏輯
 
 ```python
-if room.discord_webhook_enabled and room.discord_webhook_url:
-    # 1. 即時狀態通知
-    notify_events = room.webhook_notify_events or ["killed", "alive", "not_found"]
-    if record_status in notify_events:
-        action_text = "擊殺了" if record_status == "killed" else ("標記存活" if record_status == "alive" else "未發現")
-        msg_content = f"⚔️ **{recorder_name}** 在 **[{channel}頻]** {action_text} **[{boss_name}]**！"
+class NotificationPolicy:
 
-        # 加上重生區間（Discord timestamp 格式）
-        if boss_record.respawn_min_time and boss_record.respawn_max_time:
-            min_ts = int(boss_record.respawn_min_time.timestamp())
-            max_ts = int(boss_record.respawn_max_time.timestamp())
-            msg_content += f" (預計重生: <t:{min_ts}:t> ~ <t:{max_ts}:t>)"
+    @staticmethod
+    def notify(record: BossRecord, room: Room, db: Session) -> None:
+        if not room.discord_webhook_enabled or not room.discord_webhook_url:
+            return
+        try:
+            NotificationPolicy._send_immediate(record, room)
+            NotificationPolicy._schedule_alerts(record, room, db)
+        except Exception as e:
+            logging.error(f"NotificationPolicy.notify failed for record {record.id}: {e}")
 
-        send_discord_webhook.delay(webhook_url, content=msg_content)
+    @staticmethod
+    def _send_immediate(record, room):
+        notify_events = room.webhook_notify_events or ["killed", "alive", "not_found"]
+        if record.status not in notify_events:
+            return
+        # 組合訊息文字 + Discord timestamp，呼叫 send_discord_webhook.delay()
 
-    # 2. 重生預警排程（只在 killed 時，5 分鐘前提醒）
-    celery_ids = {}
-    if record_status == "killed":
-        alert_type = room.webhook_alert_type or "none"
-        if alert_type in ["min", "both"] and boss_record.respawn_min_time:
-            min_eta = boss_record.respawn_min_time - timedelta(minutes=5)
-            if min_eta > datetime.now(timezone.utc):
-                task = send_discord_webhook.apply_async(args=[webhook_url, alert_msg], eta=min_eta)
-                celery_ids["min_task_id"] = task.id
-
-        if alert_type in ["max", "both"] and boss_record.respawn_max_time:
-            max_eta = boss_record.respawn_max_time - timedelta(minutes=5)
-            if max_eta > datetime.now(timezone.utc):
-                task = send_discord_webhook.apply_async(args=[webhook_url, alert_msg], eta=max_eta)
-                celery_ids["max_task_id"] = task.id
-
-    if celery_ids:
-        boss_record.celery_task_ids = celery_ids
-        db.commit()
+    @staticmethod
+    def _schedule_alerts(record, room, db):
+        if record.status != "killed" or (room.webhook_alert_type or "none") == "none":
+            return
+        # 依 alert_type 排程 min/max 預警，Task ID 寫回 record.celery_task_ids
 ```
 
 ---

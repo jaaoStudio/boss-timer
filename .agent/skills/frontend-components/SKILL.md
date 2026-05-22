@@ -27,7 +27,7 @@ frontend/src/
 │   ├── AppFooter.vue             ← 全域頁尾（保留頂層）
 │   │
 │   ├── boss/                     ← Boss 相關
-│   │   ├── BossControlPanel.vue
+│   │   ├── BossControlPanel.vue  ← 收藏 Boss chips 快速切換 + Boss 種類 Tab + 頻道輸入
 │   │   ├── BossInfo.vue
 │   │   ├── BossInfoItem.vue
 │   │   └── BossStatusButton.vue
@@ -62,13 +62,18 @@ frontend/src/
 │       ├── CountdownTimer.vue
 │       ├── GoogleLoginButton.vue
 │       ├── MaintenanceBanner.vue
-│       ├── RecommendedSection.vue
+│       ├── RecommendedSection.vue  ← 已棄用，不再被 RecommendedChannels 使用
 │       └── StatusBadge.vue
 │
 ├── composables/
-│   ├── useElementPlus.ts     ← showMessage / showMessageBox 封裝（已轉 .ts）
-│   ├── useTheme.ts           ← isDark / toggleDark（已轉 .ts）
-│   ├── useLayoutConfig.ts    ← 版面 Widget 排列、寬度、收合狀態管理
+│   ├── useLocalStorage.ts    ← 通用 localStorage 基礎層（load/deserialize/watch-persist）
+│   ├── useElementPlus.ts     ← showMessage / showMessageBox 封裝
+│   ├── useTheme.ts           ← isDark / toggleDark
+│   ├── useLayoutConfig.ts    ← 版面 Widget 排列、寬度、收合狀態管理（singleton）
+│   ├── useStatusConfig.ts    ← 狀態色彩映射、STATUS_ORDER、isExpiredRecord(record, liveStatus?, nowMs?) 統一定義
+│   ├── useRoomSession.ts     ← 房間進出封裝（enter/leave），BossTracker.vue 使用
+│   ├── useFavoriteBosses.ts  ← 收藏 Boss 列表（localStorage）
+│   ├── useChannelViewPreference.ts ← 頻道檢視偏好（localStorage）
 │   └── ...
 │
 ├── axios/
@@ -151,6 +156,48 @@ import { type BossType, type BossRecord } from '@/stores/bossStore'
 | `recorder_info` | `object \| null` | 匿名記錄者資訊 |
 
 > ⚠️ `respawn_min_time` / `respawn_max_time` 可能為 `null`，使用前須 null check 或 `!` 非空斷言。
+
+---
+
+## 通用元件 API
+
+### `RecommendedChannels.vue`（戰術終端機風格）
+
+跨所有 Boss 種類的 `may_respawn` 聚合列表，無模式切換。資料來源為 `bossStore.allBossPriorityRecords`，每秒隨 `bossStore._now` 更新。
+
+**視覺結構（每列由左到右）**:
+1. **放射倒數環**（SVG，18×18）— 進度比例 = `remaining / windowSec`，顏色跟隨 urgency
+2. **Crit 脈動點**（僅 `<30s` 出現）
+3. **頻道號** `CH{n}`（等寬，`padStart(3, ' ')`，用 `whitespace-pre` 保持對齊；標籤與內容**必須同行**，否則 `whitespace-pre` 會保留縮排空白）
+4. **Boss 名稱**（`flex-1 truncate`，中文等寬 fallback）
+5. **點線 leader**（`border-b border-dotted`）
+6. **倒數時間**（`m:ss` 格式，無前綴，urgency 色）
+
+**Urgency 色彩**（CSS 變數，支援深淺色模式自動切換）:
+
+| Remaining | 變數 | 深色值 | 淺色值 |
+|---|---|---|---|
+| `>= 90s` | `--rc-amber` | `#f59e0b` | `#b45309` |
+| `30–90s` | `--rc-warn` | `#fb923c` | `#c2410c` |
+| `< 30s` | `--rc-crit` | `#ef4444` | `#b91c1c` |
+
+CSS 變數定義在 `src/style.css` 的 `:root` / `.dark` 區塊。
+
+**排序**：依 `remaining`（= `respawn_max_time - _now`）升冪，最緊急在上。
+
+**點擊行為**：呼叫 `bossStore.setSelectedBossTypeId()` + `bossStore.setSelectedChannel()`。
+
+**i18n keys**:
+- `recommendedChannels.headerTitle` — 標題（zh: `// 推薦頻道`，en: `// RECOMMENDED`）
+- `recommendedChannels.statusLabel` — 副標，含 `{n}` 插值（zh: `{n} 個頻道 · 可能重生`，en: `{n} CH · MAY_RESPAWN`）
+- `recommendedChannels.noChannels` — 空狀態文字
+
+---
+
+### `RecommendedSection.vue`（已棄用於 RecommendedChannels）
+
+此元件仍存在於 codebase，但 `RecommendedChannels.vue` 已完整重寫，不再使用它。
+如需新的推薦頻道展示邏輯，直接修改 `RecommendedChannels.vue`，勿重新引入此元件。
 
 ---
 
