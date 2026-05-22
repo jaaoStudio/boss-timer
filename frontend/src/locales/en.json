@@ -270,6 +270,16 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_6_6": {
+      "title": "v2.6.6",
+      "date": "2026-05-22",
+      "items": [
+        "Redesign: Recommended Channels is now a tactical-ledger style list showing may-respawn channels across all bosses, with a radial countdown ring and urgency color coding",
+        "Enhancement: Channel status update precision improved from 10 seconds to 1 second — Respawning → May Respawn transitions are now near-instant",
+        "Fix: Channel status sometimes getting stuck at Respawning after the countdown ended",
+        "Fix: Expired indicator (faded overlay on Alive channels) not updating reactively over time"
+      ]
+    },
     "v2_6_2": {
       "title": "v2.6.2",
       "date": "2026-04-23",
