@@ -58,9 +58,10 @@ app/
 │   └── system.py          # 系統路由: 維護模式資訊讀取/更新 (管理員限定)
 │
 ├── services/
-│   ├── auth_service.py    # 認證服務: Google Token 驗證、JWT 生成/驗證、使用者 CRUD、偏好設定
-│   ├── boss_service.py    # Boss 服務: 重生時間計算、紀錄寫入、WebSocket 廣播、Discord Webhook 推播
-│   └── room_service.py    # 房間服務: 房間建立/查詢、使用者加入/離開房間、取得房間完整狀態
+│   ├── auth_service.py          # 認證服務: Google Token 驗證、JWT 生成/驗證、使用者 CRUD、偏好設定
+│   ├── boss_service.py          # Boss 服務: 重生時間計算、紀錄寫入、WebSocket 廣播
+│   ├── notification_policy.py   # Discord 通知策略: 即時推播 + Celery 預警排程（從 boss_service 提取）
+│   └── room_service.py          # 房間服務: 房間建立/查詢、使用者加入/離開房間、取得房間完整狀態
 │
 ├── websocket/
 │   ├── manager.py         # ConnectionManager: 連線追蹤、房間訂閱、Room 廣播、全域廣播
@@ -186,9 +187,11 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 - HTTP 429 (Rate Limited) → 自動等待 `retry_after` 後重試
 - 網路錯誤 → 指數退避重試 (`2 ** retries` 秒)
 
-### Webhook 推播流程 (`boss_service.py`)
-1. **即時廣播**: 擊殺/標記時立即發送消息到 Discord
-2. **預警排程**: `killed` 狀態時，根據 `webhook_alert_type` 設定：
+### Webhook 推播流程 (`notification_policy.py`)
+推播邏輯已從 `boss_service.py` 提取為獨立的 `NotificationPolicy` class，`boss_service` 建立記錄後呼叫 `NotificationPolicy.notify(record, room, db)`：
+
+1. **即時推播** (`_send_immediate`): 依 `webhook_notify_events` 過濾，符合則立即 `send_discord_webhook.delay()`，Discord 失敗不影響 BossRecord 建立
+2. **預警排程** (`_schedule_alerts`): `killed` 狀態時，根據 `webhook_alert_type` 設定：
    - `min` → 最短重生時間前 5 分鐘預警
    - `max` → 最長重生時間前 5 分鐘預警
    - `both` → 兩者皆發
@@ -288,14 +291,14 @@ ConnectionManager
 - 使用 **靜態方法類** (`BossService`) 聚合相關邏輯
 - 方法鏈: `_validate_room_exists` → `_get_boss_type_by_id` → `_calculate_respawn_times` → `_create_boss_record`
 - 建立記錄後立即廣播到房間
-- 擊殺記錄同時觸發 Discord Webhook 推播與預警排程
+- 建立完成後呼叫 `NotificationPolicy.notify(record, room, db)` 處理推播（Discord 失敗不影響主流程）
 
 ### room_service.py 模式
 - 函式直接導出 (非類別)
 - `get_room_state()` 使用 `joinedload` 避免 N+1 查詢
 - 預先載入 `BossRecord.recorder` 和 `BossRecord.boss_type`
 - 使用 PostgreSQL `DISTINCT ON (channel, boss_type_id)` 在 DB 端去重，回傳筆數被 `channels × boss_types` 綁定
-- 以 `ROOM_STATE_WINDOW_DAYS = 3` 過濾 `recorded_at`，讓頻道總覽只反映近期活躍頻道（歷史紀錄 API 不受影響）
+- 以 `ROOM_STATE_WINDOW_DAYS = 2` 過濾 `recorded_at`，讓頻道總覽只反映近期活躍頻道（歷史紀錄 API 不受影響）
 
 ### auth_service.py 模式
 - Google Token 驗證: 支援 credential (ID Token 直接驗證) 和 code (Authorization Code 交換)

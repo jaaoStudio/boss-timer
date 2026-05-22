@@ -27,7 +27,7 @@ frontend/src/
 │   ├── AppFooter.vue             ← 全域頁尾（保留頂層）
 │   │
 │   ├── boss/                     ← Boss 相關
-│   │   ├── BossControlPanel.vue
+│   │   ├── BossControlPanel.vue  ← 收藏 Boss chips 快速切換 + Boss 種類 Tab + 頻道輸入
 │   │   ├── BossInfo.vue
 │   │   ├── BossInfoItem.vue
 │   │   └── BossStatusButton.vue
@@ -66,9 +66,14 @@ frontend/src/
 │       └── StatusBadge.vue
 │
 ├── composables/
-│   ├── useElementPlus.ts     ← showMessage / showMessageBox 封裝（已轉 .ts）
-│   ├── useTheme.ts           ← isDark / toggleDark（已轉 .ts）
-│   ├── useLayoutConfig.ts    ← 版面 Widget 排列、寬度、收合狀態管理
+│   ├── useLocalStorage.ts    ← 通用 localStorage 基礎層（load/deserialize/watch-persist）
+│   ├── useElementPlus.ts     ← showMessage / showMessageBox 封裝
+│   ├── useTheme.ts           ← isDark / toggleDark
+│   ├── useLayoutConfig.ts    ← 版面 Widget 排列、寬度、收合狀態管理（singleton）
+│   ├── useStatusConfig.ts    ← 狀態色彩映射、STATUS_ORDER、isExpiredRecord() 統一定義
+│   ├── useRoomSession.ts     ← 房間進出封裝（enter/leave），BossTracker.vue 使用
+│   ├── useFavoriteBosses.ts  ← 收藏 Boss 列表（localStorage）
+│   ├── useChannelViewPreference.ts ← 頻道檢視偏好（localStorage）
 │   └── ...
 │
 ├── axios/
@@ -151,6 +156,30 @@ import { type BossType, type BossRecord } from '@/stores/bossStore'
 | `recorder_info` | `object \| null` | 匿名記錄者資訊 |
 
 > ⚠️ `respawn_min_time` / `respawn_max_time` 可能為 `null`，使用前須 null check 或 `!` 非空斷言。
+
+---
+
+## 通用元件 API
+
+### `RecommendedSection.vue`
+
+顯示推薦頻道清單，支援兩種渲染模式：
+
+| Prop | 型別 | 預設 | 說明 |
+|---|---|---|---|
+| `title` | `string` | — | 區塊標題 |
+| `channels` | `BossRecord[]` | — | 要顯示的記錄列表 |
+| `type` | `'priority' \| 'avoid'` | — | 決定背景色與計時器方向 |
+| `showBossName` | `boolean?` | `false` | `true` → 列表模式（顯示 Boss 名稱 + 頻道），`false` → 格線模式（僅頻道） |
+| `clickable` | `boolean?` | `false` | `true` → 點擊列表項目觸發 `record-click` emit |
+
+| Emit | Payload | 說明 |
+|---|---|---|
+| `record-click` | `BossRecord` | 列表模式下點擊時觸發，用於帶入 BossControlPanel 的選擇狀態 |
+
+**使用情境**:
+- `RecommendedChannels` 的「當前 Boss」模式使用格線模式（`showBossName` 預設 false）
+- 「全部 Boss」模式傳入 `bossStore.allBossPriorityRecords`，並啟用 `showBossName` + `clickable`，點擊後呼叫 `bossStore.setSelectedBossTypeId()` + `bossStore.setSelectedChannel()`
 
 ---
 

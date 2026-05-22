@@ -75,19 +75,24 @@ frontend/
     │   └── handlingErrors.js     # 全域 Axios 錯誤處理
     │
     ├── composables/              # Vue Composables (可複用邏輯)
+    │   ├── useLocalStorage.ts    # 通用 localStorage 基礎層 (load/deserialize/watch-persist)
     │   ├── useBossAlerts.ts      # Boss 重生提醒 (通知 + 音效排程)
     │   ├── useNotification.ts    # 瀏覽器 Notification API 封裝
     │   ├── useSound.ts           # Web Audio API 音效播放 (含多種音色)
     │   ├── useSettings.ts        # 使用者設定 (通知、音效、音量，localStorage 持久化)
+    │   ├── useFavoriteBosses.ts  # 收藏 Boss 列表 (localStorage 持久化)
     │   ├── useRecentRooms.ts     # 最近房間記錄 (localStorage)
+    │   ├── useChannelViewPreference.ts # 頻道檢視偏好 (localStorage)
+    │   ├── useStatusConfig.ts    # 狀態色彩/排序/isExpiredRecord 統一定義
+    │   ├── useRoomSession.ts     # 房間進出封裝 (enter/leave，確認 Room 存在後才 setRoomId)
     │   ├── useTimer.ts           # 倒數計時器邏輯
-    │   ├── useElementPlus.js     # Element Plus 封裝 (showMessage, showDialog)
-    │   └── useTheme.js           # 深色模式切換
+    │   ├── useElementPlus.ts     # Element Plus 封裝 (showMessage, showDialog)
+    │   └── useTheme.ts           # 深色模式切換
     │
     ├── components/               # Vue 元件
     │   ├── AppHeader.vue         # 頂部導航列 (房間 ID 顯示、設定按鈕、語系切換、登入)
     │   ├── AppFooter.vue         # 底部頁尾
-    │   ├── BossControlPanel.vue  # Boss 選擇面板 (Boss 種類 Tab + 頻道輸入)
+    │   ├── BossControlPanel.vue  # Boss 選擇面板 (收藏 Boss chips 快速切換 + Boss 種類 Tab + 頻道輸入)
     │   ├── BossInfo.vue          # Boss 詳細資訊 (重生時間、狀態控制按鈕)
     │   ├── BossInfoItem.vue      # Boss 資訊子項目
     │   ├── BossStatusButton.vue  # Boss 狀態操作按鈕 (killed/alive/not_found)
@@ -164,14 +169,16 @@ frontend/
 | `selectedChannel` | 目前選中的頻道 |
 
 **Getters**:
-- `priorityChannels` — 篩選出 `may_respawn` 狀態的記錄 (按最早重生時間排序)
-- `avoidChannels` — 篩選出 `respawning` 狀態的記錄 (按最晚重生時間排序)
+- `priorityChannels` — 篩選**當前選中 Boss** 的 `may_respawn` 或 `alive` 記錄 (按最早重生時間排序，`respawn_min_time=null` 的 `alive` 置頂)
+- `avoidChannels` — 篩選**當前選中 Boss** 的 `respawning` 記錄 (按最晚重生時間排序)
+- `allBossPriorityRecords` — 篩選**所有 Boss** 的 `may_respawn` 記錄 (按最早重生時間排序，用於「全部 Boss」推薦列表)
 
 **核心 Actions**:
 - `updateBossRecord(record)` — 根據 `(channel, boss_type_id)` 更新或新增記錄
 - `deleteBossRecord(recordId)` — 從本地 `bossRecords` 中移除指定紀錄
-- `calculateCurrentStatus(record)` — 根據目前時間動態計算 Boss 狀態
-- `updateBossStatusOnTimerEnd(record)` — 倒數計時結束時更新 Boss 狀態
+- `updateBossStatusOnTimerEnd(record)` — 倒數計時結束時呼叫私有函式補算 `current_status`
+
+> ⚠️ `calculateCurrentStatus` 已不是公開 Action，現為 bossStore 內的私有輔助函式（不 export）。時間驅動的狀態更新請用 `updateBossStatusOnTimerEnd`。
 
 ### `recordHistoryStore` — 歷史紀錄（audit log）
 **風格**: Setup (Composition API)
@@ -348,13 +355,13 @@ const { t } = useI18n()
 ### 進入房間
 1. 首頁 `RoomSelection` → 建立新房間或輸入房間 ID
 2. 導航到 `/room/:roomId`
-3. `BossTracker.vue` `onMounted`:
+3. `BossTracker.vue` `onMounted` 呼叫 `useRoomSession().enter(roomId)`:
+   - `ApiService.checkRoomExists(roomId)` — 確認房間存在，否則拋 `RoomNotFoundError`
    - `roomStore.setRoomId(roomId)`
-   - `ApiService.checkRoomExists(roomId)` — 確認房間存在
-   - `ApiService.getBossTypes()` — 載入 Boss 種類
    - `websocketStore.sendMessage({ type: 'join_room', payload: { room_id } })` — 加入房間
    - `addRecentRoom(roomId)` — 儲存至最近房間
-4. WebSocket 回傳 `room_state` → `bossStore.setBossRecords()`
+4. WebSocket 回傳 `room_state` → `bossStore.setBossRecords()` + `bossStore.setBossTypes()`
+   - **⚠️ boss_types 由 `room_state` 帶入，不再有獨立的 `getBossTypes()` HTTP call**
 
 ### 回報 Boss 狀態
 1. 使用者在 `BossControlPanel` 選擇 Boss 種類 + 輸入頻道
@@ -447,6 +454,21 @@ const { t } = useI18n()
 2. Element Plus 元件透過 `unplugin-vue-components` 自動引入，不需手動 import
 3. 使用 Tailwind CSS 處理樣式
 4. 使用 Element Plus `dark/css-vars.css` 支援深色模式
+
+### Element Plus 主色 (style.css)
+`src/style.css` 已在 `:root` 與 `html.dark` 中完整定義 Element Plus primary 色階，對應 Tailwind gray 調色盤：
+
+| CSS 變數 | light (gray-700) | dark (gray-400) |
+|---|---|---|
+| `--el-color-primary` | `#374151` | `#9ca3af` |
+| `--el-color-primary-light-3` | `#737a85` | `#6b7280` |
+| `--el-color-primary-light-5` | `#9ba0a8` | `#4b5563` |
+| `--el-color-primary-light-7` | `#c3c6cb` | `#374151` |
+| `--el-color-primary-light-8` | `#d7d9dc` | `#1f2937` |
+| `--el-color-primary-light-9` | `#ebebee` | `#111827` |
+| `--el-color-primary-dark-2` | `#2c3441` | `#d1d5db` |
+
+**勿**在元件內用 `--el-color-primary: #6366f1` 覆寫單一按鈕顏色；若需品牌色請修改 `style.css` 以維持全站一致。
 
 ---
 
