@@ -14,6 +14,7 @@ import fs from 'fs'
 export default defineConfig((config: ConfigEnv) => {
   // Vite 默認情況下不加載 .env 文件，使用導出的 loadEnv 來加載
   const loadedEnv = loadEnv(config.mode, process.cwd(), '')
+  const isDev = config.mode === 'development'
   return {
     base: loadedEnv.VITE_BASE_PUBLIC_PATH,
     build: {
@@ -53,10 +54,12 @@ export default defineConfig((config: ConfigEnv) => {
       },
     },
     server: {
-      https: {
-        key: fs.readFileSync('./vite-key.pem'),
-        cert: fs.readFileSync('./vite.pem'),
-      },
+      ...(isDev && {
+        https: {
+          key: fs.readFileSync('./vite-key.pem'),
+          cert: fs.readFileSync('./vite.pem'),
+        },
+      }),
       host: '0.0.0.0',
       port: 5173,
       proxy: {
