@@ -7,7 +7,18 @@
         label-position="top"
     >
       <!-- 收藏 Boss 快速切換列 -->
-      <div v-if="favoriteOptions.length > 0" class="boss-chips flex flex-wrap gap-2 mb-3">
+      <div v-if="customBossTypes.length > 0 || favoriteOptions.length > 0" class="boss-chips flex flex-wrap gap-2 mb-3">
+        <el-button
+          v-for="boss in customBossTypes"
+          :key="boss.id"
+          :type="form.boss_type_id === boss.id ? 'primary' : 'default'"
+          size="small"
+          round
+          @click="handleBossChange(boss.id)"
+        >
+          {{ bossLabel(boss) }}
+        </el-button>
+        <el-divider v-if="customBossTypes.length > 0 && favoriteOptions.length > 0" direction="vertical" class="self-center" />
         <el-button
           v-for="boss in favoriteOptions"
           :key="boss.id"
