@@ -46,14 +46,21 @@ jobs:
       - name: Build & Push Frontend
         uses: docker/build-push-action@v5
         with:
-          context: ./frontend     # 你的 frontend Dockerfile 位置
+          context: ./frontend
           platforms: linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
             ${{ env.IMAGE_FRONTEND }}:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_FRONTEND }}:cache
-          cache-to: type=registry,ref=${{ env.IMAGE_FRONTEND }}:cache,mode=max
+          build-args: |
+            VITE_GTM_ID=${{ secrets.VITE_GTM_ID }}
+            VITE_ANALYTICS_ID=${{ secrets.VITE_ANALYTICS_ID }}
+            VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+            VITE_WS_URL=${{ secrets.VITE_WS_URL }}
+            VITE_APP_BASE_URL=/api
+            VITE_BASE_PUBLIC_PATH=/
+            VITE_APP_TITLE=BOSS
+            VITE_CLARITY_ID=${{ secrets.VITE_CLARITY_ID }}
 
       - name: Deploy
         uses: appleboy/ssh-action@v1
