@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '**.md'
+      - '.agent/**'
+      - 'docs/**'
 
 env:
   HARBOR: ${{ secrets.HARBOR_URL }}
