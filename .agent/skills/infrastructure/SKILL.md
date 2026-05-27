@@ -227,24 +227,37 @@ uv run alembic upgrade head
 
 ## 部署流程
 
-### 1. 建置映像
+### CI/CD 自動部署（主要流程）
+
+專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到指定分支後自動執行：
+
+1. **建置後端映像** — context 為專案根目錄，推送 `harbor.jaao.tw/boss_service/boss_service:<sha>`
+2. **建置前端映像** — 透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等），推送至 Harbor
+3. **SSH 部署** — 登入正式機執行 `docker compose pull && docker compose up -d`
+
+所需 GitHub Secrets：`HARBOR_USERNAME`、`HARBOR_PASSWORD`、`SSH_HOST`、`SSH_USERNAME`、`SSH_PRIVATE_KEY`，以及所有 `VITE_*` 環境變數。
+
+> ⚠️ 前端 Vite 環境變數是**建置時**注入的（`ARG` → `ENV`），CI 透過 `build-args` 傳入；本機 Docker build 須手動指定，否則會使用空值。
+
+### 手動建置（本地測試用）
+
 ```bash
 # 使用 docker-compose.yaml 內的 build 定義
 docker compose build
 ```
 
-### 2. 推送至 Registry
+### 推送至 Registry
 ```bash
 docker push harbor.jaao.tw/boss_service/boss_service:${BACKEND_VERSION}
 docker push harbor.jaao.tw/boss_service/boss_timer_nginx:${FRONTEND_VERSION}
 ```
 
-### 3. 在正式機啟動
+### 在正式機啟動
 ```bash
 docker compose -f docker-compose.prod.yaml up -d
 ```
 
-### 4. 資料庫遷移 (正式機)
+### 資料庫遷移 (正式機)
 ```bash
 # 在正式機進入 boss_service 容器執行
 docker compose -f docker-compose.prod.yaml exec boss_service \

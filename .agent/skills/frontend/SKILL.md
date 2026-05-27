@@ -92,7 +92,7 @@ frontend/
     ├── components/               # Vue 元件
     │   ├── AppHeader.vue         # 頂部導航列 (房間 ID 顯示、設定按鈕、語系切換、登入)
     │   ├── AppFooter.vue         # 底部頁尾
-    │   ├── BossControlPanel.vue  # Boss 選擇面板 (收藏 Boss chips 快速切換 + Boss 種類 Tab + 頻道輸入)
+    │   ├── BossControlPanel.vue  # Boss 選擇面板 (chip 快速切換：自訂 Boss 優先 → 收藏 Boss，兩者同時存在時加分隔線；Boss 種類 Tab + 頻道輸入)
     │   ├── BossInfo.vue          # Boss 詳細資訊 (重生時間、狀態控制按鈕)
     │   ├── BossInfoItem.vue      # Boss 資訊子項目
     │   ├── BossStatusButton.vue  # Boss 狀態操作按鈕 (killed/alive/not_found)
@@ -501,7 +501,7 @@ const { t } = useI18n()
 | `@public` | `public/` |
 
 ### 開發伺服器
-- **HTTPS**: 使用本地 SSL 憑證 (`vite.pem`, `vite-key.pem`)
+- **HTTPS**: 使用本地 SSL 憑證 (`vite.pem`, `vite-key.pem`)，僅在 `isDev` 模式載入；production build（Docker）略過以避免 ENOENT 錯誤
 - **Port**: 5173
 - **Proxy**: `/api` → `https://localhost:1254` (去除 `/api` 前綴)
 

@@ -11,6 +11,7 @@
 ## ✨ 主要功能
 
 - **即時狀態追蹤** — 卡片總覽或甘特時間軸兩種視角查看 Boss 重生狀態
+- **推薦頻道** — 跨所有 Boss 種類聚合 `may_respawn` 頻道，依剩餘時間排序，一眼掌握最緊急目標
 - **多人協作房間** — 建立獨立房間，房間內所有成員即時同步
 - **WebSocket 即時更新** — 狀態變更透過 WebSocket 立即廣播到所有連線成員
 - **可拖曳自訂版面** — 拖曳調整區塊順序、1/4 至全寬四段寬度調整、Widget 收合/展開
@@ -43,7 +44,7 @@
 
 - [Docker](https://www.docker.com/) & Docker Compose
 - [uv](https://github.com/astral-sh/uv) — Python 套件管理
-- Node.js 18+, npm
+- Node.js 22+, npm
 
 ### 第 1 步：設定後端環境變數
 
@@ -145,13 +146,22 @@ docker compose -f docker-compose.local.yaml --env-file ./app/.env up --build
 
 ## 🏗️ Docker 建置與部署
 
-### 建置映像並推送
+### CI/CD 自動部署（推薦）
+
+專案已整合 GitHub Actions。將變更推送至指定分支後，workflow 會自動：
+1. 建置後端 / 前端 Docker 映像（前端以 build-args 注入 Vite 環境變數）
+2. 推送至 Harbor Registry
+3. SSH 進正式機執行 `docker compose pull && up -d`
+
+所需 GitHub Secrets：`HARBOR_USERNAME`、`HARBOR_PASSWORD`、`SSH_HOST`、`SSH_USERNAME`、`SSH_PRIVATE_KEY`、`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等。
+
+### 手動建置（本地測試用）
 
 ```bash
 # 設定版本號
 export REMOTE_REGISTRY_IP=harbor.jaao.tw
-export BACKEND_VERSION=2.6.0
-export FRONTEND_VERSION=2.6.0
+export BACKEND_VERSION=2.6.8
+export FRONTEND_VERSION=2.6.8
 
 docker compose build
 docker push ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
@@ -180,7 +190,7 @@ boss-timing/
 │   ├── database/               # ORM 模型 & 資料庫連線
 │   ├── routers/                # API 路由 (auth / rooms / bosses / websocket / system)
 │   ├── schemas/                # Pydantic 資料模型
-│   ├── services/               # 業務邏輯
+│   ├── services/               # 業務邏輯（boss / room / auth / notification_policy）
 │   ├── tasks/                  # Celery 非同步任務 (Discord Webhook、房間清理)
 │   ├── websocket/              # WebSocket ConnectionManager
 │   ├── celery_app.py           # Celery 設定
@@ -191,7 +201,7 @@ boss-timing/
 │   ├── src/
 │   │   ├── components/         # Vue 元件（boss / channel / layout / record / settings / ui）
 │   │   ├── composables/        # Composables（useLayoutConfig, useSettings, useBossAlerts…）
-│   │   ├── stores/             # Pinia 狀態（user / room / boss / websocket）
+│   │   ├── stores/             # Pinia 狀態（user / room / boss / websocket / recordHistory / appInfo）
 │   │   ├── views/              # 頁面視圖（BossTracker, RoomSelection, UserGuide…）
 │   │   ├── locales/            # i18n 翻譯（zh / en）
 │   │   └── main.ts

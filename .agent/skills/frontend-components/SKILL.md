@@ -27,7 +27,7 @@ frontend/src/
 │   ├── AppFooter.vue             ← 全域頁尾（保留頂層）
 │   │
 │   ├── boss/                     ← Boss 相關
-│   │   ├── BossControlPanel.vue  ← 收藏 Boss chips 快速切換 + Boss 種類 Tab + 頻道輸入
+│   │   ├── BossControlPanel.vue  ← chip 快速切換（自訂 Boss 優先 → 收藏 Boss，兩者同時存在時加分隔線）+ Boss 種類 Tab + 頻道輸入
 │   │   ├── BossInfo.vue
 │   │   ├── BossInfoItem.vue
 │   │   └── BossStatusButton.vue
