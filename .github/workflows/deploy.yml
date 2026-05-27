@@ -7,6 +7,8 @@ on:
     paths-ignore:
       - '**.md'
       - '.agent/**'
+      - '.agents/**'
+      - '.claude/**'
       - 'docs/**'
 
 env:
