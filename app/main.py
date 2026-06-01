@@ -11,7 +11,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.dependencies import limiter, rate_limit_exceeded_handler
 from app.config import settings
-from app.routers import rooms, bosses, auth, websocket, system # 引入 admin
+from app.routers import rooms, bosses, auth, websocket, system, feedback # 引入 admin
 from app.tasks.cleanup import cleanup_inactive_rooms
 from app.websocket.manager import ConnectionManager
 from app.dependencies import get_connection_manager
@@ -84,6 +84,7 @@ app.include_router(bosses.router, dependencies=[Depends(check_maintenance_mode)]
 app.include_router(auth.router) # auth.router 不受維護模式影響
 app.include_router(websocket.router, dependencies=[Depends(check_maintenance_mode)])
 app.include_router(system.router) # system.router 不受維護模式影響
+app.include_router(feedback.router, dependencies=[Depends(check_maintenance_mode)])
 
 @app.get("/health")
 async def health_check():

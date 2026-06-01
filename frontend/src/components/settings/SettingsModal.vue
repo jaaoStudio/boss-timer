@@ -15,6 +15,10 @@
         <SettingsCustomBosses />
       </el-tab-pane>
 
+      <el-tab-pane :label="t('settings.tabs.feedback')" name="feedback" lazy>
+        <SettingsFeedback />
+      </el-tab-pane>
+
       <el-tab-pane :label="t('settings.tabs.changelog')" name="changelog">
         <SettingsChangelog />
       </el-tab-pane>
@@ -35,6 +39,7 @@ import SettingsPreferences from '@/components/settings/SettingsPreferences.vue'
 import SettingsChangelog from '@/components/settings/SettingsChangelog.vue'
 import SettingsSupport from '@/components/settings/SettingsSupport.vue'
 import SettingsCustomBosses from '@/components/settings/SettingsCustomBosses.vue'
+import SettingsFeedback from '@/components/settings/SettingsFeedback.vue'
 
 const { t } = useI18n()
 const { roomId } = storeToRefs(useRoomStore())

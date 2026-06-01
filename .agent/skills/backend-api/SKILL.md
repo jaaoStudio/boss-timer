@@ -26,17 +26,20 @@ app/
 ├── schemas/
 │   ├── auth.py          # 認證相關 Pydantic 模型
 │   ├── boss.py          # Boss 相關 Pydantic 模型
-│   └── room.py          # 房間相關 Pydantic 模型
+│   ├── room.py          # 房間相關 Pydantic 模型
+│   └── feedback.py      # 回饋 / 許願 Pydantic 模型 (Type/Status enum)
 ├── routers/
 │   ├── auth.py          # /auth 路由
 │   ├── rooms.py         # /room 路由
 │   ├── bosses.py        # /boss 路由
 │   ├── websocket.py     # /ws 路由
-│   └── system.py        # /system 路由 (管理員)
+│   ├── system.py        # /system 路由 (管理員)
+│   └── feedback.py      # /feedback 路由 (含 admin patch/delete)
 └── services/
-    ├── auth_service.py  # 認證業務邏輯
-    ├── boss_service.py  # Boss 業務邏輯
-    └── room_service.py  # 房間業務邏輯
+    ├── auth_service.py     # 認證業務邏輯
+    ├── boss_service.py     # Boss 業務邏輯
+    ├── room_service.py     # 房間業務邏輯
+    └── feedback_service.py # 回饋業務邏輯 (含 10/day rate limit、toggle vote)
 ```
 
 ---
@@ -143,6 +146,18 @@ async def get_room_state(db, room_id) -> dict:
 |---|---|---|---|
 | GET | `/system/maintenance-info` | 無 | 讀取維護模式 |
 | POST | `/system/maintenance-config` | Admin | 更新維護模式 |
+
+### 回饋 / 許願 (`/feedback`)
+| Method | Path | Auth | Rate Limit | 說明 |
+|---|---|---|---|---|
+| GET | `/feedback/` | 匿名可看 | 60/min | 取得清單；`sort=votes\|newest`；pending/rejected 僅自己 / admin 看得到，done 永遠排最下 |
+| POST | `/feedback/` | 登入 | 20/min | 建立回饋（pending）；同帳號每日上限 10 筆（Service 端檢查，超過回 429） |
+| POST | `/feedback/{id}/vote` | 登入 | 60/min | Toggle 投票；回 `{ voted, vote_count }`；pending/rejected 不可投 |
+| PATCH | `/feedback/{id}` | Admin | 60/min | 更新狀態（pending → open 視為核准） |
+| DELETE | `/feedback/{id}` | Admin | 30/min | 硬刪除（CASCADE 刪 votes） |
+
+> 路由註冊在 `main.py`，受 `check_maintenance_mode` dependency 保護。
+> 不依賴 `verify_user_session`——`/feedback/` GET 對匿名開放；其他 endpoint 用自訂 `_require_user` / `get_current_admin_user` 強制登入。
 
 ---
 

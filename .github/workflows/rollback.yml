@@ -1,0 +1,17 @@
+# .github/workflows/rollback.yml
+name: Rollback
+
+on:
+  workflow_dispatch:  # 手動觸發，在 GitHub UI 上按按鈕
+
+jobs:
+  rollback:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Rollback to previous slot
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          script: ~/boss-tracker/rollback.sh

@@ -164,9 +164,21 @@ services:
 ### 根目錄 `.env` (Docker Compose 專用)
 ```
 REMOTE_REGISTRY_IP=harbor.jaao.tw
-BACKEND_VERSION=2.6.1
-FRONTEND_VERSION=2.4.1
+
+# 本地 docker-compose.yaml / docker-compose.prod.yaml 用的 image tag
+# CI 推 Harbor 的 tag 永遠是 git SHA + latest，與此處無關
+BACKEND_VERSION=2.7.0
+FRONTEND_VERSION=2.7.0
+
+# 正式機 blue/green 部署用的 tag
+# deploy.sh 在每次部署時用 git SHA 覆寫這三個值
+# 這裡只是 repo 內的初始預設值，實際 prod 跑的版本看正式機 .env
+ACTIVE_TAG=2.7.0
+BLUE_TAG=2.7.0
+GREEN_TAG=2.7.0
 ```
+
+> ⚠️ 真正影響後端 `/health` 顯示版本號的是 `app/.env` 的 `VERSION` 環境變數（讀進 `app/config.py` 的 `settings.version`），跟以上根目錄變數沒關係。
 
 ### `app/.env` (後端應用程式)
 ```
@@ -229,15 +241,30 @@ uv run alembic upgrade head
 
 ### CI/CD 自動部署（主要流程）
 
-專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到指定分支後自動執行：
+專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到 `main` 分支後自動執行：
 
-1. **建置後端映像** — context 為專案根目錄，推送 `harbor.jaao.tw/boss_service/boss_service:<sha>`
+1. **建置後端映像** — context 為專案根目錄，推送 `harbor.jaao.tw/boss_service/boss_service:<sha>` + `:latest`
 2. **建置前端映像** — 透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等），推送至 Harbor
-3. **SSH 部署** — 登入正式機執行 `docker compose pull && docker compose up -d`
+3. **SSH 部署** — 登入正式機執行 `~/boss-tracker/deploy.sh ${{ github.sha }}`
 
-所需 GitHub Secrets：`HARBOR_USERNAME`、`HARBOR_PASSWORD`、`SSH_HOST`、`SSH_USERNAME`、`SSH_PRIVATE_KEY`，以及所有 `VITE_*` 環境變數。
+所需 GitHub Secrets：`HARBOR_URL`、`HARBOR_USER`、`HARBOR_PASSWORD`、`VM_HOST`、`VM_USER`、`VM_SSH_KEY`，以及所有 `VITE_*` 環境變數。
 
 > ⚠️ 前端 Vite 環境變數是**建置時**注入的（`ARG` → `ENV`），CI 透過 `build-args` 傳入；本機 Docker build 須手動指定，否則會使用空值。
+
+### Blue/Green 部署（正式機 `deploy.sh`）
+
+正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換：
+
+1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
+2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
+3. `docker compose pull` 拉新 image
+4. `docker compose run --rm <service> alembic upgrade head` 跑 migration（只跑一次）
+5. `docker compose up -d` 起 next slot 容器
+6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
+7. `sed` 改 Traefik 設定切流量到 next slot（Traefik 自動偵測檔案變更）
+8. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
+
+回滾：把 Traefik 設定改回前一個 slot 即可（前一版容器還活著）。
 
 ### 手動建置（本地測試用）
 

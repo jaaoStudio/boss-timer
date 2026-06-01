@@ -1,7 +1,7 @@
 # app/database/models.py
 from sqlalchemy import (
     Column, String, Integer, DateTime, Text, ForeignKey, Index, Boolean,
-    CheckConstraint, func, BigInteger
+    CheckConstraint, UniqueConstraint, func, BigInteger
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.dialects.postgresql import JSONB
@@ -105,6 +105,62 @@ class BossRecord(Base):
     boss_type = relationship("BossType", back_populates="records")
     recorder = relationship("User", back_populates="records")
 
+
+
+class FeedbackItem(Base):
+    __tablename__ = "feedback_items"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    type = Column(String(20), nullable=False)  # 'bug' | 'feature'
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    # 'pending' | 'open' | 'planning' | 'done' | 'rejected'
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        CheckConstraint("type IN ('bug', 'feature')", name="check_feedback_type"),
+        CheckConstraint(
+            "status IN ('pending', 'open', 'planning', 'done', 'rejected')",
+            name="check_feedback_status",
+        ),
+        Index("idx_feedback_items_status_created", "status", "created_at"),
+        Index("idx_feedback_items_created_by", "created_by"),
+    )
+
+    creator = relationship("User", backref="feedback_items")
+    votes = relationship(
+        "FeedbackVote",
+        back_populates="feedback",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class FeedbackVote(Base):
+    __tablename__ = "feedback_votes"
+
+    id = Column(BigInteger, primary_key=True, autoincrement=True)
+    feedback_id = Column(
+        BigInteger,
+        ForeignKey("feedback_items.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("feedback_id", "user_id", name="uq_feedback_vote_user"),
+        Index("idx_feedback_votes_feedback", "feedback_id"),
+    )
+
+    feedback = relationship("FeedbackItem", back_populates="votes")
+    user = relationship("User")
 
 
 class RefreshToken(Base):

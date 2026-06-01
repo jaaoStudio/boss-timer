@@ -5,6 +5,21 @@
     </p>
 
     <div class="flex flex-col gap-3">
+      <!-- GitHub Star -->
+      <a
+        href="https://github.com/jaaoStudio/boss-timer"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="flex items-center gap-3 p-4 rounded-xl border-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/30 hover:bg-gray-100 dark:hover:bg-gray-800/60 transition-colors group no-underline"
+      >
+        <StarIcon class="w-6 h-6 text-yellow-500 shrink-0" />
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-gray-800 dark:text-gray-200 text-sm">{{ t('settings.support.githubLabel') }}</div>
+          <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.support.githubDesc') }}</div>
+        </div>
+        <ArrowTopRightOnSquareIcon class="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-yellow-500 transition-colors shrink-0" />
+      </a>
+
       <!-- Buy Me a Coffee -->
       <a
         href="https://buymeacoffee.com/jack580936"
@@ -45,6 +60,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { ArrowTopRightOnSquareIcon } from '@heroicons/vue/24/outline'
+import { StarIcon } from '@heroicons/vue/24/solid'
 
 const { t } = useI18n()
 </script>
