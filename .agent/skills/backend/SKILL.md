@@ -43,25 +43,28 @@ app/
 │
 ├── database/
 │   ├── database.py        # SQLAlchemy engine（pool_pre_ping=True）、SessionLocal、Base、get_db()
-│   └── models.py          # ORM 模型定義 (User, Room, BossType, BossRecord, RoomUser, RefreshToken)
+│   └── models.py          # ORM 模型定義 (User, Room, BossType, BossRecord, FeedbackItem, FeedbackVote, RefreshToken)
 │
 ├── schemas/
 │   ├── auth.py            # Pydantic 資料模型: 認證相關 (Login, Token, User, Session, RecorderInfo)
 │   ├── boss.py            # Pydantic 資料模型: Boss 相關 (BossRecordCreate, BossRecordResponse, BossTypeResponse)
-│   └── room.py            # Pydantic 資料模型: 房間相關 (RoomCreate, RoomResponse, RoomExists, RoomSettingsUpdate)
+│   ├── room.py            # Pydantic 資料模型: 房間相關 (RoomCreate, RoomResponse, RoomExists, RoomSettingsUpdate)
+│   └── feedback.py        # Pydantic 資料模型: 回饋 / 許願 (FeedbackCreate, FeedbackResponse, FeedbackStatusUpdate, FeedbackVoteResponse)
 │
 ├── routers/
 │   ├── auth.py            # 認證路由: Google 登入、Token 刷新/驗證、登出、Session 初始化、偏好設定
 │   ├── rooms.py           # 房間路由: 建立房間、檢查房間是否存在、更新房間設定
 │   ├── bosses.py          # Boss 路由: 取得 Boss 類型列表、刪除(撤銷)紀錄
 │   ├── websocket.py       # WebSocket 路由: 連線管理、訊息處理 (join/leave/record_boss)
-│   └── system.py          # 系統路由: 維護模式資訊讀取/更新 (管理員限定)
+│   ├── system.py          # 系統路由: 維護模式資訊讀取/更新 (管理員限定)
+│   └── feedback.py        # 回饋路由: 清單 / 提交 / Toggle 投票 / Admin 改狀態 / 刪除
 │
 ├── services/
 │   ├── auth_service.py          # 認證服務: Google Token 驗證、JWT 生成/驗證、使用者 CRUD、偏好設定
 │   ├── boss_service.py          # Boss 服務: 重生時間計算、紀錄寫入、WebSocket 廣播
 │   ├── notification_policy.py   # Discord 通知策略: 即時推播 + Celery 預警排程（從 boss_service 提取）
-│   └── room_service.py          # 房間服務: 房間建立/查詢、使用者加入/離開房間、取得房間完整狀態
+│   ├── room_service.py          # 房間服務: 房間建立/查詢、使用者加入/離開房間、取得房間完整狀態
+│   └── feedback_service.py      # 回饋服務: 可見性過濾、10/day rate limit、toggle 投票、狀態管理
 │
 ├── websocket/
 │   ├── manager.py         # ConnectionManager: 連線追蹤、房間訂閱、Room 廣播、全域廣播
@@ -141,6 +144,34 @@ app/
 - `status == 'killed'` 且 `now >= min_respawn_time` → `may_respawn`
 - `status == 'killed'` 其他 → `respawning`
 - 其他 → 原始 status
+
+### FeedbackItem
+| 欄位 | 類型 | 說明 |
+|---|---|---|
+| `id` | `BigInteger` PK | 主鍵 |
+| `type` | `String(20)` | `bug` / `feature`（CheckConstraint）|
+| `title` | `String(200)` | 必填 |
+| `description` | `Text` nullable | 選填 |
+| `status` | `String(20)` | `pending` / `open` / `planning` / `done` / `rejected`（CheckConstraint），預設 `pending` |
+| `created_by` | FK → User (nullable) | `ondelete="SET NULL"` |
+| `created_at` | `DateTime(tz)` | 建立時間 |
+
+**索引**: `(status, created_at)`、`(created_by)`
+
+**可見性規則**（Service 層處理）:
+- `pending` / `rejected` 只有 `created_by == viewer` 或 admin 看得到
+- 其他狀態所有人可見
+
+### FeedbackVote
+| 欄位 | 類型 | 說明 |
+|---|---|---|
+| `id` | `BigInteger` PK | 主鍵 |
+| `feedback_id` | FK → FeedbackItem | `ondelete="CASCADE"` |
+| `user_id` | FK → User | `ondelete="CASCADE"` |
+| `created_at` | `DateTime(tz)` | 建立時間 |
+
+**約束**: `UNIQUE(feedback_id, user_id)` — 一帳號一票
+**投票邏輯**: Service 層 `toggle_vote()`，已有紀錄則 DELETE、沒紀錄則 INSERT
 
 ### RoomUser (多對多關聯)
 | 欄位 | 類型 | 說明 |
@@ -339,6 +370,15 @@ ConnectionManager
 |---|---|---|---|
 | GET | `/system/maintenance-info` | 無 | 讀取維護模式設定 |
 | POST | `/system/maintenance-config` | Admin | 更新維護模式設定 + WebSocket 廣播 |
+
+### 回饋 / 許願 (`/feedback`)
+| Method | Path | Auth | Rate Limit | 說明 |
+|---|---|---|---|---|
+| GET | `/feedback/` | 匿名可看 | 60/min | 取得清單；`sort=votes\|newest`；pending/rejected 僅自己 / admin 可見，done 永遠排最下 |
+| POST | `/feedback/` | 登入 | 20/min | 建立回饋（pending）；同帳號每日上限 10 筆 |
+| POST | `/feedback/{id}/vote` | 登入 | 60/min | Toggle 投票（一帳號一票） |
+| PATCH | `/feedback/{id}` | Admin | 60/min | 更新狀態（含 pending → open 核准） |
+| DELETE | `/feedback/{id}` | Admin | 30/min | 硬刪除（含投票 CASCADE） |
 
 ### WebSocket (`/ws`)
 | Method | Path | 說明 |

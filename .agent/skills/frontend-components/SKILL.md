@@ -50,12 +50,14 @@ frontend/src/
 │   ├── room/                     ← 房間操作
 │   │   └── RoomManager.vue
 │   │
-│   ├── settings/                 ← 設定彈窗（通知、音效、Webhook、自訂 Boss）
+│   ├── settings/                 ← 設定彈窗（通知、音效、Webhook、自訂 Boss、回饋 / 許願）
 │   │   ├── SettingsModal.vue
 │   │   ├── SettingsPreferences.vue
 │   │   ├── SettingsChangelog.vue
-│   │   ├── SettingsSupport.vue
-│   │   └── SettingsCustomBosses.vue
+│   │   ├── SettingsSupport.vue          ← 含 GitHub Star CTA + 贊助連結
+│   │   ├── SettingsCustomBosses.vue
+│   │   └── SettingsFeedback.vue         ← 回饋 / 許願 Tab：提交、投票、Admin 審核
+
 │   │
 │   └── ui/                       ← 通用 UI 元件
 │       ├── AdBanner.vue
@@ -334,7 +336,10 @@ const { t } = useI18n()
 | `recordItem.*` | 單筆紀錄 |
 | `status.*` | 狀態標籤文字 |
 | `recentRooms.*` | 最近房間 |
-| `settings.*` | 設定彈窗（通知、音效、Webhook） |
+| `settings.*` | 設定彈窗（通知、音效、Webhook、自訂 Boss） |
+| `settings.feedback.*` | 回饋 / 許願 Tab（提交表單、清單、狀態 badge、Admin 動作） |
+| `settings.support.*` | 支持開發頁（含 `githubLabel` / `githubDesc` 的 GitHub Star CTA） |
+| `settings.tabs.feedback` | Tab 標題：「回饋 / 許願」/「Feedback」 |
 | `notification.*` | 瀏覽器通知文字 |
 | `layout.*` | 版面編輯模式工具列與自訂版面（含 `collapse/expand/narrower/wider`） |
 | `appFooter.*` | 頁尾 |

@@ -105,6 +105,41 @@ def current_status(self) -> str:
 | `anonymous_session_id` | nullable（登入時為 NULL）|
 | 約束 | `user_id` 或 `anonymous_session_id` 至少一個非 NULL |
 
+### FeedbackItem
+| 欄位 | 類型 | 備註 |
+|---|---|---|
+| `id` | `BigInteger` PK | autoincrement |
+| `type` | `String(20)` | `'bug' \| 'feature'`，CheckConstraint |
+| `title` | `String(200)` | 必填 |
+| `description` | `Text` nullable | 選填 |
+| `status` | `String(20)` | `pending/open/planning/done/rejected`，CheckConstraint，預設 `pending` |
+| `created_by` | FK → User (nullable) | `ondelete="SET NULL"` |
+| `created_at` | `DateTime(tz)` | `server_default=func.now()` |
+
+**索引**:
+| 索引 | 欄位 | 用途 |
+|---|---|---|
+| `idx_feedback_items_status_created` | `(status, created_at)` | 清單依狀態 + 時間排序 |
+| `idx_feedback_items_created_by` | `(created_by)` | 找某使用者所有提交（含自己的 pending）|
+
+**可見性規則（在 Service 層處理，非 DB 約束）**:
+- `pending` / `rejected`：只有 `created_by == viewer` 或 admin 可見
+- 其他狀態：所有人可見
+
+### FeedbackVote
+| 欄位 | 類型 | 備註 |
+|---|---|---|
+| `id` | `BigInteger` PK | autoincrement |
+| `feedback_id` | FK → FeedbackItem | `ondelete="CASCADE"` |
+| `user_id` | FK → User | `ondelete="CASCADE"` |
+| `created_at` | `DateTime(tz)` | `server_default=func.now()` |
+
+**約束**:
+- `UNIQUE(feedback_id, user_id)` (`uq_feedback_vote_user`) — 一帳號一票
+- `idx_feedback_votes_feedback` 索引在 `(feedback_id)` — 加速票數聚合
+
+**投票邏輯（toggle）**: 由 Service 層的 `toggle_vote()` 處理：有紀錄就 DELETE、沒紀錄就 INSERT，回傳 `(voted_now, vote_count)`。
+
 ---
 
 ## 新增 ORM Model 欄位的步驟

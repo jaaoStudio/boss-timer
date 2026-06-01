@@ -106,7 +106,7 @@ frontend/
     │   ├── RecordHistory.vue     # 歷史紀錄列表 (含刪除功能)
     │   ├── RecordItem.vue        # 單筆歷史紀錄項目 (含垃圾桶刪除按鈕)
     │   ├── RoomManager.vue       # 房間管理元件 (建立/加入房間)
-    │   ├── SettingsModal.vue     # 設定彈窗 (通知、音效、偏好、Discord Webhook)
+    │   ├── SettingsModal.vue     # 設定彈窗 (通知、音效、偏好、Discord Webhook、自訂 Boss、回饋 / 許願)
     │   └── StatusBadge.vue       # 狀態標籤 (alive/killed/respawning/may_respawn)
     │
     ├── views/                    # 頁面視圖 (對應路由)
