@@ -156,7 +156,45 @@
       "preferences": "系統設定",
       "changelog": "更新日誌",
       "support": "支持開發",
-      "customBoss": "自訂 Boss"
+      "customBoss": "自訂 Boss",
+      "feedback": "回饋 / 許願"
+    },
+    "feedback": {
+      "loginToSubmit": "登入 Google 帳號後即可提交回饋與投票。",
+      "submitTitle": "我有想法",
+      "titlePlaceholder": "標題（必填）",
+      "descPlaceholder": "描述（選填）",
+      "submit": "送出",
+      "submitSuccess": "已送出，等候站長審核",
+      "submitFailed": "送出失敗",
+      "rateLimited": "每天最多提交 10 筆，請明天再試",
+      "listTitle": "大家的回饋",
+      "sortVotes": "票數",
+      "sortNewest": "最新",
+      "loading": "載入中...",
+      "loadFailed": "載入失敗",
+      "empty": "目前還沒有任何回饋，當第一個吧！",
+      "anonymous": "匿名",
+      "voteFailed": "投票失敗",
+      "statusUpdated": "狀態已更新",
+      "statusUpdateFailed": "狀態更新失敗",
+      "delete": "刪除",
+      "cancel": "取消",
+      "deleteTitle": "刪除回饋",
+      "deleteConfirm": "刪除後無法復原，確定嗎？",
+      "deleteSuccess": "已刪除",
+      "deleteFailed": "刪除失敗",
+      "type": {
+        "bug": "Bug",
+        "feature": "許願"
+      },
+      "status": {
+        "pending": "待審核",
+        "open": "公開徵集",
+        "planning": "規劃中",
+        "done": "已完成",
+        "rejected": "已拒絕"
+      }
     },
     "customBoss": {
       "addTitle": "新增自訂 Boss",
@@ -214,6 +252,8 @@
     "uploadSuccess": "音效上傳成功！",
     "support": {
       "message": "如果 Boss Timer 對您有幫助，歡迎請開發者喝杯啤酒！您的支持是持續開發的最大動力 ❤️",
+      "githubLabel": "GitHub 給顆星星 ⭐",
+      "githubDesc": "幫我按個星星，拜託啦！",
       "payuniLabel": "台灣贊助 (PayUni)",
       "payuniMethods": "信用卡 / ATM",
       "thankyou": "感謝每一位贊助者，讓這個工具得以持續進步！"
@@ -270,6 +310,14 @@
     "recordNotFound": "找不到此紀錄（可能已被刪除）"
   },
   "changelog": {
+    "v2_7_0": {
+      "title": "v2.7.0",
+      "date": "2026-06-01",
+      "items": [
+        "新增：回饋 / 許願 Tab（設定 > 回饋 / 許願），可提交 Bug 或許願，登入後可對其他人的提案投票，熱門需求自動排在最上面",
+        "新增：「支持開發」頁加入 GitHub Star 連結，不花一毛錢就能幫助專案被更多人看到"
+      ]
+    },
     "v2_6_6": {
       "title": "v2.6.6",
       "date": "2026-05-22",

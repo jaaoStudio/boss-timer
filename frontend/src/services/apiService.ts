@@ -38,6 +38,36 @@ interface RecordHistoryPage {
   next_cursor: number | null
 }
 
+export type FeedbackType = 'bug' | 'feature'
+export type FeedbackStatus = 'pending' | 'open' | 'planning' | 'done' | 'rejected'
+
+export interface FeedbackItem {
+  id: number
+  type: FeedbackType
+  title: string
+  description: string | null
+  status: FeedbackStatus
+  created_at: string
+  vote_count: number
+  voted_by_me: boolean
+  creator: {
+    id: number
+    display_name: string
+    avatar_url: string | null
+  } | null
+}
+
+interface FeedbackListResponse {
+  items: FeedbackItem[]
+  total: number
+}
+
+interface FeedbackVoteResponse {
+  feedback_id: number
+  voted: boolean
+  vote_count: number
+}
+
 class ApiService {
   private client: typeof bossService
 
@@ -128,6 +158,26 @@ class ApiService {
 
   deleteCustomBossType(roomId: string, bossTypeId: number): Promise<void> {
     return this.client.delete(`/boss/room/${roomId}/boss-types/${bossTypeId}`).then(() => undefined)
+  }
+
+  listFeedback(sort: 'votes' | 'newest' = 'votes'): Promise<FeedbackListResponse> {
+    return this.client.get<FeedbackListResponse>('/feedback/', { params: { sort } }).then(res => res.data)
+  }
+
+  createFeedback(payload: { type: FeedbackType; title: string; description?: string }): Promise<FeedbackItem> {
+    return this.client.post<FeedbackItem>('/feedback/', payload).then(res => res.data)
+  }
+
+  voteFeedback(feedbackId: number): Promise<FeedbackVoteResponse> {
+    return this.client.post<FeedbackVoteResponse>(`/feedback/${feedbackId}/vote`).then(res => res.data)
+  }
+
+  updateFeedbackStatus(feedbackId: number, status: FeedbackStatus): Promise<FeedbackItem> {
+    return this.client.patch<FeedbackItem>(`/feedback/${feedbackId}`, { status }).then(res => res.data)
+  }
+
+  deleteFeedback(feedbackId: number): Promise<void> {
+    return this.client.delete(`/feedback/${feedbackId}`).then(() => undefined)
   }
 
   createWebSocket(): WebSocket {

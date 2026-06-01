@@ -156,7 +156,45 @@
       "preferences": "Preferences",
       "changelog": "Changelog",
       "support": "Support",
-      "customBoss": "Custom Boss"
+      "customBoss": "Custom Boss",
+      "feedback": "Feedback"
+    },
+    "feedback": {
+      "loginToSubmit": "Sign in with Google to submit feedback and vote.",
+      "submitTitle": "Got an idea?",
+      "titlePlaceholder": "Title (required)",
+      "descPlaceholder": "Description (optional)",
+      "submit": "Submit",
+      "submitSuccess": "Submitted, awaiting moderation",
+      "submitFailed": "Submission failed",
+      "rateLimited": "Daily limit is 10 submissions, try again tomorrow",
+      "listTitle": "Community Feedback",
+      "sortVotes": "Top",
+      "sortNewest": "Newest",
+      "loading": "Loading...",
+      "loadFailed": "Failed to load",
+      "empty": "No feedback yet — be the first!",
+      "anonymous": "Anonymous",
+      "voteFailed": "Failed to vote",
+      "statusUpdated": "Status updated",
+      "statusUpdateFailed": "Failed to update status",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "deleteTitle": "Delete Feedback",
+      "deleteConfirm": "This action cannot be undone. Are you sure?",
+      "deleteSuccess": "Deleted",
+      "deleteFailed": "Failed to delete",
+      "type": {
+        "bug": "Bug",
+        "feature": "Feature"
+      },
+      "status": {
+        "pending": "Pending",
+        "open": "Open",
+        "planning": "Planned",
+        "done": "Done",
+        "rejected": "Rejected"
+      }
     },
     "customBoss": {
       "addTitle": "Add Custom Boss",
@@ -214,6 +252,8 @@
     "uploadSuccess": "Sound uploaded successfully!",
     "support": {
       "message": "If Boss Timer has been helpful to you, feel free to buy the developer a coffee! Your support keeps this tool going ❤️",
+      "githubLabel": "Star on GitHub ⭐",
+      "githubDesc": "Free way to show your support — please!",
       "payuniLabel": "Taiwan Donation (PayUni)",
       "payuniMethods": "Credit Card / ATM",
       "thankyou": "Thank you to everyone who has supported this project!"
@@ -270,6 +310,14 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_7_0": {
+      "title": "v2.7.0",
+      "date": "2026-06-01",
+      "items": [
+        "New: Feedback / Wishlist tab (Settings > Feedback). Submit bugs or feature ideas; sign in to upvote others' suggestions. Most-wanted items rise to the top automatically.",
+        "New: Added a GitHub Star link to the Support page — a free way to help the project reach more players."
+      ]
+    },
     "v2_6_6": {
       "title": "v2.6.6",
       "date": "2026-05-22",
