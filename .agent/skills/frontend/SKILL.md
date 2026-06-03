@@ -175,6 +175,7 @@ frontend/
 **核心 Actions**:
 - `updateBossRecord(record)` — 根據 `(channel, boss_type_id)` 更新或新增記錄
 - `deleteBossRecord(recordId)` — 從本地 `bossRecords` 中移除指定紀錄
+- `clearBossTypeRecords(bossTypeId)` — 移除 `bossRecords` 中所有該 Boss 種類的紀錄（收到 `boss_type_cleared` WS 事件時呼叫）
 - `startStatusTick()` / `stopStatusTick()` — 啟動/停止每秒 tick `_now` 的 interval（由 `useRoomSession` 管理生命週期）
 
 **`calculateCurrentStatus` (exported)**:
@@ -235,6 +236,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 | `room_state` | → `bossStore.setBossRecords()` + `roomStore.setUserCount()` |
 | `boss_update` | → `bossStore.updateBossRecord()` + `recordHistoryStore.upsertRecord()` |
 | `record_deleted` | → `bossStore.deleteBossRecord(record_id)` + `recordHistoryStore.removeRecord(record_id)` |
+| `boss_type_cleared` | → `bossStore.clearBossTypeRecords(boss_type_id)` |
 | `user_count_update` | → `roomStore.setUserCount()` |
 | `error` | `console.error` |
 

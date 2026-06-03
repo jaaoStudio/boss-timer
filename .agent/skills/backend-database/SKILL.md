@@ -46,6 +46,7 @@ alembic/
 | `discord_webhook_enabled` | `Boolean` | `server_default='false'` |
 | `webhook_notify_events` | `JSONB` | `["killed","alive","not_found"]` |
 | `webhook_alert_type` | `String(20)` | `min/max/both/none`，預設 `none` |
+| `last_cleared_at` | `JSONB` | 各 Boss 種類最後清除時間（key = boss_type_id str），`server_default='{}'` |
 
 ### BossRecord
 | 欄位 | 類型 | 備註 |

@@ -112,6 +112,7 @@ app/
 | `is_active` | `Boolean` | 是否存活 (超過 7 天標記為 False) |
 | `discord_webhook_url` | `String(1000)` nullable | Discord Webhook URL |
 | `webhook_alert_type` | `String(20)` nullable | 預警模式: `min`, `max`, `both`, `none` |
+| `last_cleared_at` | `JSONB` | 各 Boss 種類的最後清除時間（key = boss_type_id str, value = ISO timestamp），`server_default='{}'` |
 
 ### BossType
 | 欄位 | 類型 | 說明 |
@@ -290,6 +291,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types) |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
 | `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "..." }`) |
+| `boss_type_cleared` | 某 Boss 種類頻道總覽被清除（`{ "boss_type_id": N, "cleared_at": "..." }`） |
 | `user_count_update` | 房間內目前連線人數 (`{ "count": N }`) |
 | `maintenance_status_update` | 維護模式狀態變更 |
 | `error` | 錯誤訊息 |
@@ -364,6 +366,7 @@ ConnectionManager
 | GET | `/boss/boss-types` | 無 | 取得所有 Boss 類型列表 |
 | GET | `/boss/room/{room_id}/records` | Session | 歷史紀錄 cursor 分頁（`before_id` / `limit` / `start` / `end` / `boss_type_id`） |
 | DELETE | `/boss/room/{room_id}/records/{record_id}` | Session | 撤銷紀錄 + 撤銷 Celery 預警任務 |
+| POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 無（任何人） | 清除指定 Boss 種類頻道總覽、撤銷 Celery 預警、廣播 `boss_type_cleared`，10/min |
 
 ### 系統 (`/system`)
 | Method | Path | Auth | 說明 |

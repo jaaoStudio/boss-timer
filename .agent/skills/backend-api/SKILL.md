@@ -140,6 +140,7 @@ async def get_room_state(db, room_id) -> dict:
 | GET | `/boss/boss-types` | 取得所有 Boss 類型 |
 | GET | `/boss/room/{room_id}/records` | 歷史紀錄 cursor 分頁（`before_id`/`limit`/`start`/`end`/`boss_type_id`），回傳 `BossRecordHistoryPage`（records + has_more + next_cursor），60/min |
 | DELETE | `/boss/room/{room_id}/records/{record_id}` | 撤銷紀錄 + 撤銷 Celery 預警 |
+| POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 清除指定 Boss 種類頻道總覽（換輪用）；撤銷 Celery 預警、更新 `room.last_cleared_at`、廣播 `boss_type_cleared`；任何人可觸發，10/min |
 
 ### 系統 (`/system`)
 | Method | Path | Auth | 說明 |
