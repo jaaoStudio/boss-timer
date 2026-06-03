@@ -98,7 +98,13 @@
     "notFound": "沒有發現BOSS"
   },
   "channelOverview": {
-    "title": "頻道總覽"
+    "title": "頻道總覽",
+    "clearButton": "清除所有頻道",
+    "clearConfirmTitle": "確認清除",
+    "clearConfirmMessage": "確定要清除目前 Boss 的所有頻道紀錄並重新開始嗎？此操作將同步給所有房間成員。",
+    "clearFailed": "清除失敗，請稍後再試",
+    "clearConfirm": "確定清除",
+    "clearCancel": "取消"
   },
   "channelTimeline": {
     "noData": "目前沒有重生時間資料。",

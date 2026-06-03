@@ -1,6 +1,7 @@
 # app/routers/bosses.py
-from datetime import datetime
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
@@ -165,3 +166,55 @@ async def delete_boss_record(
     return {"message": "Record archived successfully"}
 
 
+@router.post("/room/{room_id}/boss-types/{boss_type_id}/clear")
+@limiter.limit("10/minute")
+async def clear_boss_type_records(
+    request: Request,
+    room_id: str,
+    boss_type_id: int,
+    db: Session = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
+):
+    """清除指定 Boss 種類的頻道總覽（換輪用）。任何人皆可觸發，不刪除歷史紀錄。"""
+    room = get_room_by_id(db, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    boss_type = db.query(BossType).filter(
+        BossType.id == boss_type_id,
+        or_(BossType.room_id == None, BossType.room_id == room_id),
+    ).first()
+    if not boss_type:
+        raise HTTPException(status_code=404, detail="Boss type not found")
+
+    # 撤銷該 boss_type_id 所有 active records 的 Celery 預警任務
+    active_records = db.query(BossRecord).filter(
+        BossRecord.room_id == room_id,
+        BossRecord.boss_type_id == boss_type_id,
+        BossRecord.is_archived == False,
+    ).all()
+    for record in active_records:
+        if record.celery_task_ids:
+            for task_id in record.celery_task_ids.values():
+                if task_id:
+                    celery_app.control.revoke(task_id, terminate=False)
+
+    # 更新 last_cleared_at（重新賦值整個 dict 確保 SQLAlchemy 偵測到 JSONB 變更）
+    cleared_at = datetime.now(timezone.utc)
+    updated = dict(room.last_cleared_at or {})
+    updated[str(boss_type_id)] = cleared_at.isoformat()
+    room.last_cleared_at = updated
+    db.commit()
+
+    await manager.broadcast_to_room(
+        room_id=room_id,
+        message={
+            "type": "boss_type_cleared",
+            "data": {
+                "boss_type_id": boss_type_id,
+                "cleared_at": cleared_at.isoformat(),
+            },
+        },
+    )
+
+    return {"message": "Boss type cleared successfully"}
