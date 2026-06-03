@@ -98,7 +98,13 @@
     "notFound": "not found"
   },
   "channelOverview": {
-    "title": "Channel Overview"
+    "title": "Channel Overview",
+    "clearButton": "Clear All Channel",
+    "clearConfirmTitle": "Confirm Clear",
+    "clearConfirmMessage": "Clear all channel records for this boss and start a new round? This will sync to all room members.",
+    "clearFailed": "Clear failed, please try again",
+    "clearConfirm": "Clear",
+    "clearCancel": "Cancel"
   },
   "channelTimeline": {
     "noData": "No respawn data available.",

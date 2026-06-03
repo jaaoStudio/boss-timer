@@ -39,6 +39,7 @@ class Room(Base):
     discord_webhook_enabled = Column(Boolean, default=False, server_default='false', nullable=False) # Discord Webhook 全域開關
     webhook_notify_events = Column(JSONB, default=["killed", "alive", "not_found"]) # 擊殺/存活/找無通知開關
     webhook_alert_type = Column(String(20), default="none", nullable=True) # min, max, both, none
+    last_cleared_at = Column(JSONB, default=dict, server_default='{}', nullable=False)
 
     boss_records = relationship("BossRecord", back_populates="room", cascade="all, delete-orphan")
 

@@ -160,6 +160,10 @@ class ApiService {
     return this.client.delete(`/boss/room/${roomId}/boss-types/${bossTypeId}`).then(() => undefined)
   }
 
+  clearBossTypeRecords(roomId: string, bossTypeId: number): Promise<void> {
+    return this.client.post(`/boss/room/${roomId}/boss-types/${bossTypeId}/clear`).then(() => undefined)
+  }
+
   listFeedback(sort: 'votes' | 'newest' = 'votes'): Promise<FeedbackListResponse> {
     return this.client.get<FeedbackListResponse>('/feedback/', { params: { sort } }).then(res => res.data)
   }

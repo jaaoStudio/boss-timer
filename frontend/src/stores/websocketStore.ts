@@ -130,6 +130,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
     recordHistoryStore.removeRecord(data.record_id)
   }
 
+  function onBossTypeCleared(msg: WSMessage) {
+    const data = msg.data as { boss_type_id: number }
+    bossStore.clearBossTypeRecords(data.boss_type_id)
+  }
+
   function onMaintenanceStatusUpdate(msg: WSMessage) {
     appInfoStore.setMaintenanceInfo(msg.data as Parameters<typeof appInfoStore.setMaintenanceInfo>[0])
   }
@@ -155,6 +160,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     room_state: onRoomState,
     boss_update: onBossUpdate,
     record_deleted: onRecordDeleted,
+    boss_type_cleared: onBossTypeCleared,
     maintenance_status_update: onMaintenanceStatusUpdate,
     user_count_update: onUserCountUpdate,
     error: onError,

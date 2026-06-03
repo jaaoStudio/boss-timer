@@ -134,6 +134,10 @@ export const useBossStore = defineStore('boss', {
       }
     },
 
+    clearBossTypeRecords(bossTypeId: number) {
+      this.bossRecords = this.bossRecords.filter(r => r.boss_type_id !== bossTypeId)
+    },
+
     addCustomBossType(bossType: BossType) {
       this.bossTypes.push(bossType)
     },
