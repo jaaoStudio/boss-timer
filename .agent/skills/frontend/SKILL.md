@@ -7,7 +7,7 @@ description: Vue 3 前端架構、元件結構、Pinia 狀態管理、WebSocket 
 
 ## 專案總覽
 
-Artale Boss Timer 前端是一個 **Vue 3 + Vite** 單頁應用 (SPA)，提供房間制的即時 Boss 重生狀態追蹤介面。  
+Boss Timer 前端是一個 **Vue 3 + Vite** 單頁應用 (SPA)，提供房間制的即時 Boss 重生狀態追蹤介面。  
 支援 Google 帳號登入 / 匿名使用、多國語言 (i18n)、深色模式、瀏覽器通知與音效提醒。  
 支援 Discord Webhook 設定與紀錄撤銷功能。
 

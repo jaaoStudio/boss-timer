@@ -3,8 +3,8 @@
     "google": "Sign in with Google"
   },
   "roomSelection": {
-    "title": "Artale BOSS Timer",
-    "subtitle": "Real-time boss tracking for your party.",
+    "title": "Boss Timer",
+    "subtitle": "For Artale, MapleStar, and other MapleStory private servers.",
     "creatingRoom": "Creating Room...",
     "createRoom": "Create a New Room",
     "joinRoom": "Join",
@@ -44,7 +44,7 @@
     "settings": "Settings"
   },
   "appHeader": {
-    "title": "Artale BOSS Timer",
+    "title": "Boss Timer",
     "room": "Room:",
     "live": "Live",
     "offline": "Offline",
@@ -475,7 +475,7 @@
       "title": "v1.0.0 (First Release)",
       "date": "2025-07-04",
       "items": [
-        "New Artale Boss Timer system officially launched",
+        "Boss Timer officially launched",
         "Support for cross-device real-time WebSocket synchronization",
         "Credits page and attributions section added"
       ]
@@ -483,7 +483,7 @@
   },
   "guide": {
     "title": "User Guide",
-    "subtitle": "Get started with Artale Boss Timer",
+    "subtitle": "Get started with Boss Timer",
     "sections": {
       "start": {
         "title": "Create or Join a Room",

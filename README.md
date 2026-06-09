@@ -1,6 +1,6 @@
-# Artale BOSS Timer
+# BOSS Timer
 
-一個為楓之谷世界 (Artale) 設計的即時 Boss 計時器，幫助玩家和團隊高效追蹤 Boss 的重生狀態。
+一個為楓之谷世界 設計的即時 Boss 計時器，幫助玩家和團隊高效追蹤 Boss 的重生狀態。
 
 [🔗 Live Demo](https://boss-timer.jaao.tw/) ｜ [📖 使用教學](https://boss-timer.jaao.tw/guide)
 

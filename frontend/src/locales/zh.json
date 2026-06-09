@@ -3,8 +3,8 @@
     "google": "使用 Google 帳戶登入"
   },
   "roomSelection": {
-    "title": "Artale BOSS 計時器",
-    "subtitle": "為您的團隊提供即時的BOSS追蹤。",
+    "title": "Boss Timer",
+    "subtitle": "支援 Artale、楓星等楓之谷懷舊服，即時野王計時。",
     "creatingRoom": "正在建立房間...",
     "createRoom": "建立新房間",
     "joinRoom": "加入",
@@ -44,7 +44,7 @@
     "settings": "設定"
   },
   "appHeader": {
-    "title": "Artale BOSS 計時器",
+    "title": "BOSS Timer",
     "room": "房間：",
     "live": "線上",
     "offline": "離線",
@@ -475,7 +475,7 @@
       "title": "v1.0.0 (First Release)",
       "date": "2025-07-04",
       "items": [
-        "全新 Artale Boss 計時系統正式上線",
+        "全新 Boss 計時系統正式上線",
         "支援跨裝置 WebSocket 即時連線同步",
         "新增致謝頁面與貢獻者列表"
       ]
@@ -483,7 +483,7 @@
   },
   "guide": {
     "title": "使用教學",
-    "subtitle": "快速上手 Artale Boss 計時器",
+    "subtitle": "快速上手 Boss Timer",
     "sections": {
       "start": {
         "title": "建立或加入房間",

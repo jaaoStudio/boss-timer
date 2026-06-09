@@ -7,7 +7,7 @@ description: FastAPI 後端架構、資料庫模型、服務層模式、WebSocke
 
 ## 專案總覽
 
-Artale Boss Timer 是一款為楓之谷世界 (Artale) 設計的即時 Boss 重生計時器。  
+Boss Timer 是一款為楓之谷世界 (Artale, 楓星...) 設計的即時 Boss 重生計時器。  
 後端使用 **FastAPI + SQLAlchemy + PostgreSQL**，透過 **WebSocket** 實現房間內所有使用者的即時狀態同步，並透過 **Celery + Redis** 實現非同步任務佇列 (如 Discord Webhook 推播)。
 
 ---
