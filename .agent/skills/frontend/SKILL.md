@@ -490,6 +490,14 @@ const { t } = useI18n()
 
 **勿**在元件內用 `--el-color-primary: #6366f1` 覆寫單一按鈕顏色；若需品牌色請修改 `style.css` 以維持全站一致。
 
+### 全域 button reset (style.css)
+`style.css` 在 `@layer base` 中對 `button:not(.el-button)` / `[role="button"]:not(.el-button)` 設定 `background-color/border-color: transparent`，用來隔離 Element Plus 全域樣式。兩條鐵則：
+
+1. **必須放在 `@layer base` 內** — 移出 layer 後 selector specificity (0,1,1) 會蓋過 Tailwind utility class (0,1,0)，導致元件上的 `bg-*` 全部失效
+2. **用 `transparent` 不用 `initial`** — `initial` 在 button 上等於瀏覽器預設的白色 `ButtonFace`，淺色主題下會出現看不見的白底按鈕
+
+原生 `<button>` + Tailwind class 是正確做法，**勿**因樣式吃不到而改用 `<div>`（會失去鍵盤操作、`:disabled`、語意）。
+
 ---
 
 ## Vite 設定重點

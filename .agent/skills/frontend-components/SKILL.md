@@ -131,6 +131,7 @@ const props = defineProps<{
 - 使用 Tailwind v4 語法（`@tailwindcss/vite` plugin）
 - 深色模式使用 `dark:` 前綴：`dark:text-gray-300`
 - 不使用行內 style（除非 Element Plus CSS 變數覆寫）
+- 原生 `<button>` 直接用 Tailwind class 上樣式即可；`style.css` 的全域 button reset 已放在 `@layer base`，不會蓋過 utility class（詳見 frontend SKILL「全域 button reset」一節），**勿**改用 `<div>` 模擬按鈕
 
 ---
 
