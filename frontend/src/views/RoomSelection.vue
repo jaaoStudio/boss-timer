@@ -22,7 +22,7 @@
       <!-- Room Actions -->
       <div class="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md ">
         <div class="space-y-4">
-          <button @click="createRoom" :disabled="isCreating" class="w-full flex justify-center items-center px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 bg-indigo-600 border border-transparent rounded-md shadow-sm hover:!bg-gray-200 dark:hover:!bg-gray-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 cursor-pointer">
+          <button @click="createRoom" :disabled="isCreating" class="w-full flex justify-center items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 cursor-pointer">
             <svg v-if="isCreating" class="w-5 h-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             {{ isCreating ? t('roomSelection.creatingRoom') : t('roomSelection.createRoom') }}
           </button>
