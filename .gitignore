@@ -39,3 +39,10 @@ node_modules
 CLAUDE.md
 /app/db/db-init/
 
+.codegraph/
+
+# Python dev artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.egg-info/
