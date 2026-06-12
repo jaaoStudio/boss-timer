@@ -88,12 +88,12 @@
                 :placeholder="t('roomSelection.anonymousNicknamePlaceholder')"
                 class="block w-full px-3 py-2 placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
               />
-              <div
+              <button
                 type="button"
-                @click="userStore.rerollAnonymousName(locale)"
+                @click="handleReroll"
                 :title="t('roomSelection.rerollNickname')"
-                class="shrink-0 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-base"
-              >🎲</div>
+                class="shrink-0 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+              ><ArrowPathIcon :class="['w-4 h-4 transition-transform', isRerolling ? 'animate-spin [animation-duration:0.35s]' : '']" /></button>
             </div>
           </div>
           <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300 dark:border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800">{{ t('roomSelection.or') }}</span></div></div>
@@ -124,6 +124,7 @@ import GoogleLoginButton from "@/components/ui/GoogleLoginButton.vue";
 import { useI18n } from 'vue-i18n';
 import LanguageIcon from "@/assets/icons/LanguageIcon.vue";
 import {Moon, Sunny, CircleClose} from "@element-plus/icons-vue";
+import { ArrowPathIcon } from '@heroicons/vue/24/outline';
 import { isDark, toggleDark } from '@/composables/useTheme';
 import { useRecentRooms } from '@/composables/useRecentRooms';
 import { formatDistanceToNow } from 'date-fns';
@@ -139,6 +140,13 @@ const joinRoomError = ref('');
 const isCreating = ref(false);
 const isJoining = ref(false);
 const joiningRoomId = ref('');
+const isRerolling = ref(false);
+
+const handleReroll = () => {
+  userStore.rerollAnonymousName(locale.value);
+  isRerolling.value = true;
+  setTimeout(() => { isRerolling.value = false; }, 450);
+};
 
 const { recentRooms, addRecentRoom, removeRecentRoom, clearAll: clearRecentRooms } = useRecentRooms();
 
