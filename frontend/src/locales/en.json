@@ -30,7 +30,8 @@
       "loginFailed": "Login failed. Please try again.",
       "googleSignInFailed": "Google sign-in failed.",
       "logoutSuccess": "You have been logged out."
-    }
+    },
+    "rerollNickname": "Re-roll"
   },
   "roomManager": {
     "roomActions": "Room Actions",

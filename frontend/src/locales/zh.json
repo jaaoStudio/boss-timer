@@ -30,7 +30,8 @@
       "loginFailed": "登入失敗，請再試一次。",
       "googleSignInFailed": "Google 登入失敗。",
       "logoutSuccess": "您已經登出。"
-    }
+    },
+    "rerollNickname": "隨機換一個"
   },
   "roomManager": {
     "roomActions": "房間操作",

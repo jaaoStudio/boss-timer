@@ -78,15 +78,23 @@
         <div v-if="!userStore.isLoggedIn" class="text-center space-y-4">
           <div>
             <label for="anonymousName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('roomSelection.anonymousNicknameLabel') }}</label>
-            <input
-              id="anonymousName"
-              v-model="userStore.anonymousName"
-              @input="userStore.setAnonymousName(event.target.value)"
-              maxlength="20"
-              type="text"
-              :placeholder="t('roomSelection.anonymousNicknamePlaceholder')"
-              class="block w-full px-3 py-2 placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
-            />
+            <div class="flex gap-2">
+              <input
+                id="anonymousName"
+                v-model="userStore.anonymousName"
+                @input="userStore.setAnonymousName(event.target.value)"
+                maxlength="20"
+                type="text"
+                :placeholder="t('roomSelection.anonymousNicknamePlaceholder')"
+                class="block w-full px-3 py-2 placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+              />
+              <div
+                type="button"
+                @click="userStore.rerollAnonymousName(locale)"
+                :title="t('roomSelection.rerollNickname')"
+                class="shrink-0 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-base"
+              >🎲</div>
+            </div>
           </div>
           <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300 dark:border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800">{{ t('roomSelection.or') }}</span></div></div>
           <p class="text-gray-600 dark:text-gray-300 text-sm">{{ t('roomSelection.loginPrompt') }}</p>

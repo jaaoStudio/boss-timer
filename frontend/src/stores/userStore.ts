@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import apiService from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
+import { generateRandomName } from '@/utils/anonymousName';
 
 export interface User {
   id: number;
@@ -190,8 +191,16 @@ export const useUserStore = defineStore('user', {
       if (this.validateNickname(storedName)) {
         return storedName!;
       }
-      localStorage.setItem('anonymous_name', '一個路人');
-      return '一個路人'; // 預設匿名名稱
+      const locale = localStorage.getItem('language') ?? 'zh';
+      const randomName = generateRandomName(locale);
+      localStorage.setItem('anonymous_name', randomName);
+      return randomName;
+    },
+
+    rerollAnonymousName(locale: string = 'zh'): void {
+      const newName = generateRandomName(locale);
+      this.anonymousName = newName;
+      localStorage.setItem('anonymous_name', newName);
     },
 
     validateNickname(name: string | null): boolean {
