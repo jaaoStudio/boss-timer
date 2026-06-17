@@ -19,6 +19,7 @@ interface UserState {
   anonymousName: string | null;
   _channel?: BroadcastChannel;
   _initialized: boolean;
+  _initPromise?: Promise<void>;
 }
 
 export const useUserStore = defineStore('user', {
@@ -30,6 +31,7 @@ export const useUserStore = defineStore('user', {
     anonymousName: null,
     _channel: undefined,
     _initialized: false,
+    _initPromise: undefined,
   }),
   getters: {
     isAdmin(): boolean {
@@ -74,6 +76,18 @@ export const useUserStore = defineStore('user', {
         return;
       }
 
+      // App.vue onMounted 與 router beforeEach 會在首次載入時「同時」呼叫此方法，
+      // 而 _initialized 要等 await 全部跑完才在 finally 翻成 true，
+      // 不去重的話兩邊都會各打一次 /auth/session 與 /auth/validate。
+      // 用 in-flight promise 讓併發呼叫共用同一次初始化流程。
+      if (!this._initPromise) {
+        this._initPromise = this._runInitializeAuth();
+      }
+      return this._initPromise;
+    },
+
+    async _runInitializeAuth() {
+      const websocketStore = useWebSocketStore();
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
@@ -84,7 +98,16 @@ export const useUserStore = defineStore('user', {
           localStorage.setItem('anonymous_id', session.anonymous_user_id);
         }
 
-        const res = await apiService.validateToken();
+        let res = await apiService.validateToken();
+
+
+        if (!res.valid && localStorage.getItem('user_info')) {
+          const refreshed = await this.tryRefreshToken();
+          if (refreshed) {
+            res = await apiService.validateToken();
+          }
+        }
+
         if (res.valid) {
           this.user = res.user ?? null;
           this.isLoggedIn = true;
@@ -101,6 +124,18 @@ export const useUserStore = defineStore('user', {
         this.isLoading = false;
         this._initialized = true;
         websocketStore.connect();
+      }
+    },
+
+    // 嘗試用 refresh token 換新的 access token。
+    // 成功回傳 true；失敗（無 refresh cookie / 已過期）回傳 false，
+    // 由 axios interceptor 處理後續導向與提示。
+    async tryRefreshToken(): Promise<boolean> {
+      try {
+        await apiService.refresh_token();
+        return true;
+      } catch {
+        return false;
       }
     },
 
