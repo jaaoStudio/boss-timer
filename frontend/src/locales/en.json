@@ -317,6 +317,13 @@
     "recordNotFound": "Record not found (may have been deleted)"
   },
   "changelog": {
+    "v2_7_1": {
+      "title": "v2.7.1",
+      "date": "2026-06-17",
+      "items": [
+        "Fixed: being unexpectedly logged out and asked to sign in again after returning to the site. Your session now renews automatically and stays valid for up to 30 days."
+      ]
+    },
     "v2_7_0": {
       "title": "v2.7.0",
       "date": "2026-06-01",
