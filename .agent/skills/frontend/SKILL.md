@@ -142,12 +142,22 @@ frontend/
 | `anonymousName` | `string \| null` | 匿名使用者暱稱 (localStorage) |
 
 **核心 Actions**:
-- `initializeAuth()` — 初始化: 建立 Session → 驗證 Token → 連線 WebSocket
+- `initializeAuth()` — 初始化: 建立 Session → 驗證 Token → 連線 WebSocket（細節見下方「初始化流程守則」）
 - `loginWithGoogle(payload)` — Google 登入 + 通知 WebSocket 更新身份
 - `logout()` — 清除本地狀態 + API 登出 + 通知 WebSocket 切換匿名
 - `updatePreferences(preferences)` — 更新使用者偏好設定
 
 **跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 在多個瀏覽器頁籤間同步登入/登出狀態。
+
+#### ⚠️ 初始化流程守則（`initializeAuth` / `_runInitializeAuth`）
+
+兩條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
+
+1. **access token 過期要先試 refresh，不可直接登出**
+   `/auth/validate` 在 token 過期時回的是 **HTTP 200 + `{ valid: false }`**（語意是「成功判斷出未登入」，匿名訪客也走這條），**不會**觸發 axios 的 401 自動 refresh。因此 `validate` 回 `valid:false` 且本地有 `user_info`（曾登入過）時，必須先呼叫 `tryRefreshToken()` 用 30 天的 refresh token 換新 access token 再驗證一次。**直接 `clearAuth()` 會讓使用者每 30 分鐘（access token 效期）就被登出。** 此處不該改成讓後端回 401（會波及匿名訪客 + 動到全站 interceptor）。
+
+2. **併發呼叫要去重**
+   `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session`、`/auth/validate` 會各被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
 
 ### `roomStore` — 房間狀態
 **風格**: Options API

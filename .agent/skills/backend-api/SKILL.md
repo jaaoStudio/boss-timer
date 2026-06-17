@@ -214,5 +214,7 @@ except Exception as e:
 - `Authorization: Bearer <token>` Header
 - `access_token` Cookie
 
+> ⚠️ **`/auth/validate` 故意永遠回 `200`**：token 無效/過期時回 `{ "valid": false }`（而非 401）。它是「查詢登入狀態」的端點，對匿名訪客而言「未登入」是正常結果。前端 `userStore.initializeAuth` 依賴此契約：拿到 `valid:false` 後自行決定是否用 refresh token 換新。**勿改成回 401** —— 會波及匿名訪客（觸發前端的全站 401 refresh/導向 interceptor）。token 過期的自動續期由前端負責，不是這個端點。
+
 ### 匿名使用者
 `POST /auth/session` — 建立 UUID 匿名 ID，存入 Cookie
