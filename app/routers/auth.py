@@ -6,6 +6,7 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
+from app.dependencies import limiter
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
@@ -14,8 +15,10 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
+@limiter.limit("10/minute")
 async def login_with_google(
-        request: auth_schemas.GoogleLoginRequest,
+        request: Request,
+        login_data: auth_schemas.GoogleLoginRequest,
         response: Response,
         db: Session = Depends(get_db)
 ):
@@ -23,11 +26,11 @@ async def login_with_google(
     使用 Google Credential 登入或註冊使用者。
     """
     payload = None
-    if request.code:
-        payload = auth_service.exchange_google_code(request.code)
-    elif request.credential:
-        payload = auth_service.verify_google_token(request.credential)
-    
+    if login_data.code:
+        payload = auth_service.exchange_google_code(login_data.code)
+    elif login_data.credential:
+        payload = auth_service.verify_google_token(login_data.credential)
+
     if not payload:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -94,6 +97,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
+@limiter.limit("30/minute")
 async def refresh_token(
         request: Request,
         response: Response,
@@ -136,7 +140,9 @@ async def refresh_token(
 
 
 @router.post("/validate", response_model=auth_schemas.ValidateResponse)
+@limiter.limit("60/minute")
 async def validate_token(
+        request: Request,
         authorization: str = Header(None),
         access_token: str = Cookie(None),
         db: Session = Depends(get_db)
@@ -166,7 +172,8 @@ async def validate_token(
         return {"valid": False}
 
 @router.get("/me", response_model=auth_schemas.User)
-async def read_users_me(current_user: models.User = Depends(auth_service.get_current_user)):
+@limiter.limit("60/minute")
+async def read_users_me(request: Request, current_user: models.User = Depends(auth_service.get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
@@ -174,6 +181,7 @@ async def read_users_me(current_user: models.User = Depends(auth_service.get_cur
 
 
 @router.post("/logout")
+@limiter.limit("10/minute")
 async def logout(
         request: Request,
         response: Response,
@@ -195,7 +203,9 @@ async def logout(
 
 
 @router.put("/me/preferences", response_model=auth_schemas.User)
+@limiter.limit("30/minute")
 async def update_preferences(
+        request: Request,
         preferences: Dict[str, Any],
         current_user: models.User = Depends(auth_service.get_current_user),
         db: Session = Depends(get_db)
@@ -210,7 +220,9 @@ async def update_preferences(
 
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
+@limiter.limit("60/minute")
 async def init_session(
+        request: Request,
         response: Response,
         access_token: Optional[str] = Cookie(None),
         anonymous_user_id: Optional[str] = Cookie(None)

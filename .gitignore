@@ -46,3 +46,5 @@ CLAUDE.md
 .coverage
 htmlcov/
 *.egg-info/
+# TypeScript build info
+*.tsbuildinfo

@@ -1,13 +1,13 @@
 
 import json
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 import os
 import logging
 
 from app.database import models
 from app.websocket.manager import ConnectionManager
-from app.dependencies import get_current_admin_user, get_connection_manager
+from app.dependencies import get_current_admin_user, get_connection_manager, limiter
 
 class MaintenanceInfo(BaseModel):
     is_maintenance: bool
@@ -27,7 +27,8 @@ MAINTENANCE_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "maintenan
 
 router = APIRouter(prefix="/system", tags=["system"])
 @router.get("/maintenance-info", response_model=MaintenanceInfo)
-async def get_maintenance_info():
+@limiter.limit("60/minute")
+async def get_maintenance_info(request: Request):
     """
     獲取系統維護公告資訊。
     從 maintenance.json 檔案動態讀取。
@@ -54,7 +55,9 @@ async def get_maintenance_info():
 
 
 @router.post("/maintenance-config", response_model=MaintenanceConfigUpdate)
+@limiter.limit("10/minute")
 async def update_maintenance_config(
+    request: Request,
     config: MaintenanceConfigUpdate,
     current_user: models.User = Depends(get_current_admin_user),
     manager: ConnectionManager = Depends(get_connection_manager)

@@ -113,10 +113,6 @@ class ApiService {
     return res.data
   }
 
-  getBossTypes(): Promise<BossType[]> {
-    return this.client.get<BossType[]>('/boss/boss-types').then(res => res.data)
-  }
-
   createRoom(roomId?: string): Promise<RoomCreateResponse> {
     return this.client.post<RoomCreateResponse>('/room/', roomId ? { room_id: roomId } : {}).then(res => res.data)
   }

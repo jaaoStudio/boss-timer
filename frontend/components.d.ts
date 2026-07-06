@@ -22,7 +22,6 @@ declare module 'vue' {
     CountdownTimer: typeof import('./src/components/ui/CountdownTimer.vue')['default']
     EditModeToolbar: typeof import('./src/components/layout/EditModeToolbar.vue')['default']
     ElButton: typeof import('element-plus/es')['ElButton']
-    ElButtonGroup: typeof import('element-plus/es')['ElButtonGroup']
     ElCard: typeof import('element-plus/es')['ElCard']
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']
     ElCheckboxGroup: typeof import('element-plus/es')['ElCheckboxGroup']
