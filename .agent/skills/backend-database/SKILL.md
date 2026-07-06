@@ -96,7 +96,7 @@ def current_status(self) -> str:
 | `email` | `String(255)` UNIQUE | |
 | `display_name` | `String(100)` | |
 | `avatar_url` | `Text` | |
-| `preferences` | `JSONB` | `{"showRecordHistory": bool}` |
+| `preferences` | `JSONB` | 白名單鍵：`showRecordHistory` / `channelViewMode` / `favoriteBossIds` / `bossTrackerLayout` |
 | `is_admin` | `Boolean` | `default=False` |
 
 ### RoomUser（多對多）

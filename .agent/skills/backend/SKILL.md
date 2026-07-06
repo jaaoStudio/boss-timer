@@ -335,7 +335,7 @@ ConnectionManager
 
 ### auth_service.py 模式
 - Google Token 驗證: 支援 credential (ID Token 直接驗證) 和 code (Authorization Code 交換)
-- 用戶偏好白名單: `ALLOWED_PREFERENCE_KEYS = {"showRecordHistory"}`
+- 用戶偏好白名單: `ALLOWED_PREFERENCE_KEYS = {"showRecordHistory", "channelViewMode", "favoriteBossIds", "bossTrackerLayout"}`
 - 防止任意 JSON 注入
 
 ---
@@ -343,36 +343,38 @@ ConnectionManager
 ## API 路由
 
 ### 認證 (`/auth`)
-| Method | Path | Auth | 說明 |
-|---|---|---|---|
-| POST | `/auth/google` | 無 | Google 登入/註冊 |
-| POST | `/auth/refresh` | Cookie | 刷新 access token |
-| POST | `/auth/validate` | Header/Cookie | 驗證 token 有效性 |
-| GET | `/auth/me` | Cookie | 取得當前使用者資訊 |
-| POST | `/auth/logout` | Cookie | 登出 + 撤銷 refresh token |
-| PUT | `/auth/me/preferences` | Cookie | 更新使用者偏好設定 |
-| POST | `/auth/session` | Cookie (可選) | 初始化使用者 Session (匿名/已登入) |
+| Method | Path | Auth | Rate Limit | 說明 |
+|---|---|---|---|---|
+| POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
+| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
+| POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token 有效性 |
+| GET | `/auth/me` | Cookie | 60/min | 取得當前使用者資訊 |
+| POST | `/auth/logout` | Cookie | 10/min | 登出 + 撤銷 refresh token |
+| PUT | `/auth/me/preferences` | Cookie | 30/min | 更新使用者偏好設定 |
+| POST | `/auth/session` | Cookie (可選) | 60/min | 初始化使用者 Session (匿名/已登入) |
 
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 5/min | 建立新房間 |
+| POST | `/room/` | Session | 15/min | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 檢查房間是否存在 |
 | PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定 (Webhook URL, 預警模式) |
 
 ### Boss (`/boss`)
 | Method | Path | Auth | 說明 |
 |---|---|---|---|
-| GET | `/boss/boss-types` | 無 | 取得所有 Boss 類型列表 |
-| GET | `/boss/room/{room_id}/records` | Session | 歷史紀錄 cursor 分頁（`before_id` / `limit` / `start` / `end` / `boss_type_id`） |
-| DELETE | `/boss/room/{room_id}/records/{record_id}` | Session | 撤銷紀錄 + 撤銷 Celery 預警任務 |
+| GET | `/boss/boss-types` | 無 | 取得所有 Boss 類型列表，15/min |
+| POST | `/boss/room/{room_id}/boss-types` | Session | 新增房間自訂 Boss，30/min |
+| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | Session | 刪除房間自訂 Boss，30/min |
+| GET | `/boss/room/{room_id}/records` | Session | 歷史紀錄 cursor 分頁（`before_id` / `limit` / `start` / `end` / `boss_type_id`），60/min |
+| DELETE | `/boss/room/{room_id}/records/{record_id}` | Session | 撤銷紀錄 + 撤銷 Celery 預警任務，15/min |
 | POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 無（任何人） | 清除指定 Boss 種類頻道總覽、撤銷 Celery 預警、廣播 `boss_type_cleared`，10/min |
 
 ### 系統 (`/system`)
-| Method | Path | Auth | 說明 |
-|---|---|---|---|
-| GET | `/system/maintenance-info` | 無 | 讀取維護模式設定 |
-| POST | `/system/maintenance-config` | Admin | 更新維護模式設定 + WebSocket 廣播 |
+| Method | Path | Auth | Rate Limit | 說明 |
+|---|---|---|---|---|
+| GET | `/system/maintenance-info` | 無 | 60/min | 讀取維護模式設定 |
+| POST | `/system/maintenance-config` | Admin | 10/min | 更新維護模式設定 + WebSocket 廣播 |
 
 ### 回饋 / 許願 (`/feedback`)
 | Method | Path | Auth | Rate Limit | 說明 |

@@ -72,7 +72,7 @@ frontend/
     │
     ├── axios/
     │   ├── index.ts              # Axios 實例建立 (自訂 AxiosInstance class, 含 interceptor)
-    │   └── handlingErrors.js     # 全域 Axios 錯誤處理
+    │   └── handlingErrors.ts     # 全域 Axios 錯誤處理
     │
     ├── composables/              # Vue Composables (可複用邏輯)
     │   ├── useLocalStorage.ts    # 通用 localStorage 基礎層 (load/deserialize/watch-persist)
@@ -84,34 +84,27 @@ frontend/
     │   ├── useRecentRooms.ts     # 最近房間記錄 (localStorage)
     │   ├── useChannelViewPreference.ts # 頻道檢視偏好 (localStorage)
     │   ├── useStatusConfig.ts    # 狀態色彩/排序/isExpiredRecord 統一定義
+    │   ├── useLayoutConfig.ts    # 版面 Widget 排列、寬度、收合狀態管理 (singleton)
     │   ├── useRoomSession.ts     # 房間進出封裝 (enter/leave，確認 Room 存在後才 setRoomId)
     │   ├── useTimer.ts           # 倒數計時器邏輯
     │   ├── useElementPlus.ts     # Element Plus 封裝 (showMessage, showDialog)
     │   └── useTheme.ts           # 深色模式切換
     │
-    ├── components/               # Vue 元件
+    ├── components/               # Vue 元件（依領域分子目錄，完整清單見 frontend-components skill）
     │   ├── AppHeader.vue         # 頂部導航列 (房間 ID 顯示、設定按鈕、語系切換、登入)
     │   ├── AppFooter.vue         # 底部頁尾
-    │   ├── BossControlPanel.vue  # Boss 選擇面板 (chip 快速切換：自訂 Boss 優先 → 收藏 Boss，兩者同時存在時加分隔線；Boss 種類 Tab + 頻道輸入)
-    │   ├── BossInfo.vue          # Boss 詳細資訊 (重生時間、狀態控制按鈕)
-    │   ├── BossInfoItem.vue      # Boss 資訊子項目
-    │   ├── BossStatusButton.vue  # Boss 狀態操作按鈕 (killed/alive/not_found)
-    │   ├── ChannelCard.vue       # 單一頻道卡片 (含倒數計時)
-    │   ├── ChannelOverview.vue   # 頻道總覽容器
-    │   ├── CountdownTimer.vue    # 倒數計時器元件
-    │   ├── GoogleLoginButton.vue # Google 登入按鈕
-    │   ├── MaintenanceBanner.vue # 維護模式橫幅
-    │   ├── RecommendedChannels.vue # 跨 Boss 種類 may_respawn 聚合列表（戰術終端機風格）
-    │   ├── RecommendedSection.vue  # 推薦頻道區塊（已不被 RecommendedChannels 使用）
-    │   ├── RecordHistory.vue     # 歷史紀錄列表 (含刪除功能)
-    │   ├── RecordItem.vue        # 單筆歷史紀錄項目 (含垃圾桶刪除按鈕)
-    │   ├── RoomManager.vue       # 房間管理元件 (建立/加入房間)
-    │   ├── SettingsModal.vue     # 設定彈窗 (通知、音效、偏好、Discord Webhook、自訂 Boss、回饋 / 許願)
-    │   └── StatusBadge.vue       # 狀態標籤 (alive/killed/respawning/may_respawn)
+    │   ├── boss/                 # BossControlPanel / BossInfo / BossInfoItem / BossStatusButton
+    │   ├── channel/              # ChannelCard / ChannelOverview / ChannelTimeline / ChannelView / RecommendedChannels
+    │   ├── layout/               # EditModeToolbar / LayoutItemWrapper（版面編輯模式）
+    │   ├── record/               # RecordHistory / RecordItem
+    │   ├── room/                 # RoomManager
+    │   ├── settings/             # SettingsModal + 各設定 Tab（Preferences / Changelog / Support / CustomBosses / Feedback）
+    │   └── ui/                   # AdBanner / CountdownTimer / GoogleLoginButton / MaintenanceBanner / RecommendedSection(已棄用) / StatusBadge
     │
     ├── views/                    # 頁面視圖 (對應路由)
     │   ├── RoomSelection.vue     # 首頁: 房間選擇 / 建立 / 最近房間
     │   ├── BossTracker.vue       # 主頁: Boss 追蹤器 (含所有核心元件)
+    │   ├── UserGuide.vue         # 使用教學頁
     │   ├── MaintenancePage.vue   # 維護中頁面
     │   ├── MaintenanceAdmin.vue  # 管理員: 維護設定頁面
     │   ├── Credits.vue           # 貢獻者與致謝
@@ -299,6 +292,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 |---|---|---|---|
 | `/` | `RoomSelection` | `RoomSelection.vue` | 無 |
 | `/room/:roomId` | `BossTracker` | `BossTracker.vue` | 無 |
+| `/guide` | `Guide` | `UserGuide.vue` | 無 |
 | `/credits` | `Credits` | `Credits.vue` | 無 |
 | `/legal` | `Legal` | `LegalDisclaimer.vue` | 無 |
 | `/privacy-policy` | `Privacy` | `PrivacyPolicy.vue` | 無 |
@@ -330,11 +324,21 @@ class ApiService {
   updateMyPreferences(preferences)
 
   // Boss & Room
-  getBossTypes()
   createRoom(roomId)
   checkRoomExists(roomId)
   updateRoomSettings(roomId, settings)        // PATCH: Webhook URL + 預警模式
   deleteBossRecord(roomId, recordId)          // DELETE: 撤銷紀錄
+  getRoomRecordsHistory(...)                  // 歷史紀錄 cursor 分頁
+  createCustomBossType(...)                   // 自訂 Boss 建立
+  deleteCustomBossType(roomId, bossTypeId)    // 自訂 Boss 刪除
+  clearBossTypeRecords(roomId, bossTypeId)    // 清除頻道總覽（換輪）
+
+  // Feedback
+  listFeedback(sort)
+  createFeedback(payload)
+  voteFeedback(feedbackId)
+  updateFeedbackStatus(feedbackId, status)    // Admin
+  deleteFeedback(feedbackId)                  // Admin
 
   // WebSocket
   createWebSocket()  // 建立 WSS 連線 (自動帶 cookie)
@@ -342,13 +346,12 @@ class ApiService {
   // System
   getMaintenanceStatus()
   updateMaintenanceConfig(config)
-  getWebSocketConnectionsCount()
 }
 ```
 
 ### Axios 設定
 - **Base URL**: 由環境變數 `VITE_APP_BASE_URL` 控制
-- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.js` 中)
+- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中)
 - **認證**: Cookie-based (HttpOnly)，無需手動帶 Token
 
 ---
@@ -524,6 +527,10 @@ const { t } = useI18n()
 - **HTTPS**: 使用本地 SSL 憑證 (`vite.pem`, `vite-key.pem`)，僅在 `isDev` 模式載入；production build（Docker）略過以避免 ENOENT 錯誤
 - **Port**: 5173
 - **Proxy**: `/api` → `https://localhost:1254` (去除 `/api` 前綴)
+
+### 建置與型別檢查
+- `npm run build` = `npm run typecheck && vite build` — **build 前強制跑 `vue-tsc --noEmit -p tsconfig.app.json`**，型別錯誤會讓 build（含 Docker/CI）直接失敗
+- 單獨檢查型別：`npm run typecheck`
 
 ### 插件
 - `@vitejs/plugin-vue` — Vue SFC 支援

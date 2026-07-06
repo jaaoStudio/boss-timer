@@ -117,36 +117,38 @@ async def get_room_state(db, room_id) -> dict:
 ## API 路由一覽
 
 ### 認證 (`/auth`)
-| Method | Path | Auth | 說明 |
-|---|---|---|---|
-| POST | `/auth/google` | 無 | Google 登入/註冊 |
-| POST | `/auth/refresh` | Cookie | 刷新 access token |
-| POST | `/auth/validate` | Header/Cookie | 驗證 token |
-| GET | `/auth/me` | Cookie | 取得使用者資訊 |
-| POST | `/auth/logout` | Cookie | 登出 |
-| PUT | `/auth/me/preferences` | Cookie | 更新偏好設定 |
-| POST | `/auth/session` | Cookie(可選) | 初始化 Session |
+| Method | Path | Auth | Rate Limit | 說明 |
+|---|---|---|---|---|
+| POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
+| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
+| POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token |
+| GET | `/auth/me` | Cookie | 60/min | 取得使用者資訊 |
+| POST | `/auth/logout` | Cookie | 10/min | 登出 |
+| PUT | `/auth/me/preferences` | Cookie | 30/min | 更新偏好設定 |
+| POST | `/auth/session` | Cookie(可選) | 60/min | 初始化 Session |
 
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 5/min | 建立新房間 |
+| POST | `/room/` | Session | 15/min | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 查詢房間是否存在，同時回傳 Webhook 設定 |
 | PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定（Webhook/預警模式） |
 
 ### Boss (`/boss`)
 | Method | Path | 說明 |
 |---|---|---|
-| GET | `/boss/boss-types` | 取得所有 Boss 類型 |
+| GET | `/boss/boss-types` | 取得所有 Boss 類型，15/min |
+| POST | `/boss/room/{room_id}/boss-types` | 新增房間自訂 Boss（Session），30/min |
+| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | 刪除房間自訂 Boss（Session），30/min |
 | GET | `/boss/room/{room_id}/records` | 歷史紀錄 cursor 分頁（`before_id`/`limit`/`start`/`end`/`boss_type_id`），回傳 `BossRecordHistoryPage`（records + has_more + next_cursor），60/min |
-| DELETE | `/boss/room/{room_id}/records/{record_id}` | 撤銷紀錄 + 撤銷 Celery 預警 |
+| DELETE | `/boss/room/{room_id}/records/{record_id}` | 撤銷紀錄 + 撤銷 Celery 預警，15/min |
 | POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 清除指定 Boss 種類頻道總覽（換輪用）；撤銷 Celery 預警、更新 `room.last_cleared_at`、廣播 `boss_type_cleared`；任何人可觸發，10/min |
 
 ### 系統 (`/system`)
-| Method | Path | Auth | 說明 |
-|---|---|---|---|
-| GET | `/system/maintenance-info` | 無 | 讀取維護模式 |
-| POST | `/system/maintenance-config` | Admin | 更新維護模式 |
+| Method | Path | Auth | Rate Limit | 說明 |
+|---|---|---|---|---|
+| GET | `/system/maintenance-info` | 無 | 60/min | 讀取維護模式 |
+| POST | `/system/maintenance-config` | Admin | 10/min | 更新維護模式 |
 
 ### 回饋 / 許願 (`/feedback`)
 | Method | Path | Auth | Rate Limit | 說明 |
@@ -194,7 +196,7 @@ except Exception as e:
 
 ## 安全守則
 
-- ⚠️ 使用者偏好設定更新必須過白名單 (`ALLOWED_PREFERENCE_KEYS = {"showRecordHistory"}`)
+- ⚠️ 使用者偏好設定更新必須過白名單 (`ALLOWED_PREFERENCE_KEYS = {"showRecordHistory", "channelViewMode", "favoriteBossIds", "bossTrackerLayout"}`)
 - ⚠️ Room ID 路徑參數限制長度: `min_length=10, max_length=10`
 - ⚠️ 管理員端點使用 `Depends(get_current_admin_user)` 保護
 - ⚠️ 匿名記錄者資訊使用結構化的 `RecorderInfo` schema，防止任意 JSON 注入
