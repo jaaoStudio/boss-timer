@@ -1,5 +1,5 @@
 <template>
-  <span :class="timeClass" class="font-mono font-medium">
+  <span :class="timeClass" class="font-mono font-medium tabular-nums">
     {{ displayTime }}
   </span>
 </template>

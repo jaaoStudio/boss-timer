@@ -40,14 +40,14 @@
         href="https://api.payuni.com.tw/api/uop/receive_info/2/1/HIBE014209/0ksBJWqn4we38mzhYGsM"
         target="_blank"
         rel="noopener noreferrer"
-        class="flex items-center gap-3 p-4 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/10 hover:bg-indigo-100 dark:hover:bg-indigo-900/20 transition-colors group no-underline"
+        class="flex items-center gap-3 p-4 rounded-xl border-2 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-900/10 hover:bg-amber-100 dark:hover:bg-amber-900/20 transition-colors group no-underline"
       >
         <span class="text-2xl shrink-0">💳</span>
         <div class="flex-1 min-w-0">
           <div class="font-semibold text-gray-800 dark:text-gray-200 text-sm">{{ t('settings.support.payuniLabel') }}</div>
           <div class="text-xs text-gray-500 dark:text-gray-400">{{ t('settings.support.payuniMethods') }}</div>
         </div>
-        <ArrowTopRightOnSquareIcon class="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-indigo-500 transition-colors shrink-0" />
+        <ArrowTopRightOnSquareIcon class="w-4 h-4 text-gray-300 dark:text-gray-600 group-hover:text-amber-500 transition-colors shrink-0" />
       </a>
     </div>
 

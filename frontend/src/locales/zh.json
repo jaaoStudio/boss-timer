@@ -135,7 +135,9 @@
     "last30Days": "最近 30 天",
     "loadingMore": "載入中...",
     "noMore": "沒有更多紀錄了",
-    "empty": "沒有符合條件的紀錄"
+    "empty": "沒有符合條件的紀錄",
+    "deleteConfirm": "確定",
+    "deleteCancel": "取消"
   },
   "recordItem": {
     "by": "by",
@@ -568,5 +570,24 @@
       "recommendedChannels": "推薦頻道",
       "recordHistory": "歷史紀錄"
     }
+  },
+  "errorPage": {
+    "title": "伺服器發生錯誤",
+    "message": "很抱歉，我們的伺服器遇到了一些問題。我們已經收到通知並正在處理中。",
+    "retry": "重試"
+  },
+  "maintenancePage": {
+    "title": "系統維護中",
+    "message": "我們正在進行必要的系統更新以提供更好的服務，請稍後再回來。感謝您的耐心等待。"
+  },
+  "maintenanceAdmin": {
+    "title": "維護狀態管理",
+    "isMaintenance": "正在維護",
+    "isReady": "即將維護",
+    "fieldTitle": "標題",
+    "fieldMessage": "訊息",
+    "submit": "更新配置",
+    "updateSuccess": "維護配置更新成功！",
+    "updateFailed": "更新維護配置失敗: "
   }
 }

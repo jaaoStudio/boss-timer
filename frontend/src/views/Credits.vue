@@ -8,20 +8,20 @@
       <div class="space-y-8">
         <!-- Icons section -->
         <div v-if="icons.length">
-          <h2 class="text-2xl font-semibold text-teal-600 dark:text-teal-400 mb-4">{{ t('credits.iconsTitle') }}</h2>
+          <h2 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white mb-4">{{ t('credits.iconsTitle') }}</h2>
           <p class="text-gray-600 dark:text-gray-400 mb-4">
             {{ t('credits.iconsDescription') }}
           </p>
           <ul class="list-disc list-inside space-y-3 text-gray-700 dark:text-gray-300">
             <li v-for="icon in icons" :key="icon.name">
               "{{ icon.name }}" {{ t('credits.iconMadeBy') }}
-              <a :href="icon.authorUrl" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline">
+              <a :href="icon.authorUrl" target="_blank" rel="noopener noreferrer" class="text-[var(--accent)] hover:text-[var(--accent-hover)] underline">
                 {{ icon.author }}
               </a>
               <span v-if="icon.note" class="text-gray-500 dark:text-gray-400"> ({{ icon.note }})</span>
               <span v-else>
                 {{ t('credits.from') }}
-                <a href="https://www.flaticon.com" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300">
+                <a href="https://www.flaticon.com" target="_blank" rel="noopener noreferrer" class="text-[var(--accent)] hover:text-[var(--accent-hover)]">
                   www.flaticon.com
                 </a>
               </span>
@@ -31,7 +31,7 @@
 
         <!-- Technology section -->
         <div v-if="technologies.length">
-          <h2 class="text-2xl font-semibold text-teal-600 dark:text-teal-400 mb-4">{{ t('credits.technologyTitle') }}</h2>
+          <h2 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white mb-4">{{ t('credits.technologyTitle') }}</h2>
           <p class="text-gray-600 dark:text-gray-400 mb-4">
             {{ t('credits.technologyDescription') }}
           </p>
@@ -42,10 +42,10 @@
 
         <!-- Data Sources section -->
         <div v-if="resources.length">
-          <h2 class="text-2xl font-semibold text-teal-600 dark:text-teal-400 mb-4">{{ t('credits.dataSourcesTitle') }}</h2>
+          <h2 class="text-2xl font-semibold tracking-tight text-gray-900 dark:text-white mb-4">{{ t('credits.dataSourcesTitle') }}</h2>
           <ul class="list-disc list-inside space-y-3 text-gray-700 dark:text-gray-300">
             <li v-for="resource in resources" :key="resource.name">
-              <a :href="resource.url" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 underline">
+              <a :href="resource.url" target="_blank" rel="noopener noreferrer" class="text-[var(--accent)] hover:text-[var(--accent-hover)] underline">
                 {{ resource.name }}
               </a>
             </li>

@@ -3,6 +3,7 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 }
 
@@ -15,9 +16,21 @@
     border-color: transparent;
   }
 
-  button:focus,
-  button:focus-visible {
+  /* Suppress the outline only for pointer focus; keep a visible ring for keyboard
+     users (accessibility). The old blanket `outline: none` removed focus entirely. */
+  button:focus:not(:focus-visible) {
     outline: none;
+  }
+
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--accent-ring);
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 }
 
@@ -33,6 +46,14 @@
   --rc-warn:   #c2410c;
   --rc-crit:   #b91c1c;
   --rc-border: rgba(15, 23, 42, 0.08);
+
+  /* Single brand accent (maple/amber) — replaces the stray indigo. */
+  --accent:       #b45309;
+  --accent-hover: #92400e;
+  --accent-ring:  rgba(180, 83, 9, 0.4);
+
+  /* Warm-tinted elevation, softer than pure-black box-shadow. */
+  --shadow-card:  0 1px 2px rgba(120, 53, 15, 0.04), 0 6px 16px rgba(120, 53, 15, 0.06);
 }
 
 .dark {
@@ -40,10 +61,16 @@
   --rc-warn:   #fb923c;
   --rc-crit:   #ef4444;
   --rc-border: rgba(148, 163, 184, 0.14);
+
+  --accent:       #f59e0b;
+  --accent-hover: #fbbf24;
+  --accent-ring:  rgba(245, 158, 11, 0.45);
+
+  --shadow-card:  0 1px 2px rgba(0, 0, 0, 0.35), 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: var(--font-sans);
   line-height: 1.5;
   font-weight: 400;
   color-scheme: light dark;
@@ -51,8 +78,14 @@
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
 
-  /* Element Plus primary → Tailwind gray (light mode) */
+/* Element Plus primary → Tailwind gray.
+   `:root:root` / `html.dark:root` raise specificity above Element Plus's own
+   `:root` / `html.dark` var blocks, so our override wins regardless of the
+   order unplugin-element-plus injects component styles (dev-mode gotcha). */
+:root:root {
+  /* light mode */
   --el-color-primary:         #374151; /* gray-700 */
   --el-color-primary-light-3: #737a85;
   --el-color-primary-light-5: #9ba0a8;
@@ -62,8 +95,8 @@
   --el-color-primary-dark-2:  #2c3441;
 }
 
-html.dark {
-  /* Element Plus primary → Tailwind gray (dark mode) */
+html.dark:root {
+  /* dark mode */
   --el-color-primary:         #6b7280; /* gray-500 */
   --el-color-primary-light-5: #4b5563; /* gray-600 */
   --el-color-primary-light-7: #374151; /* gray-700 */
@@ -74,12 +107,17 @@ html.dark {
 
 a {
   font-weight: 500;
-  color: #646cff;
+  color: var(--accent);
   text-decoration: inherit;
+  transition: color 0.2s ease;
 }
 
 a:hover {
-  color: #535bf2;
+  color: var(--accent-hover);
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 html,
@@ -90,6 +128,7 @@ body {
   min-width: 320px;
   width: 100%;
   min-height: 100vh;
+  font-family: var(--font-sans);
 
   /* 這樣亮色時是白底黑字，暗色時會自動變黑底白字 */
   background-color: var(--el-bg-color);
@@ -101,10 +140,17 @@ body {
   transition: background-color 0.3s, color 0.3s;
 }
 
+h1,
+h2,
+h3 {
+  /* Display type should feel intentional: tight tracking, balanced wraps,
+     no orphaned last-line words. Font-size stays with per-page utilities. */
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
 h1 {
-  font-size: 3.2em;
   line-height: 1.1;
-  /* 移除 header 的寫死顏色，讓它繼承 body */
 }
 
 .card {

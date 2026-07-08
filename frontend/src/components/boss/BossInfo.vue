@@ -1,6 +1,6 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6" v-if="selectedBoss">
-    <h2 class="text-xl font-semibold text-gray-900 dark:text-white mb-4">
+  <div class="bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)] p-6" v-if="selectedBoss">
+    <h2 class="text-xl font-semibold tracking-tight text-gray-900 dark:text-white mb-4">
       {{ locale === 'zh' ? selectedBoss.name_zh : selectedBoss.name_en }}
     </h2>
 
@@ -12,7 +12,7 @@
         </p>
         <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.respawnTime') }}</span>
-          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">
+          <span class="text-sm font-medium tabular-nums text-gray-800 dark:text-gray-200">
             {{ selectedBoss.min_respawn_minutes }} – {{ selectedBoss.max_respawn_minutes }} {{ t('bossInfo.minutes') }}
           </span>
         </div>
@@ -31,7 +31,7 @@
         </p>
         <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.channel') }}</span>
-          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ selectedRecord?.channel ?? '—' }}</span>
+          <span class="text-sm font-medium tabular-nums text-gray-800 dark:text-gray-200">{{ selectedRecord?.channel ?? '—' }}</span>
         </div>
         <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.status') }}</span>
@@ -39,7 +39,7 @@
         </div>
         <div class="flex items-center justify-between py-1 border-b border-gray-100 dark:border-gray-700">
           <span class="text-sm text-gray-500 dark:text-gray-400">{{ t('bossInfo.recordTime') }}</span>
-          <span class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ formatTime(selectedRecord?.recorded_at) }}</span>
+          <span class="text-sm font-medium tabular-nums text-gray-800 dark:text-gray-200">{{ formatTime(selectedRecord?.recorded_at) }}</span>
         </div>
       </div>
 

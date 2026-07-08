@@ -16,7 +16,7 @@
           class="bg-gray-50 dark:bg-gray-800 rounded-xl p-6 border border-gray-100 dark:border-gray-700"
         >
           <div class="flex items-center gap-3 mb-4">
-            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 font-bold text-sm shrink-0">
+            <span class="flex items-center justify-center w-8 h-8 rounded-full bg-amber-100 dark:bg-amber-900/50 text-amber-600 dark:text-amber-400 font-bold text-sm shrink-0">
               {{ section.index }}
             </span>
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ section.title }}</h2>
@@ -27,7 +27,7 @@
               :key="i"
               class="flex gap-2 text-sm text-gray-600 dark:text-gray-300 leading-relaxed"
             >
-              <span class="text-indigo-400 dark:text-indigo-500 font-mono shrink-0 mt-0.5">{{ i + 1 }}.</span>
+              <span class="text-amber-400 dark:text-amber-500 font-mono shrink-0 mt-0.5">{{ i + 1 }}.</span>
               <span class="text-left">{{ step }}</span>
             </li>
           </ol>
@@ -36,7 +36,7 @@
 
       <!-- Tip Box -->
       <div class="mt-8 flex gap-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700/50 rounded-xl px-5 py-4">
-        <span class="text-amber-500 text-lg shrink-0">💡</span>
+        <LightBulbIcon class="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
         <div class="text-sm text-amber-800 dark:text-amber-200 leading-relaxed">
           <span class="font-semibold mr-1">{{ t('guide.tip') }}：</span>{{ t('guide.tipContent') }}
         </div>
@@ -46,7 +46,7 @@
       <div class="mt-10 text-center">
         <router-link
           :to="{ name: 'RoomSelection' }"
-          class="inline-flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
+          class="inline-flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400 hover:underline underline-offset-4 transition-colors"
         >
           <ArrowLeftIcon class="w-4 h-4" />
           {{ t('appFooter.backToHome') }}
@@ -60,7 +60,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { ArrowLeftIcon } from '@heroicons/vue/24/outline'
+import { ArrowLeftIcon, LightBulbIcon } from '@heroicons/vue/24/outline'
 
 const { t, tm } = useI18n()
 

@@ -9,12 +9,12 @@
     <!-- 編輯模式頂部工具列（只有順序與寬度，無收合） -->
     <div
       v-if="isEditMode"
-      class="flex items-center justify-between bg-indigo-50 dark:bg-indigo-900/30 border border-b-0 border-indigo-200 dark:border-indigo-700 rounded-t-xl px-3 py-1.5 select-none"
+      class="flex items-center justify-between bg-amber-50 dark:bg-amber-900/30 border border-b-0 border-amber-200 dark:border-amber-700 rounded-t-xl px-3 py-1.5 select-none"
     >
       <!-- 拖曳把手 + 名稱 + 隱藏標記 -->
       <div class="drag-handle flex items-center gap-1.5 cursor-grab active:cursor-grabbing">
-        <Bars3Icon class="w-4 h-4 text-indigo-400 shrink-0" />
-        <span class="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+        <Bars3Icon class="w-4 h-4 text-amber-400 shrink-0" />
+        <span class="text-xs font-semibold text-amber-700 dark:text-amber-300">
           {{ $t(`layout.items.${item.id}`) }}
         </span>
         <span
@@ -33,12 +33,12 @@
             'p-1 rounded transition-colors',
             index === 0
               ? 'opacity-25 cursor-not-allowed'
-              : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-800',
+              : 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800',
           ]"
           :title="$t('layout.moveUp')"
           @click.stop="index > 0 && $emit('moveUp')"
         >
-          <ChevronUpIcon class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+          <ChevronUpIcon class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
         </div>
         <!-- 下移 -->
         <div
@@ -46,29 +46,29 @@
             'p-1 rounded transition-colors',
             index === totalItems - 1
               ? 'opacity-25 cursor-not-allowed'
-              : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-800',
+              : 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800',
           ]"
           :title="$t('layout.moveDown')"
           @click.stop="index < totalItems - 1 && $emit('moveDown')"
         >
-          <ChevronDownIcon class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+          <ChevronDownIcon class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
         </div>
 
         <!-- 寬度控制（桌電限定）：[−] 2/4 [+] -->
-        <div class="hidden md:flex items-center gap-0.5 ml-1 border-l border-indigo-200 dark:border-indigo-600 pl-1.5">
+        <div class="hidden md:flex items-center gap-0.5 ml-1 border-l border-amber-200 dark:border-amber-600 pl-1.5">
           <div
             :class="[
               'p-1 rounded transition-colors',
               item.colSpan <= MIN_COL_SPAN[item.id]
                 ? 'opacity-25 cursor-not-allowed'
-                : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-800',
+                : 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800',
             ]"
             :title="$t('layout.narrower')"
             @click.stop="item.colSpan > MIN_COL_SPAN[item.id] && $emit('decreaseColSpan')"
           >
-            <MinusIcon class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <MinusIcon class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
           </div>
-          <span class="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-300 min-w-[2rem] text-center select-none">
+          <span class="text-[11px] font-mono font-semibold text-amber-600 dark:text-amber-300 min-w-[2rem] text-center select-none">
             {{ item.colSpan }}/4
           </span>
           <div
@@ -76,12 +76,12 @@
               'p-1 rounded transition-colors',
               item.colSpan >= 4
                 ? 'opacity-25 cursor-not-allowed'
-                : 'cursor-pointer hover:bg-indigo-100 dark:hover:bg-indigo-800',
+                : 'cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-800',
             ]"
             :title="$t('layout.wider')"
             @click.stop="item.colSpan < 4 && $emit('increaseColSpan')"
           >
-            <PlusIcon class="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+            <PlusIcon class="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
           </div>
         </div>
       </div>
@@ -104,7 +104,7 @@
       v-show="isEditMode || !item.collapsed"
       :class="[
         isEditMode
-          ? 'border border-t-0 border-indigo-200 dark:border-indigo-700 rounded-b-xl overflow-hidden pointer-events-none'
+          ? 'border border-t-0 border-amber-200 dark:border-amber-700 rounded-b-xl overflow-hidden pointer-events-none'
           : 'relative',
       ]"
     >

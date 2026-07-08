@@ -1,9 +1,9 @@
 <template>
   <div
-    :class="['relative', 'p-2', 'rounded-lg', 'text-center', 'cursor-pointer', 'transition-all', 'duration-200', 'ease-in-out', statusBackgroundClass, { 'opacity-50': isExpired }]"
+    :class="['relative', 'p-2', 'rounded-lg', 'text-center', 'cursor-pointer', 'transition-all', 'duration-200', 'ease-in-out', 'hover:ring-1', 'hover:ring-black/10', 'dark:hover:ring-white/15', 'active:scale-[0.97]', statusBackgroundClass, { 'opacity-50': isExpired }]"
     @click="selectChannel"
   >
-    <div :class="['font-bold', channelNumber >= 1000 ? 'text-xs' : 'text-sm']">CH {{ channelNumber }}</div>
+    <div :class="['font-bold', 'font-mono', 'tabular-nums', channelNumber >= 1000 ? 'text-xs' : 'text-sm']">CH {{ channelNumber }}</div>
     <div class="text-xs font-medium">{{ statusText }}</div>
   </div>
 </template>

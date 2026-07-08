@@ -1,5 +1,5 @@
 <template>
-  <div class="@container bg-white dark:bg-gray-800 rounded-lg shadow-md p-4">
+  <div class="@container bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)] p-4">
 
     <el-form
         :model="form"

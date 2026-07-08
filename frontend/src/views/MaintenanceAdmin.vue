@@ -1,38 +1,52 @@
 <template>
-  <div class="maintenance-admin-container">
-    <h1>維護狀態管理</h1>
-    <form @submit.prevent="updateMaintenanceConfig" class="maintenance-form">
-      <div class="form-group">
-        <label for="isMaintenance">正在維護:</label>
-        <input type="checkbox" id="isMaintenance" v-model="config.is_maintenance" />
-      </div>
+  <div class="flex min-h-dvh w-full justify-center bg-gray-50 dark:bg-gray-900 px-4 py-12">
+    <div class="w-full max-w-xl">
+      <h1 class="text-2xl font-bold tracking-tight text-gray-900 dark:text-white mb-6 text-center">{{ t('maintenanceAdmin.title') }}</h1>
 
-      <div class="form-group">
-        <label for="isReadyForMaintenance">即將維護:</label>
-        <input type="checkbox" id="isReadyForMaintenance" v-model="config.is_ready_for_maintenance" />
-      </div>
+      <form @submit.prevent="updateMaintenanceConfig"
+            class="space-y-5 bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)] p-6">
 
-      <div class="form-group">
-        <label for="title">標題:</label>
-        <input type="text" id="title" v-model="config.title" required />
-      </div>
+        <label class="flex items-center justify-between gap-4 cursor-pointer">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('maintenanceAdmin.isMaintenance') }}</span>
+          <input type="checkbox" v-model="config.is_maintenance"
+                 class="h-5 w-5 rounded accent-[var(--accent)] cursor-pointer" />
+        </label>
 
-      <div class="form-group">
-        <label for="message">訊息:</label>
-        <textarea id="message" v-model="config.message" rows="4" required></textarea>
-      </div>
+        <label class="flex items-center justify-between gap-4 cursor-pointer">
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('maintenanceAdmin.isReady') }}</span>
+          <input type="checkbox" v-model="config.is_ready_for_maintenance"
+                 class="h-5 w-5 rounded accent-[var(--accent)] cursor-pointer" />
+        </label>
 
-      <button type="submit" class="submit-button">更新配置</button>
-    </form>
+        <div>
+          <label for="title" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{{ t('maintenanceAdmin.fieldTitle') }}</label>
+          <input type="text" id="title" v-model="config.title" required
+                 class="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)] focus:border-transparent transition text-sm" />
+        </div>
+
+        <div>
+          <label for="message" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{{ t('maintenanceAdmin.fieldMessage') }}</label>
+          <textarea id="message" v-model="config.message" rows="4" required
+                    class="block w-full px-3 py-2.5 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)] focus:border-transparent transition text-sm resize-y"></textarea>
+        </div>
+
+        <button type="submit"
+                class="w-full px-4 py-2.5 text-sm font-semibold text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 active:scale-[0.98] transition cursor-pointer">
+          {{ t('maintenanceAdmin.submit') }}
+        </button>
+      </form>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
+import { useI18n } from 'vue-i18n';
 import apiService from '@/services/apiService';
 import { showMessage } from '@/composables/useElementPlus';
 import { useAppInfoStore } from '@/stores/appInfo';
 
+const { t } = useI18n();
 const appInfoStore = useAppInfoStore();
 
 const config = ref({
@@ -51,72 +65,12 @@ onMounted(async () => {
 const updateMaintenanceConfig = async () => {
   try {
     const response = await apiService.updateMaintenanceConfig(config.value);
-    showMessage.success('維護配置更新成功！');
+    showMessage.success(t('maintenanceAdmin.updateSuccess'));
     appInfoStore.maintenanceInfo = response.data;
   } catch (error: unknown) {
     console.error('更新維護配置失敗:', error);
     const e = error as { response?: { data?: { detail?: string } }; message?: string }
-    showMessage.error('更新維護配置失敗: ' + (e.response?.data?.detail ?? e.message ?? String(error)));
+    showMessage.error(t('maintenanceAdmin.updateFailed') + (e.response?.data?.detail ?? e.message ?? String(error)));
   }
 };
 </script>
-
-<style scoped>
-.maintenance-admin-container {
-  max-width: 600px;
-  margin: 2rem auto;
-  padding: 2rem;
-  background-color: #2d3748; /* bg-gray-800 */
-  border-radius: 0.5rem;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  color: #e2e8f0; /* text-gray-200 */
-}
-
-h1 {
-  text-align: center;
-  color: #fcd34d; /* 黃色 */
-  margin-bottom: 1.5rem;
-}
-
-.maintenance-form .form-group {
-  margin-bottom: 1rem;
-}
-
-.maintenance-form label {
-  display: block;
-  margin-bottom: 0.5rem;
-  font-weight: bold;
-}
-
-.maintenance-form input[type="text"],
-.maintenance-form textarea {
-  width: calc(100% - 1rem);
-  padding: 0.5rem;
-  border: 1px solid #4a5568; /* gray-700 */
-  border-radius: 0.25rem;
-  background-color: #1a202c; /* gray-900 */
-  color: #e2e8f0;
-}
-
-.maintenance-form input[type="checkbox"] {
-  margin-left: 0.5rem;
-  transform: scale(1.2);
-}
-
-.submit-button {
-  display: block;
-  width: 100%;
-  padding: 0.75rem;
-  background-color: #4299e1; /* blue-500 */
-  color: white;
-  border: none;
-  border-radius: 0.25rem;
-  cursor: pointer;
-  font-size: 1rem;
-  transition: background-color 0.3s ease;
-}
-
-.submit-button:hover {
-  background-color: #3182ce; /* blue-600 */
-}
-</style>

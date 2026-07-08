@@ -24,7 +24,7 @@
             <el-icon class="text-gray-400 hover:text-gray-600 cursor-help"><InfoFilled /></el-icon>
           </el-tooltip>
         </div>
-        <el-switch v-model="webhookEnabled" @change="saveWebhookSettings" style="--el-switch-on-color: #6366f1;" />
+        <el-switch v-model="webhookEnabled" @change="saveWebhookSettings" style="--el-switch-on-color: #f59e0b;" />
       </div>
       <div class="space-y-4 pl-1" v-if="webhookEnabled">
         <div class="flex flex-col gap-2">
@@ -64,7 +64,7 @@
       <div class="space-y-4 pl-1">
         <div class="flex items-center justify-between">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.enableNotification') }}</span>
-          <el-switch v-model="settings.notificationEnabled" @change="handleNotificationToggle" style="--el-switch-on-color: #6366f1;" />
+          <el-switch v-model="settings.notificationEnabled" @change="handleNotificationToggle" style="--el-switch-on-color: #f59e0b;" />
         </div>
         <p v-if="permissionDenied" class="text-xs text-red-400">{{ t('settings.permissionDenied') }}</p>
         <div v-if="settings.notificationEnabled || settings.soundEnabled" class="space-y-2 pt-1">
@@ -91,7 +91,7 @@
       <div class="space-y-4 pl-1">
         <div class="flex items-center justify-between">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.enableSound') }}</span>
-          <el-switch v-model="settings.soundEnabled" style="--el-switch-on-color: #6366f1;" />
+          <el-switch v-model="settings.soundEnabled" style="--el-switch-on-color: #f59e0b;" />
         </div>
         <div v-if="settings.soundEnabled" class="space-y-4">
           <div class="flex items-center gap-3">

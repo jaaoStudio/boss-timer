@@ -135,7 +135,9 @@
     "last30Days": "Last 30 days",
     "loadingMore": "Loading...",
     "noMore": "No more records",
-    "empty": "No records match the filter"
+    "empty": "No records match the filter",
+    "deleteConfirm": "Confirm",
+    "deleteCancel": "Cancel"
   },
   "recordItem": {
     "by": "by",
@@ -568,5 +570,24 @@
       "recommendedChannels": "Recommended Channels",
       "recordHistory": "Record History"
     }
+  },
+  "errorPage": {
+    "title": "Server Error",
+    "message": "Sorry, our server ran into a problem. We've been notified and are working on it.",
+    "retry": "Retry"
+  },
+  "maintenancePage": {
+    "title": "Under Maintenance",
+    "message": "We're performing necessary system updates to serve you better. Please check back soon. Thanks for your patience."
+  },
+  "maintenanceAdmin": {
+    "title": "Maintenance Management",
+    "isMaintenance": "Under maintenance",
+    "isReady": "Maintenance soon",
+    "fieldTitle": "Title",
+    "fieldMessage": "Message",
+    "submit": "Update config",
+    "updateSuccess": "Maintenance config updated successfully!",
+    "updateFailed": "Failed to update maintenance config: "
   }
 }

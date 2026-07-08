@@ -213,9 +213,9 @@ const voteBtnClass = (item: FeedbackItem) => {
     return 'border-gray-200 dark:border-gray-700 text-gray-400 cursor-not-allowed'
   }
   if (item.voted_by_me) {
-    return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+    return 'border-amber-500 bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
   }
-  return 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-500'
+  return 'border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-300 hover:border-amber-400 hover:text-amber-500'
 }
 
 const formatRelativeTime = (iso: string) => {

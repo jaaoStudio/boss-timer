@@ -1,22 +1,22 @@
 <template>
-  <div class="rounded-lg shadow-md bg-white dark:bg-slate-800 px-[18px] pt-[18px] pb-5">
+  <div class="rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)] bg-white dark:bg-gray-800/90 px-[18px] pt-[18px] pb-5">
     <!-- Header -->
     <div class="flex items-baseline justify-between mb-3.5">
-      <span class="font-bold font-mono text-sm tracking-[1px] text-slate-900 dark:text-slate-200">
+      <span class="font-bold font-mono text-sm tracking-[1px] text-gray-900 dark:text-gray-200">
         {{ t('recommendedChannels.headerTitle') }}
       </span>
-      <span class="font-mono text-[11px] tracking-[1px] text-slate-400 dark:text-slate-500">
+      <span class="font-mono text-[11px] tracking-[1px] text-gray-400 dark:text-gray-500">
         {{ t('recommendedChannels.statusLabel', { n: sortedRecords.length }) }}
       </span>
     </div>
 
     <!-- List container -->
-    <div class="bg-slate-50 dark:bg-slate-900 rounded-md px-3 py-2.5 border border-slate-900/[8%] dark:border-slate-400/[14%]">
+    <div class="bg-gray-50 dark:bg-gray-900 rounded-md px-3 py-2.5 border border-gray-900/[8%] dark:border-gray-400/[14%]">
 
       <!-- Empty state -->
       <div
         v-if="sortedRecords.length === 0"
-        class="font-mono text-xs tracking-[0.5px] py-2 text-slate-400 dark:text-slate-500"
+        class="font-mono text-xs tracking-[0.5px] py-2 text-gray-400 dark:text-gray-500"
       >{{ t('recommendedChannels.noChannels') }}</div>
 
       <!-- Records -->
@@ -50,17 +50,17 @@
         />
 
         <!-- Channel number -->
-        <span class="font-mono text-xs w-[80px] whitespace-pre shrink-0 text-slate-400 dark:text-slate-500">CH {{ String(item.record.channel).padStart(3, ' ') }}</span>
+        <span class="font-mono text-xs w-[80px] whitespace-pre shrink-0 text-gray-400 dark:text-gray-500">CH {{ String(item.record.channel).padStart(3, ' ') }}</span>
 
         <!-- Boss name -->
-        <span class="font-mono text-xs flex-1 truncate min-w-0 text-slate-900 dark:text-slate-200">
+        <span class="font-mono text-xs flex-1 truncate min-w-0 text-gray-900 dark:text-gray-200">
           {{ getBossName(item.record.boss_type_id) }}
         </span>
 
         <!-- Dotted leader -->
         <span
           aria-hidden="true"
-          class="flex-[0_1_60px] min-w-5 h-px shrink-0 translate-y-0.5 border-b border-dotted border-slate-900/[22%] dark:border-slate-400/[22%]"
+          class="flex-[0_1_60px] min-w-5 h-px shrink-0 translate-y-0.5 border-b border-dotted border-gray-900/[22%] dark:border-gray-400/[22%]"
         />
 
         <!-- Countdown -->

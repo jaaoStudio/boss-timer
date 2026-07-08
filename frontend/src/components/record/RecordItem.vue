@@ -1,16 +1,16 @@
 <template>
-  <div class="bg-gray-100 dark:bg-gray-700 rounded-lg p-3 transition-all duration-200 ease-in-out hover:bg-gray-200 dark:hover:bg-gray-600">
+  <div class="bg-gray-100 dark:bg-gray-700/60 rounded-xl p-3 transition-all duration-200 ease-in-out hover:bg-gray-200 dark:hover:bg-gray-600/70">
     <div class="flex justify-between items-center">
       <div class="flex items-center space-x-3">
         <StatusBadge :status="record.status" />
         <div>
           <span class="font-semibold text-gray-900 dark:text-white">{{ locale === 'zh' ? record.boss_type?.name_zh : record.boss_type?.name_en }}</span>
-          <span class="text-gray-600 dark:text-gray-300 font-mono">- CH{{ record.channel }}</span>
+          <span class="text-gray-600 dark:text-gray-300 font-mono tabular-nums">- CH{{ record.channel }}</span>
           <span class="text-xs text-gray-500 ml-2">{{ t('recordItem.by') }} {{ recorderDisplayName }}</span>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <div class="text-sm text-gray-500 dark:text-gray-400">{{ formattedTime }}</div>
+        <div class="text-sm text-gray-500 dark:text-gray-400 font-mono tabular-nums">{{ formattedTime }}</div>
         <el-button
           type="danger"
           size="small"
@@ -26,7 +26,7 @@
       </div>
     </div>
     <div v-if="record.respawn_min_time && record.respawn_max_time" class="text-xs text-gray-500 dark:text-gray-400 mt-1 pl-10">
-      {{ t('recordItem.respawnWindow') }} {{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}
+      {{ t('recordItem.respawnWindow') }} <span class="font-mono tabular-nums">{{ formatRespawnTime(record.respawn_min_time) }} - {{ formatRespawnTime(record.respawn_max_time) }}</span>
     </div>
   </div>
 </template>

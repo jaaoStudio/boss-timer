@@ -1,56 +1,30 @@
 <template>
-  <div class="flex flex-col items-center justify-center flex-1">
-    <img src="@public/leaf64px.png" alt="Logo" class="h-8 w-8 mr-3"/>
-    <div class="status-page-content">
-      <h1 class="status-title">系統維護中</h1>
-      <p class="status-message">我們正在進行必要的系統更新以提供更好的服務，請稍後再回來。感謝您的耐心等待。</p>
-      <button @click="goHome" class="status-button">返回首頁</button>
+  <div class="flex min-h-dvh w-full flex-col items-center justify-center gap-6 flex-1 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-6 text-center">
+    <img src="@public/leaf64px.png" alt="Boss Timer logo" class="h-12 w-12 opacity-90" />
+
+    <div class="max-w-md space-y-3">
+      <p class="font-mono text-sm tracking-widest text-[var(--accent)]">MAINTENANCE</p>
+      <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{{ t('maintenancePage.title') }}</h1>
+      <p class="text-gray-500 dark:text-gray-400 leading-relaxed">
+        {{ t('maintenancePage.message') }}
+      </p>
     </div>
+
+    <button
+      @click="goHome"
+      class="px-5 py-2.5 text-sm font-semibold text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 active:scale-[0.98] transition cursor-pointer"
+    >{{ t('appFooter.backToHome') }}</button>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const router = useRouter();
 
 const goHome = () => {
   router.push('/');
 };
 </script>
-
-<style scoped>
-.status-page-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  width: 100%;
-  background-color: #1a202c; /* bg-gray-900 */
-  color: #e2e8f0; /* text-gray-200 */
-}
-.status-page-content {
-  text-align: center;
-  padding: 2rem;
-}
-.status-title {
-  font-size: 2.5rem;
-  font-weight: bold;
-  margin-bottom: 1rem;
-}
-.status-message {
-  font-size: 1.2rem;
-  margin-bottom: 2rem;
-}
-.status-button {
-  background-color: #4a5568; /* bg-gray-700 */
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-.status-button:hover {
-  background-color: #2d3748; /* bg-gray-800 */
-}
-</style>

@@ -177,7 +177,8 @@ const chartOption = computed(() => {
 
   const textColor = isDark.value ? '#9ca3af' : '#6b7280'
   const splitColor = isDark.value ? '#374151' : '#e5e7eb'
-  const scrollbarFill = isDark.value ? 'rgba(99,102,241,0.35)' : 'rgba(99,102,241,0.25)'
+  const scrollbarFill = isDark.value ? 'rgba(245,158,11,0.35)' : 'rgba(180,83,9,0.25)'
+  const MONO = "'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace"
 
   const barData = rows.map((r, i) => ({
     value: [i, Math.max(r.minTime, now), r.maxTime, r.status, r.channel, r.isExpired, r.minTime],
@@ -206,6 +207,7 @@ const chartOption = computed(() => {
       axisLabel: {
         color: textColor,
         fontSize: 11,
+        fontFamily: MONO,
         formatter: (value: number) => {
           const d = new Date(value)
           return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
@@ -221,7 +223,7 @@ const chartOption = computed(() => {
       type: 'category',
       data: categories,
       inverse: true,
-      axisLabel: { color: textColor, fontSize: 11, fontWeight: 'bold' },
+      axisLabel: { color: textColor, fontSize: 11, fontWeight: 'bold', fontFamily: MONO },
       axisTick: { show: false },
       axisLine: { lineStyle: { color: splitColor } },
       splitLine: { show: false },
@@ -230,7 +232,7 @@ const chartOption = computed(() => {
       trigger: 'item',
       backgroundColor: isDark.value ? '#1f2937' : '#fff',
       borderColor: isDark.value ? '#374151' : '#e5e7eb',
-      textStyle: { color: isDark.value ? '#e5e7eb' : '#374151', fontSize: 12 },
+      textStyle: { color: isDark.value ? '#e5e7eb' : '#374151', fontSize: 12, fontFamily: MONO },
       formatter: (params: CallbackDataParams) => {
         type RowTuple = [number, number, number, string, number, boolean, number]
         const row = (params.data as { value?: RowTuple } | null)?.value
@@ -278,11 +280,11 @@ const chartOption = computed(() => {
         fillerColor: scrollbarFill,
         borderColor: 'transparent',
         backgroundColor: 'transparent',
-        handleStyle: { color: '#6366f1', borderColor: 'transparent' },
-        moveHandleStyle: { color: '#6366f1', opacity: 0.6 },
+        handleStyle: { color: '#f59e0b', borderColor: 'transparent' },
+        moveHandleStyle: { color: '#f59e0b', opacity: 0.6 },
         emphasis: {
-          handleStyle: { color: '#4f46e5' },
-          moveHandleStyle: { color: '#4f46e5' },
+          handleStyle: { color: '#d97706' },
+          moveHandleStyle: { color: '#d97706' },
         },
       },
     ] : [],

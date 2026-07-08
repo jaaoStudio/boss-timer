@@ -1,8 +1,8 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+  <div class="bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)] p-6">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-1.5">
       <div class="flex items-center gap-2">
-        <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('channelOverview.title') }}</h2>
+        <h2 class="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">{{ t('channelOverview.title') }}</h2>
         <el-button
           v-if="hasRecordsForSelectedBoss"
           size="small"

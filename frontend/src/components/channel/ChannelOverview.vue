@@ -1,5 +1,12 @@
 <template>
-  <div class="grid gap-2 overflow-auto [grid-template-columns:repeat(auto-fill,minmax(4rem,1fr))]">
+  <div
+    v-if="recordedChannels.length === 0"
+    class="flex flex-col items-center justify-center gap-2 py-10 text-center"
+  >
+    <Squares2X2Icon class="w-8 h-8 text-gray-300 dark:text-gray-600" />
+    <p class="text-sm text-gray-400 dark:text-gray-500">{{ t('channelTimeline.noData') }}</p>
+  </div>
+  <div v-else class="grid gap-2 overflow-auto [grid-template-columns:repeat(auto-fill,minmax(4rem,1fr))]">
     <ChannelCard
       v-for="channel in recordedChannels"
       :key="channel"
@@ -10,10 +17,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
+import { Squares2X2Icon } from '@heroicons/vue/24/outline'
 import { useBossStore, calculateCurrentStatus } from '@/stores/bossStore'
 import ChannelCard from './ChannelCard.vue'
 import { STATUS_ORDER, isExpiredRecord } from '@/composables/useStatusConfig'
+
+const { t } = useI18n()
 
 const bossStore = useBossStore()
 const { selectedBossTypeId } = storeToRefs(bossStore)

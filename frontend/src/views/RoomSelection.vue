@@ -1,72 +1,78 @@
 <template>
   <div class="relative flex flex-1 flex-col items-center justify-center h-full bg-gray-50 dark:bg-gray-900 p-4">
     <!-- Language Switcher -->
-    <div class="absolute top-4 right-4 cursor-pointer flex items-center justify-center text-white gap-2">
-      <el-icon :size="24" v-if="isDark" @click="toggleDark()">
-        <moon class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"/>
-      </el-icon>
-      <el-icon :size="24" v-else @click="toggleDark()">
-        <sunny class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200"/>
-      </el-icon>
-      <LanguageIcon @click="switchLanguage" class="w-6 h-6 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-200" />
+    <div class="absolute top-4 right-4 flex items-center justify-center gap-2">
+      <button type="button" v-if="isDark" @click="toggleDark()"
+              class="flex items-center justify-center rounded-lg p-1.5 hover:bg-gray-200/60 dark:hover:bg-gray-800 active:scale-95 transition cursor-pointer">
+        <el-icon :size="22"><moon class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"/></el-icon>
+      </button>
+      <button type="button" v-else @click="toggleDark()"
+              class="flex items-center justify-center rounded-lg p-1.5 hover:bg-gray-200/60 dark:hover:bg-gray-800 active:scale-95 transition cursor-pointer">
+        <el-icon :size="22"><sunny class="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"/></el-icon>
+      </button>
+      <button type="button" @click="switchLanguage"
+              class="flex items-center justify-center rounded-lg p-1.5 hover:bg-gray-200/60 dark:hover:bg-gray-800 active:scale-95 transition cursor-pointer">
+        <LanguageIcon class="w-5 h-5 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors" />
+      </button>
     </div>
 
-    <div class="flex flex-col justify-center gap-5 w-full  max-w-md">
+    <div class="flex flex-col justify-center gap-5 w-full max-w-md">
       <!-- Header -->
       <div class="text-center mb-8">
-        <img src="/leaf64px.png" alt="Logo" class="h-12 w-12 mx-auto mb-4">
-        <h2 class="text-3xl font-extrabold text-gray-900 dark:text-white">{{ t('roomSelection.title') }}</h2>
-        <p class="mt-2 text-sm text-gray-500 dark:text-gray-400">{{ t('roomSelection.subtitle') }}</p>
+        <img src="/leaf64px.png" alt="Boss Timer logo" class="h-12 w-12 mx-auto mb-4">
+        <h1 class="text-4xl font-bold tracking-tight text-gray-900 dark:text-white">{{ t('roomSelection.title') }}</h1>
+        <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-xs mx-auto leading-relaxed">{{ t('roomSelection.subtitle') }}</p>
       </div>
 
       <!-- Room Actions -->
-      <div class="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md ">
+      <div class="p-6 bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)]">
         <div class="space-y-4">
-          <button @click="createRoom" :disabled="isCreating" class="w-full flex justify-center items-center px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-md shadow-sm hover:bg-gray-200 dark:hover:bg-gray-600 focus:outline-none disabled:opacity-50 cursor-pointer">
-            <svg v-if="isCreating" class="w-5 h-5 mr-2 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+          <button @click="createRoom" :disabled="isCreating" class="w-full flex justify-center items-center gap-2 px-4 py-2.5 text-sm font-semibold text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 active:scale-[0.98] transition disabled:opacity-50 disabled:pointer-events-none cursor-pointer">
+            <svg v-if="isCreating" class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
             {{ isCreating ? t('roomSelection.creatingRoom') : t('roomSelection.createRoom') }}
           </button>
 
-          <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300 dark:border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800">{{ t('roomSelection.or') }}</span></div></div>
+          <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200 dark:border-gray-700"></div></div><div class="relative flex justify-center text-xs uppercase tracking-wider"><span class="px-2 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800/90">{{ t('roomSelection.or') }}</span></div></div>
 
-          <div class="flex space-x-2">
+          <div class="flex gap-2">
             <input v-model="joinRoomId"
                    type="text"
                    :placeholder="t('roomSelection.enterRoomCode')"
-                   class="block w-full px-3 py-2 placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                   class="block w-full px-3 py-2.5 font-mono tracking-wide placeholder:font-sans placeholder:tracking-normal placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)] focus:border-transparent transition sm:text-sm"
                    maxlength="10"
                    @keyup.enter="joinRoom"
                    @input="joinRoomId = joinRoomId.toUpperCase()"
             />
-            <button @click="joinRoom" :disabled="!joinRoomId.trim() || isJoining" class="px-4 py-2 w-24 text-sm font-medium text-white bg-gray-700 dark:bg-gray-600 rounded-md hover:bg-gray-800 dark:hover:bg-gray-700 disabled:opacity-50 cursor-pointer">
+            <button @click="joinRoom" :disabled="!joinRoomId.trim() || isJoining" class="px-4 py-2.5 w-24 text-sm font-medium text-white bg-gray-700 dark:bg-gray-600 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-500 active:scale-[0.98] transition disabled:opacity-50 disabled:pointer-events-none cursor-pointer">
               {{ t('roomSelection.joinRoom') }}
             </button>
           </div>
-          <p v-if="joinRoomError" class="text-red-400 text-sm mt-1">{{ joinRoomError }}</p>
+          <p v-if="joinRoomError" class="text-red-500 dark:text-red-400 text-sm mt-1">{{ joinRoomError }}</p>
         </div>
       </div>
 
       <!-- Recent Rooms -->
-      <div v-if="recentRooms.length > 0" class="p-4 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+      <div v-if="recentRooms.length > 0" class="p-4 bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)]">
         <div class="flex items-center justify-between mb-3">
-          <h3 class="text-sm font-semibold text-gray-600 dark:text-gray-300">{{ t('recentRooms.title') }}</h3>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">{{ t('recentRooms.title') }}</h3>
         </div>
-        <div class="space-y-2">
+        <div class="space-y-1">
           <div v-for="room in recentRooms" :key="room.roomId"
-               class="flex items-center justify-between px-3 py-2 rounded-md bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors cursor-pointer"
+               class="group flex items-center justify-between px-3 py-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700/60 transition-colors cursor-pointer"
                @click="joinRecentRoom(room.roomId)">
             <div class="flex items-center gap-2">
               <span class="font-mono text-sm font-medium text-gray-800 dark:text-gray-200">{{ room.roomId }}</span>
-              <span class="text-xs text-gray-400">{{ formatLastVisited(room.lastVisited) }}</span>
+              <span class="text-xs text-gray-400 dark:text-gray-500">{{ formatLastVisited(room.lastVisited) }}</span>
             </div>
             <div class="flex items-center gap-2">
-              <span v-if="joiningRoomId === room.roomId" class="text-xs text-indigo-400">{{ t('recentRooms.joining') }}</span>
+              <span v-if="joiningRoomId === room.roomId" class="text-xs text-[var(--accent)]">{{ t('recentRooms.joining') }}</span>
 
               <el-icon
-                :size="20"
+                :size="18"
+                class="opacity-0 group-hover:opacity-100 transition-opacity"
                 @click.stop="removeRecent(room.roomId)"
               >
-                <CircleClose class="text-gray-400 dark:text-gray-400  hover:text-red-600 transition-colors duration-200" />
+                <CircleClose class="text-gray-400 dark:text-gray-500 hover:text-red-500 transition-colors" />
               </el-icon>
             </div>
           </div>
@@ -74,10 +80,10 @@
       </div>
 
       <!-- Auth Section -->
-      <div class="p-6 bg-white dark:bg-gray-800 rounded-lg shadow-md">
+      <div class="p-6 bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)]">
         <div v-if="!userStore.isLoggedIn" class="text-center space-y-4">
           <div>
-            <label for="anonymousName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">{{ t('roomSelection.anonymousNicknameLabel') }}</label>
+            <label for="anonymousName" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 text-left">{{ t('roomSelection.anonymousNicknameLabel') }}</label>
             <div class="flex gap-2">
               <input
                 id="anonymousName"
@@ -86,17 +92,17 @@
                 maxlength="20"
                 type="text"
                 :placeholder="t('roomSelection.anonymousNicknamePlaceholder')"
-                class="block w-full px-3 py-2 placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm"
+                class="block w-full px-3 py-2.5 placeholder-gray-400 dark:placeholder-gray-500 border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)] focus:border-transparent transition sm:text-sm"
               />
               <button
                 type="button"
                 @click="handleReroll"
                 :title="t('roomSelection.rerollNickname')"
-                class="shrink-0 px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                class="shrink-0 px-3 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 active:scale-95 transition cursor-pointer"
               ><ArrowPathIcon :class="['w-4 h-4 transition-transform', isRerolling ? 'animate-spin [animation-duration:0.35s]' : '']" /></button>
             </div>
           </div>
-          <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-300 dark:border-gray-700"></div></div><div class="relative flex justify-center text-sm"><span class="px-2 text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800">{{ t('roomSelection.or') }}</span></div></div>
+          <div class="relative"><div class="absolute inset-0 flex items-center"><div class="w-full border-t border-gray-200 dark:border-gray-700"></div></div><div class="relative flex justify-center text-xs uppercase tracking-wider"><span class="px-2 text-gray-400 dark:text-gray-500 bg-white dark:bg-gray-800/90">{{ t('roomSelection.or') }}</span></div></div>
           <p class="text-gray-600 dark:text-gray-300 text-sm">{{ t('roomSelection.loginPrompt') }}</p>
           <GoogleLoginButton :callback="handleLoginSuccess" :error="handleLoginError" />
         </div>
@@ -104,7 +110,7 @@
           <img :src="userStore.user.avatar_url" alt="User Avatar" class="w-10 h-10 rounded-full" v-if="userStore.user && userStore.user.avatar_url"/>
           <div>
             <p class="text-gray-900 dark:text-white font-medium">{{ t('roomSelection.welcome', { name: userStore.user.display_name }) }}</p>
-            <a @click="handleLogout" class="text-sm text-indigo-400 hover:text-indigo-300 cursor-pointer">{{ t('roomSelection.signOut') }}</a>
+            <a @click="handleLogout" class="text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] cursor-pointer">{{ t('roomSelection.signOut') }}</a>
           </div>
         </div>
       </div>

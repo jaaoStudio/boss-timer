@@ -1,7 +1,7 @@
 <template>
-  <div class="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
+  <div class="bg-white dark:bg-gray-800/90 rounded-2xl border border-gray-200 dark:border-gray-700/70 shadow-[var(--shadow-card)] p-6">
     <div class="flex flex-wrap items-center justify-between gap-2 mb-4">
-      <h2 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('recordHistory.title') }}</h2>
+      <h2 class="text-xl font-semibold tracking-tight text-gray-900 dark:text-white">{{ t('recordHistory.title') }}</h2>
       <div class="flex flex-wrap gap-2 w-full @md:w-auto">
         <el-date-picker
           v-model="dateRange"
@@ -18,7 +18,7 @@
           class="!w-full @md:!w-auto"
         />
         <select v-model="selectedBossFilter"
-                class="flex-1 @md:flex-none px-3 py-2 border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                class="flex-1 @md:flex-none px-3 py-2 border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[var(--accent-ring)] focus:border-transparent transition">
           <option value="">{{ t('recordHistory.allBosses') }}</option>
           <option v-for="boss in bossTypes" :key="boss.id" :value="boss.id">
             {{ locale === 'zh' ? boss.name_zh : boss.name_en }}
@@ -154,8 +154,8 @@ const handleDelete = async (recordId: number) => {
       t('recordHistory.deleteConfirmMessage'),
       t('recordHistory.deleteConfirmTitle'),
       {
-        confirmButtonText: '確定',
-        cancelButtonText: '取消',
+        confirmButtonText: t('recordHistory.deleteConfirm'),
+        cancelButtonText: t('recordHistory.deleteCancel'),
         type: 'warning',
       }
     )

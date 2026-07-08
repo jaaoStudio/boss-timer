@@ -1,20 +1,33 @@
 <template>
-  <div class="status-page-container">
-    <img src="@public/leaf64px.png" alt="Logo" class="h-8 w-8 mr-3"/>
-    <div class="status-page-content">
-      <h1 class="status-title">伺服器發生錯誤 (500)</h1>
-      <p class="status-message">很抱歉，我們的伺服器遇到了一些問題。我們已經收到通知並正在處理中。</p>
-      <div class="button-group">
-        <button @click="goHomeAndReload" class="status-button">返回首頁</button>
-        <button @click="goHomeAndReload" class="status-button secondary">重試</button>
-      </div>
+  <div class="flex min-h-dvh w-full flex-col items-center justify-center gap-6 bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100 px-6 text-center">
+    <img src="@public/leaf64px.png" alt="Boss Timer logo" class="h-12 w-12 opacity-90" />
+
+    <div class="max-w-md space-y-3">
+      <p class="font-mono text-sm tracking-widest text-[var(--accent)]">ERROR 500</p>
+      <h1 class="text-3xl sm:text-4xl font-bold tracking-tight">{{ t('errorPage.title') }}</h1>
+      <p class="text-gray-500 dark:text-gray-400 leading-relaxed">
+        {{ t('errorPage.message') }}
+      </p>
+    </div>
+
+    <div class="flex items-center justify-center gap-3">
+      <button
+        @click="goHomeAndReload"
+        class="px-5 py-2.5 text-sm font-semibold text-white bg-gray-900 dark:bg-white dark:text-gray-900 rounded-lg hover:bg-gray-800 dark:hover:bg-gray-100 active:scale-[0.98] transition cursor-pointer"
+      >{{ t('appFooter.backToHome') }}</button>
+      <button
+        @click="goHomeAndReload"
+        class="px-5 py-2.5 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 active:scale-[0.98] transition cursor-pointer"
+      >{{ t('errorPage.retry') }}</button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const router = useRouter();
 
 const goHomeAndReload = () => {
@@ -22,54 +35,4 @@ const goHomeAndReload = () => {
     window.location.reload();
   });
 };
-
 </script>
-
-<style scoped>
-.status-page-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  width: 100%;
-  background-color: #1a202c; /* bg-gray-900 */
-  color: #e2e8f0; /* text-gray-200 */
-}
-.status-page-content {
-  text-align: center;
-  padding: 2rem;
-}
-.status-title {
-  font-size: 2.5rem;
-  font-weight: bold;
-  margin-bottom: 1rem;
-}
-.status-message {
-  font-size: 1.2rem;
-  margin-bottom: 2rem;
-}
-.button-group {
-    display: flex;
-    justify-content: center;
-    gap: 1rem;
-}
-.status-button {
-  background-color: #4a5568; /* bg-gray-700 */
-  color: white;
-  padding: 0.75rem 1.5rem;
-  border: 1px solid transparent;
-  border-radius: 0.375rem;
-  cursor: pointer;
-  transition: background-color 0.3s;
-}
-.status-button:hover {
-  background-color: #2d3748; /* bg-gray-800 */
-}
-.status-button.secondary {
-    background-color: transparent;
-    border-color: #4a5568; /* border-gray-700 */
-}
-.status-button.secondary:hover {
-    background-color: #2d3748; /* bg-gray-800 */
-}
-</style>
