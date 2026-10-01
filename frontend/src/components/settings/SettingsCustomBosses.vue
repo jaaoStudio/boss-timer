@@ -125,7 +125,7 @@ const deleteBoss = async (id: number) => {
       t('settings.customBoss.deleteConfirmTitle'),
       {
         confirmButtonText: t('settings.customBoss.delete'),
-        cancelButtonText: '取消',
+        cancelButtonText: t('settings.customBoss.deleteCancel'),
         type: 'warning',
       }
     )
