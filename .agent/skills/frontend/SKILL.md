@@ -65,7 +65,7 @@ frontend/
     │   ├── roomStore.ts          # 房間狀態 (roomId, userCount, 連線狀態)
     │   ├── bossStore.ts          # Boss 資料 (bossTypes, bossRecords, 篩選/排序/刪除)
     │   ├── recordHistoryStore.ts # 歷史紀錄 (cursor 分頁、日期/Boss 篩選、race-free upsert/remove)
-    │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連/心跳/訊息佇列)
+    │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連/心跳)
     │
     ├── services/
     │   └── apiService.ts         # API 服務層 (封裝所有 HTTP/WS 調用)
@@ -176,9 +176,12 @@ frontend/
 - `allBossPriorityRecords` — 所有 Boss 的 `may_respawn` 記錄 (按最早重生時間排序)，供 `RecommendedChannels` 使用
 
 **核心 Actions**:
-- `updateBossRecord(record)` — 根據 `(channel, boss_type_id)` 更新或新增記錄
-- `deleteBossRecord(recordId)` — 從本地 `bossRecords` 中移除指定紀錄
-- `clearBossTypeRecords(bossTypeId)` — 移除 `bossRecords` 中所有該 Boss 種類的紀錄（收到 `boss_type_cleared` WS 事件時呼叫）
+- `updateBossRecord(record)` — 根據 `(channel, boss_type_id)` 更新或新增記錄；早於換輪分界線（`clearedAt`）或比現有紀錄舊的紀錄會被忽略
+- `deleteBossRecord(recordId, replacement?)` — 移除指定紀錄；有 `replacement`（前一筆仍有效的紀錄）時由它接手該頻道
+- `clearBossTypeRecords(bossTypeId, clearedAt)` — 記錄換輪分界線並移除該 Boss 種類的紀錄（收到 `boss_type_cleared` WS 事件時呼叫）
+- `setClearedAt(lastClearedAt)` — 從 `room_state.last_cleared_at` 載入各 Boss 種類的換輪分界線
+- `addCustomBossType(bossType)` / `removeCustomBossType(bossTypeId)` — 自訂 Boss 增刪（冪等，HTTP 回應與 WS 廣播都會呼叫）；移除時若正被選取，改選 `resolveBossTypeId` 的結果
+- `markSelfDeletingBossType(id)` / `unmarkSelfDeletingBossType(id)` — 標記自己發起的刪除，讓 `boss_type_deleted` 廣播只對其他成員跳提示
 - `startStatusTick()` / `stopStatusTick()` — 啟動/停止每秒 tick `_now` 的 interval（由 `useRoomSession` 管理生命週期）
 
 **`calculateCurrentStatus` (exported)**:
@@ -225,7 +228,8 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **風格**: Setup (Composition API)
 
 **核心功能**:
-- **訊息佇列**: 未連線時的訊息會被排入佇列，連線建立後自動發送
+- **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
+- **`sendIdentityChange()`**: 登入 / 登出通知 WS 身分用。連線建立中（CONNECTING）時握手已帶舊 cookie，會放棄這次握手並立刻重連
 - **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)
 - **心跳**: 每 30 秒發送 `ping`
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
@@ -236,12 +240,15 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 |---|---|
 | `pong` | 忽略 |
 | `maintenance_status_update` | → `appInfoStore.setMaintenanceInfo()` |
-| `room_state` | → `bossStore.setBossRecords()` + `roomStore.setUserCount()` |
+| `room_state` | → `bossStore.setBossTypes()` + `roomStore.setRoomSettings()` + `setClearedAt()` + `setBossRecords()` + `roomStore.setUserCount()` |
 | `boss_update` | → `bossStore.updateBossRecord()` + `recordHistoryStore.upsertRecord()` |
-| `record_deleted` | → `bossStore.deleteBossRecord(record_id)` + `recordHistoryStore.removeRecord(record_id)` |
-| `boss_type_cleared` | → `bossStore.clearBossTypeRecords(boss_type_id)` |
+| `record_deleted` | → `bossStore.deleteBossRecord(record_id, replacement)` + `recordHistoryStore.removeRecord(record_id)` |
+| `boss_type_cleared` | → `bossStore.clearBossTypeRecords(boss_type_id, cleared_at)` |
+| `boss_type_added` | → `bossStore.addCustomBossType()` |
+| `boss_type_deleted` | → `bossStore.removeCustomBossType()` + `recordHistoryStore.removeBossType()`；被其他成員刪掉且正被選取時跳提示 |
+| `room_settings_updated` | → `roomStore.setRoomSettings()`（`SettingsPreferences` 只套用有變動的欄位） |
 | `user_count_update` | → `roomStore.setUserCount()` |
-| `error` | `console.error` |
+| `error` | 依 `code`：`rate_limited` → 警告提示；`record_rejected` → 「回報未被記錄」錯誤提示；其他僅 `console.error` |
 
 ### `appInfoStore` — 應用全域
 **風格**: Options API
@@ -418,8 +425,8 @@ const { t } = useI18n()
 1. 使用者在 `RecordHistory` 點擊 `RecordItem` 上的垃圾桶按鈕
 2. `RecordHistory.handleDelete()` 彈出確認對話框
 3. 確認後呼叫 `ApiService.deleteBossRecord(roomId, recordId)`
-4. 後端撤銷 Celery 預警任務 + 軟刪除紀錄 + WebSocket 廣播 `record_deleted`
-5. 前端 `websocketStore` 接收 `record_deleted` → `bossStore.deleteBossRecord(recordId)`
+4. 後端撤銷 Celery 預警任務 + 軟刪除紀錄 + WebSocket 廣播 `record_deleted`（附 `replacement`：該頻道前一筆仍有效的紀錄，不跨過換輪分界線）
+5. 前端 `websocketStore` 接收 `record_deleted` → `bossStore.deleteBossRecord(recordId, replacement)`，與重新整理後看到的狀態一致
 
 ### 離開房間
 1. `BossTracker.vue` `onUnmounted`:

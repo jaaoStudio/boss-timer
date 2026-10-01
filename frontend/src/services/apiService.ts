@@ -3,6 +3,7 @@ import { bossService } from '@/axios'
 import type { BossType, BossRecord } from '@/stores/bossStore'
 import type { User } from '@/stores/userStore'
 import type { MaintenanceInfo } from '@/stores/appInfo'
+import type { RoomSettings } from '@/stores/roomStore'
 
 const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`
 
@@ -24,12 +25,8 @@ interface RoomCreateResponse {
   room_id: string
 }
 
-interface RoomExistsResponse {
+interface RoomExistsResponse extends RoomSettings {
   exists: boolean
-  discord_webhook_url?: string | null
-  discord_webhook_enabled?: boolean
-  webhook_notify_events?: string[]
-  webhook_alert_type?: string
 }
 
 interface RecordHistoryPage {
@@ -121,7 +118,7 @@ class ApiService {
     return this.client.get<RoomExistsResponse>(`/room/${roomId}/exists`).then(res => res.data)
   }
 
-  updateRoomSettings(roomId: string, settings: Record<string, unknown>): Promise<RoomExistsResponse> {
+  updateRoomSettings(roomId: string, settings: RoomSettings): Promise<RoomExistsResponse> {
     return this.client.patch<RoomExistsResponse>(`/room/${roomId}/settings`, settings).then(res => res.data)
   }
 

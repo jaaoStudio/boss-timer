@@ -128,6 +128,15 @@ export const useRecordHistoryStore = defineStore('recordHistory', () => {
     }
   }
 
+  // 自訂 Boss 被刪除時，其紀錄已從資料庫永久移除。
+  // 先中斷載入中的分頁，否則刪除前發出的請求回來後會把這些紀錄加回來；下次捲動會重新載入同一頁
+  function removeBossType(bossTypeId: number) {
+    abortInFlight()
+    isLoading.value = false
+    const next = new Map([...records.value].filter(([, r]) => r.boss_type_id !== bossTypeId))
+    if (next.size !== records.value.size) records.value = next
+  }
+
   return {
     records,
     deletedIds,
@@ -142,5 +151,6 @@ export const useRecordHistoryStore = defineStore('recordHistory', () => {
     reset,
     upsertRecord,
     removeRecord,
+    removeBossType,
   }
 })

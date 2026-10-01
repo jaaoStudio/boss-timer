@@ -2,6 +2,11 @@ import { defineStore } from 'pinia'
 
 let _statusTickId: ReturnType<typeof setInterval> | null = null
 
+// 自己發起刪除的自訂 Boss：收到 boss_type_deleted 廣播時用來區分「自己刪的」與「被其他成員刪的」。
+// 沒收到廣播（例如斷線）時標記會在一段時間後自動失效
+const _selfDeletingBossTypeIds = new Set<number>()
+const SELF_DELETE_MARK_TTL_MS = 10_000
+
 export function calculateCurrentStatus(record: BossRecord, now = new Date()): string {
   if (record.status !== 'killed') return record.status
   const min = record.respawn_min_time ? new Date(record.respawn_min_time) : null
@@ -68,6 +73,8 @@ interface BossState {
   loading: boolean
   selectedBossTypeId: number | null
   selectedChannel: number | null
+  // 各 Boss 種類的換輪分界線（ms epoch），早於分界線的紀錄不再有效
+  clearedAt: Record<number, number>
   _now: number
 }
 
@@ -83,6 +90,7 @@ export const useBossStore = defineStore('boss', {
     loading: false,
     selectedBossTypeId: null,
     selectedChannel: null,
+    clearedAt: {},
     _now: Date.now(),
   }),
   getters: {
@@ -109,11 +117,22 @@ export const useBossStore = defineStore('boss', {
     setBossRecords(records: BossRecord[]) {
       this.bossRecords = records
     },
-    async updateBossRecord(record: BossRecord) {
+    setClearedAt(lastClearedAt: Record<string, string>) {
+      this.clearedAt = Object.fromEntries(
+        Object.entries(lastClearedAt).map(([id, iso]) => [Number(id), ts(iso)]),
+      )
+    },
+
+    updateBossRecord(record: BossRecord) {
+      // 換輪前的紀錄即使晚送達也不算有效
+      if (ts(record.recorded_at) < (this.clearedAt[record.boss_type_id] ?? 0)) return
+
       const index = this.bossRecords.findIndex(
         r => r.channel === record.channel && r.boss_type_id === record.boss_type_id
       )
       if (index >= 0) {
+        // 已有更新的紀錄時不被舊紀錄覆蓋（例如撤銷後接手的前一筆晚於新回報送達）
+        if (ts(this.bossRecords[index].recorded_at) > ts(record.recorded_at)) return
         this.bossRecords.splice(index, 1, record)
       } else {
         this.bossRecords.push(record)
@@ -127,30 +146,48 @@ export const useBossStore = defineStore('boss', {
       })
     },
 
-    deleteBossRecord(recordId: number) {
+    deleteBossRecord(recordId: number, replacement: BossRecord | null = null) {
       const index = this.bossRecords.findIndex(r => r.id === recordId)
       if (index >= 0) {
         this.bossRecords.splice(index, 1)
       }
+      // 撤銷後由前一筆仍有效的紀錄接手該頻道
+      if (replacement) {
+        this.updateBossRecord(replacement)
+      }
     },
 
-    clearBossTypeRecords(bossTypeId: number) {
+    clearBossTypeRecords(bossTypeId: number, clearedAt: string) {
+      this.clearedAt = { ...this.clearedAt, [bossTypeId]: ts(clearedAt) }
       this.bossRecords = this.bossRecords.filter(r => r.boss_type_id !== bossTypeId)
     },
 
     addCustomBossType(bossType: BossType) {
+      // 自己新增時 HTTP 回應與 boss_type_added 廣播都會帶來同一筆
+      if (this.bossTypes.some(b => b.id === bossType.id)) return
       this.bossTypes.push(bossType)
     },
 
-    removeCustomBossType(bossTypeId: number) {
+    markSelfDeletingBossType(bossTypeId: number) {
+      _selfDeletingBossTypeIds.add(bossTypeId)
+      setTimeout(() => _selfDeletingBossTypeIds.delete(bossTypeId), SELF_DELETE_MARK_TTL_MS)
+    },
+
+    unmarkSelfDeletingBossType(bossTypeId: number): boolean {
+      return _selfDeletingBossTypeIds.delete(bossTypeId)
+    },
+
+    /** 移除自訂 Boss 與其紀錄；回傳它是否正被選取（已不存在則為 false） */
+    removeCustomBossType(bossTypeId: number): boolean {
       const index = this.bossTypes.findIndex(b => b.id === bossTypeId)
-      if (index >= 0) {
-        this.bossTypes.splice(index, 1)
-      }
-      if (this.selectedBossTypeId === bossTypeId) {
-        this.selectedBossTypeId = null
+      if (index < 0) return false
+      this.bossTypes.splice(index, 1)
+      const wasSelected = this.selectedBossTypeId === bossTypeId
+      if (wasSelected) {
+        this.selectedBossTypeId = resolveBossTypeId(this.bossTypes)
       }
       this.bossRecords = this.bossRecords.filter(r => r.boss_type_id !== bossTypeId)
+      return wasSelected
     },
 
     clearRoomState() {
@@ -158,6 +195,7 @@ export const useBossStore = defineStore('boss', {
       this.bossRecords = []
       this.selectedBossTypeId = null
       this.selectedChannel = null
+      this.clearedAt = {}
     },
 
     setLoading(status: boolean) {

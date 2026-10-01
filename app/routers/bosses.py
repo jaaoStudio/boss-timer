@@ -1,12 +1,12 @@
 # app/routers/bosses.py
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import or_, func, text
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.database.database import get_db
-from app.database.models import BossType, BossRecord
+from app.database.models import BossType, BossRecord, Room
 from app.dependencies import limiter, verify_user_session, get_connection_manager
 from app.schemas.boss import (
     BossRecordHistoryPage,
@@ -15,7 +15,7 @@ from app.schemas.boss import (
     CustomBossTypeCreate,
 )
 from app.services.boss_service import BossService
-from app.services.room_service import get_room_by_id
+from app.services.room_service import get_room_by_id, get_effective_record
 from app.celery_app import celery_app
 from app.websocket.manager import ConnectionManager
 
@@ -36,10 +36,10 @@ async def create_custom_boss_type(
     room_id: str,
     payload: CustomBossTypeCreate,
     db: Session = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
     _ = Depends(verify_user_session)
 ):
     """新增房間自訂 Boss"""
-    from app.services.room_service import get_room_by_id
     if not get_room_by_id(db, room_id):
         raise HTTPException(status_code=404, detail="Room not found")
 
@@ -53,7 +53,13 @@ async def create_custom_boss_type(
     db.add(custom)
     db.commit()
     db.refresh(custom)
-    return custom
+
+    response = BossTypeResponse.model_validate(custom)
+    await manager.broadcast_to_room(
+        room_id=room_id,
+        message={"type": "boss_type_added", "data": response.model_dump(mode='json')},
+    )
+    return response
 
 
 @router.delete("/room/{room_id}/boss-types/{boss_type_id}")
@@ -63,6 +69,7 @@ async def delete_custom_boss_type(
     room_id: str,
     boss_type_id: int,
     db: Session = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
     _ = Depends(verify_user_session)
 ):
     """刪除房間自訂 Boss（只能刪自己房間的）"""
@@ -85,9 +92,19 @@ async def delete_custom_boss_type(
                 if task_id:
                     celery_app.control.revoke(task_id, terminate=False)
 
+    boss_name = boss.name_zh
+
     # FK ondelete="CASCADE" 會自動刪除關聯的 BossRecord
     db.delete(boss)
     db.commit()
+
+    await manager.broadcast_to_room(
+        room_id=room_id,
+        message={
+            "type": "boss_type_deleted",
+            "data": {"boss_type_id": boss_type_id, "name": boss_name},
+        },
+    )
     return {"message": "Custom boss type deleted"}
 
 @router.get("/room/{room_id}/records", response_model=BossRecordHistoryPage)
@@ -150,16 +167,28 @@ async def delete_boss_record(
             if task_id:
                 celery_app.control.revoke(task_id, terminate=False)
 
+    # commit 後 ORM 物件會過期，先記下需要的欄位以免重新查詢
+    channel, boss_type_id = record.channel, record.boss_type_id
+    room = get_room_by_id(db, room_id)
+    last_cleared_at = room.last_cleared_at if room else None
+
     # 2. Soft delete
     record.is_archived = True
     db.commit()
 
-    # 3. WebSocket Broadcast
+    # 3. 該頻道改由前一筆仍有效的紀錄接手（不跨過換輪分界線），沒有則為 None
+    replacement = get_effective_record(db, room_id, last_cleared_at, channel, boss_type_id) if room else None
+
+    # 4. WebSocket Broadcast
     await manager.broadcast_to_room(
         room_id=room_id,
         message={
             "type": "record_deleted",
-            "data": {"record_id": record_id, "room_id": room_id}
+            "data": {
+                "record_id": record_id,
+                "room_id": room_id,
+                "replacement": BossRecordResponse.model_validate(replacement).model_dump(mode='json') if replacement else None,
+            }
         }
     )
 
@@ -199,11 +228,17 @@ async def clear_boss_type_records(
                 if task_id:
                     celery_app.control.revoke(task_id, terminate=False)
 
-    # 更新 last_cleared_at（重新賦值整個 dict 確保 SQLAlchemy 偵測到 JSONB 變更）
+    # 以 jsonb || 在資料庫端原子合併，只寫入這個 Boss 種類的 key，
+    # 避免同時換輪不同 Boss 時讀出-修改-寫回互相覆蓋
     cleared_at = datetime.now(timezone.utc)
-    updated = dict(room.last_cleared_at or {})
-    updated[str(boss_type_id)] = cleared_at.isoformat()
-    room.last_cleared_at = updated
+    db.query(Room).filter(Room.room_id == room.room_id).update(
+        {
+            Room.last_cleared_at: func.coalesce(Room.last_cleared_at, text("'{}'::jsonb")).op('||')(
+                func.jsonb_build_object(str(boss_type_id), cleared_at.isoformat())
+            )
+        },
+        synchronize_session=False,
+    )
     db.commit()
 
     await manager.broadcast_to_room(

@@ -3,9 +3,10 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
-from app.dependencies import limiter, verify_user_session
+from app.dependencies import limiter, verify_user_session, get_connection_manager
 from app.services.room_service import create_room as room_service_create_room, get_room_by_id
 from app.schemas.room import RoomResponse, RoomExists, RoomSettingsUpdate
+from app.websocket.manager import ConnectionManager
 import logging
 
 router = APIRouter(prefix="/room", tags=["rooms"])
@@ -66,6 +67,7 @@ async def update_room_settings(
         settings_data: RoomSettingsUpdate,
         room_id: str = Path(..., min_length=10, max_length=10),
         db: Session = Depends(get_db),
+        manager: ConnectionManager = Depends(get_connection_manager),
         _ = Depends(verify_user_session)
 ):
     """更新房間設定 (Webhook 等)"""
@@ -80,8 +82,15 @@ async def update_room_settings(
         
         db.commit()
         db.refresh(room)
-        return RoomResponse.model_validate(room)
+        response = RoomResponse.model_validate(room)
     except Exception as e:
         db.rollback()
         logging.error(f"Update room settings error: {e}")
         raise HTTPException(status_code=500, detail="Failed to update room settings")
+
+    # Webhook 設定為整個房間共用，同步給其他開著設定視窗的成員
+    await manager.broadcast_to_room(
+        room_id=room.room_id,
+        message={"type": "room_settings_updated", "data": response.model_dump(mode='json')},
+    )
+    return response

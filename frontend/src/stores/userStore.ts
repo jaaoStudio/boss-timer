@@ -151,7 +151,7 @@ export const useUserStore = defineStore('user', {
         this.anonymousName = this.getAnonymousName();
 
         // 發送 deauthenticate 訊息通知 WebSocket 連線身份變更
-        websocketStore.sendMessage({ type: 'deauthenticate' });
+        websocketStore.sendIdentityChange({ type: 'deauthenticate' });
 
       } catch (error) {
         console.error('Logout error:', error);
@@ -173,7 +173,7 @@ export const useUserStore = defineStore('user', {
         this.isLoggedIn = true;
         localStorage.setItem('user_info', JSON.stringify(response.user));
 
-        websocketStore.sendMessage({
+        websocketStore.sendIdentityChange({
           type: 'authenticate',
           token: response.access_token
         });

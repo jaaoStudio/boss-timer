@@ -253,7 +253,7 @@ uv run alembic upgrade head
 
 ### Blue/Green 部署（正式機 `deploy.sh`）
 
-正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換：
+正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換（腳本版控於 repo 的 `deploy/`：`deploy.sh`、`rollback.sh` 與兩者共用的 `lib.sh`，修改後需手動把三支一起同步到正式機）：
 
 1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
@@ -262,9 +262,10 @@ uv run alembic upgrade head
 5. `docker compose up -d` 起 next slot 容器
 6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
 7. `sed` 改 Traefik 設定切流量到 next slot（Traefik 自動偵測檔案變更）
-8. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
+8. 等 10 秒後**停掉舊 slot**（`docker compose stop`）。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
+9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
 
-回滾：把 Traefik 設定改回前一個 slot 即可（前一版容器還活著）。
+回滾：執行 `~/boss-tracker/rollback.sh`——重新啟動舊 slot、等健康檢查通過、切回流量、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。
 
 ### 手動建置（本地測試用）
 

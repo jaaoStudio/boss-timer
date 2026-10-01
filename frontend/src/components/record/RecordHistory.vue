@@ -133,6 +133,13 @@ function applyFiltersAndReload() {
   recordHistoryStore.loadMore()
 }
 
+// 篩選中的自訂 Boss 被刪除時改回「全部 Boss」
+watch(bossTypes, (types) => {
+  if (selectedBossFilter.value !== '' && !types.some(b => b.id === selectedBossFilter.value)) {
+    selectedBossFilter.value = ''
+  }
+}, { deep: true })
+
 watch([dateRange, selectedBossFilter, () => roomStore.roomId], () => {
   applyFiltersAndReload()
 })
