@@ -219,6 +219,7 @@
       "deleteFailed": "Failed to delete",
       "deleteConfirmTitle": "Delete Custom Boss",
       "deleteConfirmMessage": "This will permanently delete the boss and all its kill records. This action cannot be undone. Continue?",
+      "deleteCancel": "Cancel",
       "empty": "No custom bosses yet"
     },
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
@@ -498,58 +499,73 @@
       "start": {
         "title": "Create or Join a Room",
         "steps": [
-          "On the home page, enter any room name and click \"Create New Room\", or enter a room code shared by a friend and click \"Join\".",
-          "Share the room code with your teammates — all actions within the same room sync in real time.",
-          "You can sign in with Google (to save preferences) or join as a guest by entering a nickname."
+          "On the home page, click \"Create a New Room\" — a 10-character room code is generated automatically. To join a teammate's room, enter the code they shared and click \"Join\".",
+          "Share the room code with your teammates — all reports within the same room sync in real time. The header shows the connection status (Live / Offline) and how many people are online.",
+          "Sign in with Google, or join as a guest by entering a nickname. Click the refresh button next to the nickname field to generate a random one.",
+          "\"Recent Rooms\" on the home page lists rooms you've visited — click one to jump back in. Rooms that no longer exist are removed automatically."
         ]
       },
       "record": {
         "title": "Report Boss Status",
         "steps": [
-          "In the \"Control Panel\", select a Boss from the dropdown (supports search) and enter the channel number.",
-          "Click a status button to submit: green \"Killed\", red \"Alive\", or grey \"Not Found\" — the system calculates respawn times automatically.",
-          "The control panel adapts to its container width: status buttons show icons only when narrow, icons + text when wide.",
-          "Click the star icon next to a Boss to favorite it. Favorited bosses appear at the top of the dropdown.",
-          "When switching rooms, the last selected Boss is remembered automatically; rooms with custom Bosses will prefer the custom one."
+          "In the \"Control Panel\", enter the channel number and select a Boss from the dropdown (supports search).",
+          "Click a status button to submit: red skull \"Just killed\", green magnifier \"alive\", or grey question mark \"not found\". After a kill report, the earliest and latest respawn times are calculated automatically.",
+          "Click the star next to a Boss in the dropdown to favorite it. The room's custom Bosses and your favorites appear as quick-switch buttons at the top of the panel.",
+          "Clicking a channel card or timeline row in \"Channel Overview\", or any row in \"Recommended Channels\", fills in that channel and Boss for you — ready to report.",
+          "When the control panel is ¼ or ½ wide, status buttons show icons only; widen it to show icons + text.",
+          "Your last selected Boss is remembered. If it was a custom Boss, entering another room will prefer that room's custom Boss."
         ]
       },
       "view": {
         "title": "View Respawn Info",
         "steps": [
-          "\"Channel Overview\" offers two views: Card mode (quick countdown per channel) and Gantt Timeline (visual respawn windows).",
-          "The timeline supports status filters (may respawn / respawning / alive / expired) and scrollable rows.",
-          "\"Recommended Channels\" automatically highlights channels worth visiting (may respawn) and those to avoid (respawning)."
+          "Use the toggle in the top-right of \"Channel Overview\" to switch between Card Overview (quick per-channel status) and Respawn Timeline (Gantt-style respawn windows).",
+          "On the timeline, click the status chips (May Respawn / Respawning / Alive / Expired) to filter. Expand the list to see all channels when there are many.",
+          "\"Recommended Channels\" lists every channel in the May Respawn window across all Bosses, sorted by time remaining with the most urgent on top. The countdown ring and color shift from amber to red as time runs out.",
+          "\"Boss Info\" shows the selected Boss's respawn range, plus the selected channel's status, report time, and earliest / latest respawn countdowns.",
+          "When starting a new rotation, click the trash button next to the \"Channel Overview\" title to clear all channel records for the current Boss. This is synced to everyone in the room."
         ]
       },
       "history": {
-        "title": "History & Undo",
+        "title": "Record History & Undo",
         "steps": [
           "\"Record History\" shows reports from the last 1 day by default — scroll down to infinitely load older records.",
           "Use the date picker to choose a custom range (up to 30 days), or use the shortcut buttons: \"Last 1 Day\", \"Last 7 Days\", \"Last 30 Days\".",
-          "You can also filter by a specific Boss using the dropdown.",
-          "If you submitted a wrong report, click the trash icon to undo it — this also cancels any scheduled Discord alerts."
+          "You can also filter by a specific Boss using the dropdown. Clicking a record switches to that Boss.",
+          "If you submitted a wrong report, click the trash icon to undo it — this also cancels any scheduled Discord alerts.",
+          "Google-signed-in users can show or hide the \"Record History\" widget from the \"Room Actions\" menu."
         ]
       },
       "layout": {
         "title": "Customize Layout",
         "steps": [
-          "Click \"Customize Layout\" in the top-right to enter edit mode. Drag widgets (desktop) or use the arrow buttons (mobile) to reorder.",
-          "On desktop, use the \"−\" and \"+\" buttons to adjust widget width (¼, ½, ¾, or full). Some widgets have a minimum width of ½.",
+          "Click \"Customize Layout\" below the header to enter edit mode. Drag widgets (desktop) or use the arrow buttons (mobile) to reorder.",
+          "On desktop, use the \"−\" and \"+\" buttons to adjust widget width (¼, ½, ¾, or full). Channel Overview, Recommended Channels, and Record History have a minimum width of ½.",
+          "Click \"Done\" when finished, or \"Reset\" to restore the default layout.",
           "In normal view, each widget has a collapse button in its top-right corner (visible on hover). Click to fold it into a thin bar.",
           "Layout is saved automatically — locally for guests, synced to your account if signed in with Google."
         ]
       },
       "settings": {
-        "title": "Notifications, Sound & Discord",
+        "title": "Room Actions & Settings",
         "steps": [
-          "Click the gear icon in the top-right to open Settings. Toggle browser notifications and sound alerts, adjust volume and reminder timing.",
-          "In the \"Discord Webhook\" tab, paste a channel Webhook URL to receive kill notifications and respawn alerts (~5 min before).",
-          "In the \"Custom Bosses\" tab, add room-specific non-standard bosses with custom names and respawn time ranges."
+          "The \"Room Actions\" menu on the right of the header lets you copy the room ID, toggle language, toggle dark / light theme, open Settings, or leave the room.",
+          "In the \"Preferences\" tab, enable browser notifications and sound, then choose to be alerted \"When boss may respawn (earliest)\" and/or \"When boss has definitely respawned\". Adjust volume, preview preset sounds, or upload your own (up to 5MB).",
+          "In the Discord Webhook section of the \"Preferences\" tab, turn on the switch and paste a Webhook URL. Choose which events to post (killed / alive / not found) and get alerts ~5 minutes before the earliest or latest respawn. Only applies to records created after it's enabled.",
+          "In the \"Custom Boss\" tab, add room-specific Bosses with a name and min / max respawn time (minutes). Custom Bosses are only visible in that room."
+        ]
+      },
+      "feedback": {
+        "title": "Feedback & Feature Requests",
+        "steps": [
+          "The \"Feedback\" tab in Settings lists bug reports and feature requests from everyone, sortable by votes or newest.",
+          "Sign in with Google to submit a bug report or feature request and to vote for items you want. New submissions become public after review.",
+          "The \"Changelog\" tab shows new features and fixes in each version."
         ]
       }
     },
     "tip": "Tip",
-    "tipContent": "The room code can be copied directly from the URL bar. Inside a room, clicking the room code in the top-left corner copies it to your clipboard."
+    "tipContent": "The room code can be copied straight from the URL bar, or click the room code in the header to copy it to your clipboard. Rooms with no activity for 7 days are archived automatically."
   },
   "layout": {
     "customize": "Customize Layout",
