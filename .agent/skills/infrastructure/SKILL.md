@@ -253,7 +253,7 @@ uv run alembic upgrade head
 
 ### Blue/Green 部署（正式機 `deploy.sh`）
 
-正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換（腳本版控於 repo 的 `deploy/`，修改後需手動同步到正式機）：
+正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換（腳本版控於 repo 的 `deploy/`：`deploy.sh`、`rollback.sh` 與兩者共用的 `lib.sh`，修改後需手動把三支一起同步到正式機）：
 
 1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA

@@ -179,27 +179,30 @@ const webhookNotifyEvents = ref<string[]>(['killed', 'alive', 'not_found'])
 const webhookUrl = ref('')
 const webhookAlertType = ref('none')
 
-// 只套用與上一份設定不同的欄位，避免其他成員改了別的欄位時，蓋掉自己正在輸入、尚未存檔的內容
-function applyRoomSettings(next: RoomSettings, prev: RoomSettings | null) {
-  const changed = (key: keyof RoomSettings) =>
-    !prev || JSON.stringify(next[key]) !== JSON.stringify(prev[key])
-  if (changed('discord_webhook_enabled')) webhookEnabled.value = next.discord_webhook_enabled || false
-  if (changed('webhook_notify_events')) webhookNotifyEvents.value = next.webhook_notify_events ?? ['killed', 'alive', 'not_found']
-  if (changed('discord_webhook_url')) webhookUrl.value = next.discord_webhook_url || ''
-  if (changed('webhook_alert_type')) webhookAlertType.value = next.webhook_alert_type || 'none'
+function applyRoomSettings(roomInfo: RoomSettings) {
+  webhookEnabled.value = roomInfo.discord_webhook_enabled || false
+  webhookNotifyEvents.value = roomInfo.webhook_notify_events ?? ['killed', 'alive', 'not_found']
+  webhookUrl.value = roomInfo.discord_webhook_url || ''
+  webhookAlertType.value = roomInfo.webhook_alert_type || 'none'
 }
 
-// 其他成員修改設定時（room_settings_updated 廣播）即時更新畫面
-watch(() => roomStore.roomSettings, (next, prev) => {
-  if (next) applyRoomSettings(next, prev)
+// 其他成員修改設定時（room_settings_updated 廣播）即時更新畫面。
+// 逐欄位監聽：只有真的變動的欄位會被套用，不會蓋掉自己正在輸入、尚未存檔的其他欄位
+const settingsOf = () => roomStore.roomSettings
+watch(() => settingsOf()?.discord_webhook_enabled, (v) => { if (settingsOf()) webhookEnabled.value = v || false })
+watch(() => settingsOf()?.webhook_notify_events?.join(','), () => {
+  const s = settingsOf()
+  if (s) webhookNotifyEvents.value = s.webhook_notify_events ?? ['killed', 'alive', 'not_found']
 })
+watch(() => settingsOf()?.discord_webhook_url, (v) => { if (settingsOf()) webhookUrl.value = v || '' })
+watch(() => settingsOf()?.webhook_alert_type, (v) => { if (settingsOf()) webhookAlertType.value = v || 'none' })
 
 const loadRoomSettings = async () => {
   if (!roomStore.roomId) return
   try {
     const roomInfo = await apiService.checkRoomExists(roomStore.roomId)
     // 開啟視窗時一律以伺服器的值為準，蓋掉上次未存檔的輸入
-    applyRoomSettings(roomInfo, null)
+    applyRoomSettings(roomInfo)
     roomStore.setRoomSettings(roomInfo)
   } catch { /* ignore */ }
 }

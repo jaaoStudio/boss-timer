@@ -7,6 +7,8 @@ import { useRoomStore } from './roomStore'
 import { useRecordHistoryStore } from './recordHistoryStore'
 import type { BossRecord, BossType } from './bossStore'
 import type { RoomSettings } from './roomStore'
+import i18n from '@/i18n'
+import { showMessage } from '@/composables/useElementPlus'
 
 interface WSMessage {
   type: string
@@ -15,7 +17,6 @@ interface WSMessage {
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
-  const messageQueue = ref<WSMessage[]>([])
 
   const isManualDisconnect = ref(false)
   const reconnectAttempts = ref(0)
@@ -28,18 +29,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const roomStore = useRoomStore()
   const recordHistoryStore = useRecordHistoryStore()
   const { isConnected } = storeToRefs(roomStore)
-
-  // 房間進出以 roomStore.roomId 為準，連線建立時已重新 join，佇列中的 join/leave 不再需要
-  const ROOM_MEMBERSHIP_TYPES = new Set(['join_room', 'leave_room'])
-
-  function processMessageQueue() {
-    while (messageQueue.value.length > 0) {
-      const message = messageQueue.value.shift()
-      if (message && socket.value && !ROOM_MEMBERSHIP_TYPES.has(message.type)) {
-        socket.value.send(JSON.stringify(message))
-      }
-    }
-  }
 
   function connect() {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) {
@@ -61,7 +50,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         reconnectAttempts.value = 0
         isManualDisconnect.value = false
         isMaxReconnectReached.value = false
-        // 先加入房間再送出佇列，否則需要房間身分的訊息會被伺服器拒絕
+        // 連線時重建伺服器端狀態：身分由 cookie 決定，房間以 roomStore.roomId 重新加入
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
           ws.send(JSON.stringify({
@@ -69,7 +58,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
             payload: { room_id: currentRoomId },
           }))
         }
-        processMessageQueue()
       }
 
       ws.onmessage = (event: MessageEvent) => {
@@ -101,36 +89,27 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  /** 只在連線中才送出，不進佇列；回傳是否已送出 */
-  function sendIfConnected(message: WSMessage): boolean {
+  /**
+   * 只在連線中才送出，回傳是否已送出；未連線時觸發重連但不保留訊息。
+   * 不需要補送：重連時身分由 cookie 決定、房間由 onopen 重新加入；
+   * 回報則刻意不補送（紀錄時間以伺服器收到為準，延遲送達會讓重生區間失準）。
+   */
+  function sendMessage(message: WSMessage): boolean {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) {
       socket.value.send(JSON.stringify(message))
       return true
     }
-    return false
-  }
-
-  function sendMessage(message: WSMessage) {
-    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
-      socket.value.send(JSON.stringify(message))
-    } else {
-      console.log('WebSocket not open. Queuing message.')
-      messageQueue.value.push(message)
-      if (!socket.value || socket.value.readyState === WebSocket.CLOSED) {
-        connect()
-      }
+    if (!socket.value || socket.value.readyState === WebSocket.CLOSED) {
+      connect()
     }
+    return false
   }
 
   // Each handler name declares which stores it touches.
   // Handlers that update multiple stores make it explicit rather than hiding it in a case block.
 
   function notify(level: 'warning' | 'error', key: string, params: Record<string, unknown> = {}) {
-    Promise.all([import('@/i18n'), import('@/composables/useElementPlus')]).then(
-      ([{ default: i18n }, { showMessage }]) => {
-        showMessage[level](i18n.global.t(key, params))
-      },
-    )
+    showMessage[level](i18n.global.t(key, params))
   }
 
   function onRoomState(msg: WSMessage) {
@@ -144,7 +123,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   function onBossUpdate(msg: WSMessage) {
     const record = msg.data as BossRecord
-    bossStore.updateBossRecord(record).then()
+    bossStore.updateBossRecord(record)
     recordHistoryStore.upsertRecord(record)
   }
 
@@ -166,10 +145,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function onBossTypeDeleted(msg: WSMessage) {
     const data = msg.data as { boss_type_id: number; name: string }
     const deletedBySelf = bossStore.unmarkSelfDeletingBossType(data.boss_type_id)
-    const removed = bossStore.removeCustomBossType(data.boss_type_id)
+    const wasSelected = bossStore.removeCustomBossType(data.boss_type_id)
     recordHistoryStore.removeBossType(data.boss_type_id)
     // 正在用這隻 Boss 的人選擇會被自動切換，需告知原因以免回報到錯的 Boss
-    if (removed?.wasSelected && !deletedBySelf) {
+    if (wasSelected && !deletedBySelf) {
       notify('warning', 'bossControlPanel.customBossDeletedByOther', { name: data.name })
     }
   }
@@ -245,6 +224,5 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connect,
     disconnect,
     sendMessage,
-    sendIfConnected,
   }
 })

@@ -121,7 +121,7 @@ export const useBossStore = defineStore('boss', {
       )
     },
 
-    async updateBossRecord(record: BossRecord) {
+    updateBossRecord(record: BossRecord) {
       // 換輪前的紀錄即使晚送達也不算有效
       if (ts(record.recorded_at) < (this.clearedAt[record.boss_type_id] ?? 0)) return
 
@@ -151,7 +151,7 @@ export const useBossStore = defineStore('boss', {
       }
       // 撤銷後由前一筆仍有效的紀錄接手該頻道
       if (replacement) {
-        this.updateBossRecord(replacement).then()
+        this.updateBossRecord(replacement)
       }
     },
 
@@ -174,17 +174,17 @@ export const useBossStore = defineStore('boss', {
       return _selfDeletingBossTypeIds.delete(bossTypeId)
     },
 
-    /** 移除自訂 Boss 與其紀錄；回傳被移除的 Boss 與它是否正被選取，不存在則回傳 null */
-    removeCustomBossType(bossTypeId: number): { bossType: BossType; wasSelected: boolean } | null {
+    /** 移除自訂 Boss 與其紀錄；回傳它是否正被選取（已不存在則為 false） */
+    removeCustomBossType(bossTypeId: number): boolean {
       const index = this.bossTypes.findIndex(b => b.id === bossTypeId)
-      if (index < 0) return null
-      const [bossType] = this.bossTypes.splice(index, 1)
+      if (index < 0) return false
+      this.bossTypes.splice(index, 1)
       const wasSelected = this.selectedBossTypeId === bossTypeId
       if (wasSelected) {
         this.selectedBossTypeId = resolveBossTypeId(this.bossTypes)
       }
       this.bossRecords = this.bossRecords.filter(r => r.boss_type_id !== bossTypeId)
-      return { bossType, wasSelected }
+      return wasSelected
     },
 
     clearRoomState() {

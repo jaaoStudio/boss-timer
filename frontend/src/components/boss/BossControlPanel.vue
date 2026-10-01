@@ -232,8 +232,8 @@ const recordBoss = async () => {
       recorder_info: recorderInfo,
     }
 
-    // 離線時不排隊補送：紀錄時間以伺服器收到為準，延遲送達會讓重生區間失準
-    const sent = websocketStore.sendIfConnected({
+    // 離線時不補送：紀錄時間以伺服器收到為準，延遲送達會讓重生區間失準
+    const sent = websocketStore.sendMessage({
       type: 'record_boss',
       payload: payload,
     })

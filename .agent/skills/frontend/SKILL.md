@@ -65,7 +65,7 @@ frontend/
     │   ├── roomStore.ts          # 房間狀態 (roomId, userCount, 連線狀態)
     │   ├── bossStore.ts          # Boss 資料 (bossTypes, bossRecords, 篩選/排序/刪除)
     │   ├── recordHistoryStore.ts # 歷史紀錄 (cursor 分頁、日期/Boss 篩選、race-free upsert/remove)
-    │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連/心跳/訊息佇列)
+    │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連/心跳)
     │
     ├── services/
     │   └── apiService.ts         # API 服務層 (封裝所有 HTTP/WS 調用)
@@ -228,8 +228,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **風格**: Setup (Composition API)
 
 **核心功能**:
-- **訊息佇列**: 未連線時 `sendMessage()` 的訊息會被排入佇列；連線建立時**先 `join_room` 再送出佇列**（佇列中的 `join_room`/`leave_room` 會略過，房間以 `roomStore.roomId` 為準）
-- **`sendIfConnected()`**: 只在連線中送出、不進佇列。`record_boss` 一律用它——離線回報不補送（紀錄時間以伺服器收到為準，延遲送達會讓重生區間失準）
+- **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
 - **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)
 - **心跳**: 每 30 秒發送 `ping`
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store

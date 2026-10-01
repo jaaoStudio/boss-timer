@@ -167,13 +167,16 @@ async def delete_boss_record(
             if task_id:
                 celery_app.control.revoke(task_id, terminate=False)
 
+    # commit 後 record 會過期，先記下需要的欄位以免重新查詢
+    channel, boss_type_id = record.channel, record.boss_type_id
+    room = get_room_by_id(db, room_id)
+
     # 2. Soft delete
     record.is_archived = True
     db.commit()
 
     # 3. 該頻道改由前一筆仍有效的紀錄接手（不跨過換輪分界線），沒有則為 None
-    room = get_room_by_id(db, room_id)
-    replacement = get_effective_record(db, room, record.channel, record.boss_type_id) if room else None
+    replacement = get_effective_record(db, room, channel, boss_type_id) if room else None
 
     # 4. WebSocket Broadcast
     await manager.broadcast_to_room(

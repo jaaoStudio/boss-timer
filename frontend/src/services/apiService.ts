@@ -25,12 +25,8 @@ interface RoomCreateResponse {
   room_id: string
 }
 
-interface RoomExistsResponse {
+interface RoomExistsResponse extends RoomSettings {
   exists: boolean
-  discord_webhook_url?: string | null
-  discord_webhook_enabled?: boolean
-  webhook_notify_events?: string[]
-  webhook_alert_type?: string
 }
 
 interface RecordHistoryPage {
