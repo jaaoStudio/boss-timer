@@ -24,19 +24,19 @@
             <el-icon class="text-gray-400 hover:text-gray-600 cursor-help"><InfoFilled /></el-icon>
           </el-tooltip>
         </div>
-        <el-switch v-model="webhookEnabled" @change="saveWebhookSettings" style="--el-switch-on-color: #f59e0b;" />
+        <el-switch v-model="webhookEnabled" @change="saveWebhookSettings({ discord_webhook_enabled: webhookEnabled })" style="--el-switch-on-color: #f59e0b;" />
       </div>
       <div class="space-y-4 pl-1" v-if="webhookEnabled">
         <div class="flex flex-col gap-2">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.webhookUrl') }}</span>
-          <el-input v-model="webhookUrl" placeholder="https://discord.com/api/webhooks/..." clearable @change="saveWebhookSettings" />
+          <el-input v-model="webhookUrl" placeholder="https://discord.com/api/webhooks/..." clearable @change="saveWebhookUrl" />
           <span v-if="webhookEnabled && !webhookUrl" class="text-xs text-orange-500 mt-1">
             {{ t('settings.webhookUrlEmptyWarning') }}
           </span>
         </div>
         <div class="flex flex-col gap-2 mt-2">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.webhookNotifyEvents') }}</span>
-          <el-checkbox-group v-model="webhookNotifyEvents" @change="saveWebhookSettings">
+          <el-checkbox-group v-model="webhookNotifyEvents" @change="saveWebhookSettings({ webhook_notify_events: webhookNotifyEvents })">
             <el-checkbox value="killed" :label="t('settings.webhookNotifyKilled')" />
             <el-checkbox value="alive" :label="t('settings.webhookNotifyAlive')" />
             <el-checkbox value="not_found" :label="t('settings.webhookNotifyNotFound')" />
@@ -44,7 +44,7 @@
         </div>
         <div class="flex flex-col gap-2 mt-2">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.webhookAlertMode') }}</span>
-          <el-select v-model="webhookAlertType" @change="saveWebhookSettings">
+          <el-select v-model="webhookAlertType" @change="saveWebhookSettings({ webhook_alert_type: webhookAlertType })">
             <el-option :label="t('settings.webhookAlertBoth')" value="both" />
             <el-option :label="t('settings.webhookAlertMin')" value="min" />
             <el-option :label="t('settings.webhookAlertMax')" value="max" />
@@ -152,7 +152,7 @@ import { useSound } from '@/composables/useSound'
 import { VideoPlay, InfoFilled } from '@element-plus/icons-vue'
 import { showMessage } from '@/composables/useElementPlus'
 import apiService from '@/services/apiService'
-import { useRoomStore } from '@/stores/roomStore'
+import { useRoomStore, type RoomSettings } from '@/stores/roomStore'
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference'
 
 const props = defineProps<{ visible: boolean }>()
@@ -179,32 +179,44 @@ const webhookNotifyEvents = ref<string[]>(['killed', 'alive', 'not_found'])
 const webhookUrl = ref('')
 const webhookAlertType = ref('none')
 
+// 只套用與上一份設定不同的欄位，避免其他成員改了別的欄位時，蓋掉自己正在輸入、尚未存檔的內容
+function applyRoomSettings(next: RoomSettings, prev: RoomSettings | null) {
+  const changed = (key: keyof RoomSettings) =>
+    !prev || JSON.stringify(next[key]) !== JSON.stringify(prev[key])
+  if (changed('discord_webhook_enabled')) webhookEnabled.value = next.discord_webhook_enabled || false
+  if (changed('webhook_notify_events')) webhookNotifyEvents.value = next.webhook_notify_events ?? ['killed', 'alive', 'not_found']
+  if (changed('discord_webhook_url')) webhookUrl.value = next.discord_webhook_url || ''
+  if (changed('webhook_alert_type')) webhookAlertType.value = next.webhook_alert_type || 'none'
+}
+
+// 其他成員修改設定時（room_settings_updated 廣播）即時更新畫面
+watch(() => roomStore.roomSettings, (next, prev) => {
+  if (next) applyRoomSettings(next, prev)
+})
+
 const loadRoomSettings = async () => {
   if (!roomStore.roomId) return
   try {
     const roomInfo = await apiService.checkRoomExists(roomStore.roomId)
-    webhookEnabled.value = roomInfo.discord_webhook_enabled || false
-    webhookNotifyEvents.value = roomInfo.webhook_notify_events ?? ['killed', 'alive', 'not_found']
-    webhookUrl.value = roomInfo.discord_webhook_url || ''
-    webhookAlertType.value = roomInfo.webhook_alert_type || 'none'
+    // 開啟視窗時一律以伺服器的值為準，蓋掉上次未存檔的輸入
+    applyRoomSettings(roomInfo, null)
+    roomStore.setRoomSettings(roomInfo)
   } catch { /* ignore */ }
 }
 
-const saveWebhookSettings = async () => {
-  if (!roomStore.roomId) return
-  if (webhookEnabled.value && webhookUrl.value) {
-    const url = webhookUrl.value.trim()
-    if (!url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) {
-      showMessage.warning(t('settings.webhookUrlInvalid'))
-    }
+const saveWebhookUrl = () => {
+  const url = webhookUrl.value.trim()
+  if (url && !url.startsWith('https://discord.com/api/webhooks/') && !url.startsWith('https://discordapp.com/api/webhooks/')) {
+    showMessage.warning(t('settings.webhookUrlInvalid'))
   }
+  saveWebhookSettings({ discord_webhook_url: url || null })
+}
+
+// 只送出這次變更的欄位，避免用自己畫面上的舊值蓋掉其他成員剛改的設定
+const saveWebhookSettings = async (changes: RoomSettings) => {
+  if (!roomStore.roomId) return
   try {
-    await apiService.updateRoomSettings(roomStore.roomId, {
-      discord_webhook_enabled: webhookEnabled.value,
-      webhook_notify_events: webhookNotifyEvents.value,
-      discord_webhook_url: webhookUrl.value ? webhookUrl.value.trim() : null,
-      webhook_alert_type: webhookAlertType.value,
-    })
+    roomStore.setRoomSettings(await apiService.updateRoomSettings(roomStore.roomId, changes))
     showMessage.success(t('settings.webhookUpdated'))
   } catch (e) {
     console.log(e)

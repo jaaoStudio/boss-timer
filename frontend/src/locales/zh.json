@@ -75,7 +75,10 @@
     "enterChannelFirst": "請先輸入頻道",
     "favorites": "⭐ 收藏",
     "otherBosses": "全部 Boss",
-    "customBosses": "自訂 Boss"
+    "customBosses": "自訂 Boss",
+    "offlineNotSent": "目前離線，回報未送出。請確認網路連線後再回報。",
+    "recordRejected": "回報未被記錄，請重新整理頁面後再試。",
+    "customBossDeletedByOther": "自訂 Boss「{name}」已被其他成員刪除"
   },
   "bossInfo": {
     "details": "詳細資訊",

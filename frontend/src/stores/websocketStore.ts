@@ -5,6 +5,8 @@ import { useAppInfoStore } from './appInfo'
 import { useBossStore } from './bossStore'
 import { useRoomStore } from './roomStore'
 import { useRecordHistoryStore } from './recordHistoryStore'
+import type { BossRecord, BossType } from './bossStore'
+import type { RoomSettings } from './roomStore'
 
 interface WSMessage {
   type: string
@@ -27,10 +29,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
   const recordHistoryStore = useRecordHistoryStore()
   const { isConnected } = storeToRefs(roomStore)
 
+  // 房間進出以 roomStore.roomId 為準，連線建立時已重新 join，佇列中的 join/leave 不再需要
+  const ROOM_MEMBERSHIP_TYPES = new Set(['join_room', 'leave_room'])
+
   function processMessageQueue() {
     while (messageQueue.value.length > 0) {
       const message = messageQueue.value.shift()
-      if (message && socket.value) {
+      if (message && socket.value && !ROOM_MEMBERSHIP_TYPES.has(message.type)) {
         socket.value.send(JSON.stringify(message))
       }
     }
@@ -56,7 +61,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         reconnectAttempts.value = 0
         isManualDisconnect.value = false
         isMaxReconnectReached.value = false
-        processMessageQueue()
+        // 先加入房間再送出佇列，否則需要房間身分的訊息會被伺服器拒絕
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
           ws.send(JSON.stringify({
@@ -64,6 +69,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
             payload: { room_id: currentRoomId },
           }))
         }
+        processMessageQueue()
       }
 
       ws.onmessage = (event: MessageEvent) => {
@@ -95,6 +101,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
+  /** 只在連線中才送出，不進佇列；回傳是否已送出 */
+  function sendIfConnected(message: WSMessage): boolean {
+    if (socket.value && socket.value.readyState === WebSocket.OPEN) {
+      socket.value.send(JSON.stringify(message))
+      return true
+    }
+    return false
+  }
+
   function sendMessage(message: WSMessage) {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) {
       socket.value.send(JSON.stringify(message))
@@ -110,29 +125,57 @@ export const useWebSocketStore = defineStore('websocket', () => {
   // Each handler name declares which stores it touches.
   // Handlers that update multiple stores make it explicit rather than hiding it in a case block.
 
+  function notify(level: 'warning' | 'error', key: string, params: Record<string, unknown> = {}) {
+    Promise.all([import('@/i18n'), import('@/composables/useElementPlus')]).then(
+      ([{ default: i18n }, { showMessage }]) => {
+        showMessage[level](i18n.global.t(key, params))
+      },
+    )
+  }
+
   function onRoomState(msg: WSMessage) {
-    const bossTypes = msg.boss_types as import('@/stores/bossStore').BossType[] | undefined
-    const bossRecords = msg.boss_records as import('@/stores/bossStore').BossRecord[]
+    const bossTypes = msg.boss_types as BossType[] | undefined
+    const bossRecords = msg.boss_records as BossRecord[]
     if (bossTypes) bossStore.setBossTypes(bossTypes)
+    bossStore.setClearedAt((msg.last_cleared_at as Record<string, string> | undefined) ?? {})
     bossStore.setBossRecords(bossRecords)
     roomStore.setUserCount(msg.user_count as number)
   }
 
   function onBossUpdate(msg: WSMessage) {
-    const record = msg.data as import('@/stores/bossStore').BossRecord
+    const record = msg.data as BossRecord
     bossStore.updateBossRecord(record).then()
     recordHistoryStore.upsertRecord(record)
   }
 
   function onRecordDeleted(msg: WSMessage) {
-    const data = msg.data as { record_id: number }
-    bossStore.deleteBossRecord(data.record_id)
+    const data = msg.data as { record_id: number; replacement?: BossRecord | null }
+    bossStore.deleteBossRecord(data.record_id, data.replacement ?? null)
     recordHistoryStore.removeRecord(data.record_id)
   }
 
   function onBossTypeCleared(msg: WSMessage) {
-    const data = msg.data as { boss_type_id: number }
-    bossStore.clearBossTypeRecords(data.boss_type_id)
+    const data = msg.data as { boss_type_id: number; cleared_at: string }
+    bossStore.clearBossTypeRecords(data.boss_type_id, data.cleared_at)
+  }
+
+  function onBossTypeAdded(msg: WSMessage) {
+    bossStore.addCustomBossType(msg.data as BossType)
+  }
+
+  function onBossTypeDeleted(msg: WSMessage) {
+    const data = msg.data as { boss_type_id: number; name: string }
+    const deletedBySelf = bossStore.unmarkSelfDeletingBossType(data.boss_type_id)
+    const removed = bossStore.removeCustomBossType(data.boss_type_id)
+    recordHistoryStore.removeBossType(data.boss_type_id)
+    // 正在用這隻 Boss 的人選擇會被自動切換，需告知原因以免回報到錯的 Boss
+    if (removed?.wasSelected && !deletedBySelf) {
+      notify('warning', 'bossControlPanel.customBossDeletedByOther', { name: data.name })
+    }
+  }
+
+  function onRoomSettingsUpdated(msg: WSMessage) {
+    roomStore.setRoomSettings(msg.data as RoomSettings)
   }
 
   function onMaintenanceStatusUpdate(msg: WSMessage) {
@@ -144,14 +187,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function onError(msg: WSMessage) {
-    const errMsg = msg.message as string
-    console.error('Received error from server:', errMsg)
-    if (errMsg === 'Rate limit exceeded. Please slow down.') {
-      import('@/i18n').then(({ default: i18n }) => {
-        import('@/composables/useElementPlus').then(({ showMessage }) => {
-          showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
-        })
-      })
+    console.error('Received error from server:', msg.message)
+    if (msg.code === 'rate_limited') {
+      notify('warning', 'globalErrors.rateLimitExceeded')
+    } else if (msg.code === 'record_rejected') {
+      notify('error', 'bossControlPanel.recordRejected')
     }
   }
 
@@ -161,6 +201,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
     boss_update: onBossUpdate,
     record_deleted: onRecordDeleted,
     boss_type_cleared: onBossTypeCleared,
+    boss_type_added: onBossTypeAdded,
+    boss_type_deleted: onBossTypeDeleted,
+    room_settings_updated: onRoomSettingsUpdated,
     maintenance_status_update: onMaintenanceStatusUpdate,
     user_count_update: onUserCountUpdate,
     error: onError,
@@ -202,5 +245,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connect,
     disconnect,
     sendMessage,
+    sendIfConnected,
   }
 })

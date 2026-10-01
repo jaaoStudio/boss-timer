@@ -233,7 +233,8 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 ### 紀錄撤銷流程 (`bosses.py` DELETE endpoint)
 1. 呼叫 `celery_app.control.revoke(task_id)` 撤銷排程中的預警任務
 2. 將紀錄標記為 `is_archived = True` (軟刪除)
-3. WebSocket 廣播 `record_deleted` 事件通知所有連線客戶端
+3. 以 `room_service.get_effective_record()` 找出該頻道前一筆仍有效的紀錄（與 `get_room_state` 共用同一套有效條件：未撤銷、2 天內、不早於換輪分界線）
+4. WebSocket 廣播 `record_deleted`（含 `replacement`）通知所有連線客戶端
 
 ---
 
@@ -288,13 +289,16 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | type | 說明 |
 |---|---|
 | `pong` | 心跳回應 |
-| `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types) |
+| `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at) |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
-| `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "..." }`) |
+| `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "...", "replacement": BossRecordResponse \| null }`) |
+| `boss_type_added` | 房間新增自訂 Boss（BossTypeResponse） |
+| `boss_type_deleted` | 房間刪除自訂 Boss（`{ "boss_type_id": N, "name": "..." }`），其紀錄已 CASCADE 刪除 |
+| `room_settings_updated` | 房間 Webhook 設定變更（RoomResponse） |
 | `boss_type_cleared` | 某 Boss 種類頻道總覽被清除（`{ "boss_type_id": N, "cleared_at": "..." }`） |
 | `user_count_update` | 房間內目前連線人數 (`{ "count": N }`) |
 | `maintenance_status_update` | 維護模式狀態變更 |
-| `error` | 錯誤訊息 |
+| `error` | 錯誤訊息（`{ "code": "...", "message": "..." }`；`code`：`room_not_found` / `record_rejected` / `rate_limited`） |
 
 ### Rate Limiting (WebSocket)
 - `record_boss` 訊息: 每連線每 60 秒最多 30 次

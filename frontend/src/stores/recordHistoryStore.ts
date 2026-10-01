@@ -128,6 +128,12 @@ export const useRecordHistoryStore = defineStore('recordHistory', () => {
     }
   }
 
+  // 自訂 Boss 被刪除時，其紀錄已從資料庫永久移除
+  function removeBossType(bossTypeId: number) {
+    const next = new Map([...records.value].filter(([, r]) => r.boss_type_id !== bossTypeId))
+    if (next.size !== records.value.size) records.value = next
+  }
+
   return {
     records,
     deletedIds,
@@ -142,5 +148,6 @@ export const useRecordHistoryStore = defineStore('recordHistory', () => {
     reset,
     upsertRecord,
     removeRecord,
+    removeBossType,
   }
 })

@@ -48,17 +48,11 @@ def update_room_last_active(db: Session, room_id: str):
 ROOM_STATE_WINDOW_DAYS = 2
 
 
-def get_room_state(db: Session, room_id: str) -> dict:
-    """獲取房間的完整初始狀態"""
-    # 由 DB 以 DISTINCT ON 取出每個 (channel, boss_type_id) 最新紀錄，
-    # 結果筆數被 channels × boss_types 綁定，不隨總紀錄數增長。
-    # 並用時間窗過濾掉太舊的紀錄，讓頻道總覽只反映近期活躍頻道。
+def _effective_records_query(db: Session, room: models.Room):
+    """仍有效的紀錄：未撤銷、在房間狀態時間窗內、且不早於該 Boss 種類的換輪分界線。"""
     cutoff = datetime.now(timezone.utc) - timedelta(days=ROOM_STATE_WINDOW_DAYS)
+    last_cleared_at: dict = room.last_cleared_at or {}
 
-    room = get_room_by_id(db, room_id)
-    last_cleared_at: dict = (room.last_cleared_at or {}) if room else {}
-
-    # 建立 per-boss-type 清除時間過濾條件
     # 若某 boss_type_id 有 last_cleared_at，則該 boss 的紀錄必須在清除時間之後
     cleared_boss_ids = [int(k) for k in last_cleared_at.keys()]
     cleared_conditions = [
@@ -69,18 +63,38 @@ def get_room_state(db: Session, room_id: str) -> dict:
         for bt_id_str, cleared_at_str in last_cleared_at.items()
     ]
 
-    latest_records = db.query(models.BossRecord).options(
+    return db.query(models.BossRecord).options(
         joinedload(models.BossRecord.recorder),
         joinedload(models.BossRecord.boss_type),
     ).filter(
-        models.BossRecord.room_id == room_id,
+        models.BossRecord.room_id == room.room_id,
         models.BossRecord.is_archived == False,
         models.BossRecord.recorded_at >= cutoff,
         or_(
             ~models.BossRecord.boss_type_id.in_(cleared_boss_ids),
             *cleared_conditions,
         ) if cleared_boss_ids else True,
-    ).order_by(
+    )
+
+
+def get_effective_record(db: Session, room: models.Room, channel: int, boss_type_id: int) -> Optional[models.BossRecord]:
+    """某頻道某 Boss 種類目前生效的紀錄（撤銷後由它接手當前狀態）。"""
+    return _effective_records_query(db, room).filter(
+        models.BossRecord.channel == channel,
+        models.BossRecord.boss_type_id == boss_type_id,
+    ).order_by(models.BossRecord.recorded_at.desc()).first()
+
+
+def get_room_state(db: Session, room_id: str) -> dict:
+    """獲取房間的完整初始狀態"""
+    room = get_room_by_id(db, room_id)
+    if not room:
+        return {"type": "room_state", "boss_records": [], "boss_types": [], "last_cleared_at": {}}
+
+    # 由 DB 以 DISTINCT ON 取出每個 (channel, boss_type_id) 最新紀錄，
+    # 結果筆數被 channels × boss_types 綁定，不隨總紀錄數增長。
+    # 並用時間窗過濾掉太舊的紀錄，讓頻道總覽只反映近期活躍頻道。
+    latest_records = _effective_records_query(db, room).order_by(
         models.BossRecord.channel,
         models.BossRecord.boss_type_id,
         models.BossRecord.recorded_at.desc(),
@@ -102,5 +116,6 @@ def get_room_state(db: Session, room_id: str) -> dict:
     return {
         "type": "room_state",
         "boss_records": [rec.model_dump(mode='json') for rec in boss_records_response],
-        "boss_types": [bt.model_dump(mode='json') for bt in boss_types_response]
+        "boss_types": [bt.model_dump(mode='json') for bt in boss_types_response],
+        "last_cleared_at": room.last_cleared_at or {},
     }

@@ -56,7 +56,7 @@ Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, 
 
 async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, user_id: Optional[str]) -> None:
     if not room_service.get_room_by_id(db, room_id):
-        await websocket.send_text(json.dumps({"type": "error", "message": "Room not found"}))
+        await websocket.send_text(json.dumps({"type": "error", "code": "room_not_found", "message": "Room not found"}))
         return
     room_service.update_room_last_active(db, room_id)
     manager.subscribe_to_room(websocket, room_id)
@@ -73,17 +73,17 @@ async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optio
 async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, user_id: Optional[str]) -> None:
     current_room = manager.socket_to_room.get(websocket)
     if not current_room or current_room != room_id:
-        await websocket.send_text(json.dumps({"type": "error", "message": "You are not in this room"}))
+        await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": "You are not in this room"}))
         return
     if not _rate_limiter.is_allowed(websocket):
-        await websocket.send_text(json.dumps({"type": "error", "message": "Rate limit exceeded. Please slow down."}))
+        await websocket.send_text(json.dumps({"type": "error", "code": "rate_limited", "message": "Rate limit exceeded. Please slow down."}))
         return
     try:
         record_create = BossRecordCreate(**payload)
         await boss_service.BossService.record_boss_from_websocket(db, record_create, user_id, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
-        await websocket.send_text(json.dumps({"type": "error", "message": str(e)}))
+        await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": str(e)}))
 
 
 async def _handle_authenticate(websocket: WebSocket, message: dict, manager: ConnectionManager) -> None:

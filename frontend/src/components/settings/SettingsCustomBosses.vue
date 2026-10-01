@@ -134,11 +134,14 @@ const deleteBoss = async (id: number) => {
   }
 
   deletingId.value = id
+  // 廣播可能比 HTTP 回應先到，先標記為自己刪除，避免對自己跳出「被其他成員刪除」提示
+  bossStore.markSelfDeletingBossType(id)
   try {
     await ApiService.deleteCustomBossType(roomId.value, id)
     bossStore.removeCustomBossType(id)
     showMessage.success(t('settings.customBoss.deleteSuccess'))
   } catch {
+    bossStore.unmarkSelfDeletingBossType(id)
     showMessage.error(t('settings.customBoss.deleteFailed'))
   } finally {
     deletingId.value = null

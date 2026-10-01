@@ -15,7 +15,7 @@ from app.schemas.boss import (
     CustomBossTypeCreate,
 )
 from app.services.boss_service import BossService
-from app.services.room_service import get_room_by_id
+from app.services.room_service import get_room_by_id, get_effective_record
 from app.celery_app import celery_app
 from app.websocket.manager import ConnectionManager
 
@@ -36,10 +36,10 @@ async def create_custom_boss_type(
     room_id: str,
     payload: CustomBossTypeCreate,
     db: Session = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
     _ = Depends(verify_user_session)
 ):
     """新增房間自訂 Boss"""
-    from app.services.room_service import get_room_by_id
     if not get_room_by_id(db, room_id):
         raise HTTPException(status_code=404, detail="Room not found")
 
@@ -53,7 +53,13 @@ async def create_custom_boss_type(
     db.add(custom)
     db.commit()
     db.refresh(custom)
-    return custom
+
+    response = BossTypeResponse.model_validate(custom)
+    await manager.broadcast_to_room(
+        room_id=room_id,
+        message={"type": "boss_type_added", "data": response.model_dump(mode='json')},
+    )
+    return response
 
 
 @router.delete("/room/{room_id}/boss-types/{boss_type_id}")
@@ -63,6 +69,7 @@ async def delete_custom_boss_type(
     room_id: str,
     boss_type_id: int,
     db: Session = Depends(get_db),
+    manager: ConnectionManager = Depends(get_connection_manager),
     _ = Depends(verify_user_session)
 ):
     """刪除房間自訂 Boss（只能刪自己房間的）"""
@@ -85,9 +92,19 @@ async def delete_custom_boss_type(
                 if task_id:
                     celery_app.control.revoke(task_id, terminate=False)
 
+    boss_name = boss.name_zh
+
     # FK ondelete="CASCADE" 會自動刪除關聯的 BossRecord
     db.delete(boss)
     db.commit()
+
+    await manager.broadcast_to_room(
+        room_id=room_id,
+        message={
+            "type": "boss_type_deleted",
+            "data": {"boss_type_id": boss_type_id, "name": boss_name},
+        },
+    )
     return {"message": "Custom boss type deleted"}
 
 @router.get("/room/{room_id}/records", response_model=BossRecordHistoryPage)
@@ -154,12 +171,20 @@ async def delete_boss_record(
     record.is_archived = True
     db.commit()
 
-    # 3. WebSocket Broadcast
+    # 3. 該頻道改由前一筆仍有效的紀錄接手（不跨過換輪分界線），沒有則為 None
+    room = get_room_by_id(db, room_id)
+    replacement = get_effective_record(db, room, record.channel, record.boss_type_id) if room else None
+
+    # 4. WebSocket Broadcast
     await manager.broadcast_to_room(
         room_id=room_id,
         message={
             "type": "record_deleted",
-            "data": {"record_id": record_id, "room_id": room_id}
+            "data": {
+                "record_id": record_id,
+                "room_id": room_id,
+                "replacement": BossRecordResponse.model_validate(replacement).model_dump(mode='json') if replacement else None,
+            }
         }
     )
 

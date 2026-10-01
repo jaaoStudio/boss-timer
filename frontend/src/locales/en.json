@@ -75,7 +75,10 @@
     "enterChannelFirst": "Please enter a channel first",
     "favorites": "⭐ Favorites",
     "otherBosses": "All Bosses",
-    "customBosses": "Custom Bosses"
+    "customBosses": "Custom Bosses",
+    "offlineNotSent": "You are offline — the report was not sent. Please check your connection and report again.",
+    "recordRejected": "The report was not recorded. Please refresh the page and try again.",
+    "customBossDeletedByOther": "Custom boss \"{name}\" was deleted by another member"
   },
   "bossInfo": {
     "details": "Details",

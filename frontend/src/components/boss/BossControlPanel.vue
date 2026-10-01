@@ -232,10 +232,15 @@ const recordBoss = async () => {
       recorder_info: recorderInfo,
     }
 
-    websocketStore.sendMessage({
+    // 離線時不排隊補送：紀錄時間以伺服器收到為準，延遲送達會讓重生區間失準
+    const sent = websocketStore.sendIfConnected({
       type: 'record_boss',
       payload: payload,
     })
+    if (!sent) {
+      showMessage.error(t('bossControlPanel.offlineNotSent'))
+      return
+    }
 
     form.value.channel = ''
     form.value.status = ''

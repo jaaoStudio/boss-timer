@@ -4,6 +4,7 @@ set -euo pipefail
 NEW_TAG="${1:?需要傳入 image tag}"
 COMPOSE_DIR=~/boss-tracker
 TRAEFIK_DYNAMIC=/opt/traefik/dynamic/boss-timer.yml
+SWITCH_GRACE_SECONDS=10
 
 cd "$COMPOSE_DIR"
 
@@ -43,9 +44,18 @@ done
 echo "▶ 切換流量到 ${NEXT}..."
 sed -i "s/service: boss-frontend-.*/service: boss-frontend-${NEXT}@docker/" "$TRAEFIK_DYNAMIC"
 
-# 8. 更新 Celery worker
+# 8. 停掉舊 slot（見 docs/adr/0005-deploy-stops-old-slot.md）
+#    房間訂閱只存在單一後端容器的記憶體，舊 slot 若繼續存活，部署前的 WebSocket 連線
+#    會留在舊容器，同一房間被拆成兩群。停掉後前端會自動重連到新 slot 並重新取得房間狀態。
+#    先等 Traefik 載入新設定，避免新連線在切換完成前打到即將停止的容器。
+echo "▶ 等待 Traefik 套用新路由（${SWITCH_GRACE_SECONDS} 秒）..."
+sleep "$SWITCH_GRACE_SECONDS"
+echo "▶ 停止舊 slot ${CURRENT}..."
+docker compose stop "boss_service_${CURRENT}" "boss_timer_nginx_${CURRENT}"
+
+# 9. 更新 Celery worker
 sed -i "s/^ACTIVE_TAG=.*/ACTIVE_TAG=${NEW_TAG}/" .env
 docker compose up -d --no-deps celery_worker_fast celery_worker_discord
 
-echo "✅ 完成！流量已切到 ${NEXT} (${NEW_TAG})"
-echo "   回滾指令：sed -i 's/boss-frontend-${NEXT}/boss-frontend-${CURRENT}/' ${TRAEFIK_DYNAMIC}"
+echo "✅ 完成！流量已切到 ${NEXT} (${NEW_TAG})，舊 slot ${CURRENT} 已停止"
+echo "   回滾指令：${COMPOSE_DIR}/rollback.sh"
