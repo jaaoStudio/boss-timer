@@ -229,6 +229,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 
 **核心功能**:
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
+- **`sendIdentityChange()`**: 登入 / 登出通知 WS 身分用。連線建立中（CONNECTING）時握手已帶舊 cookie，會放棄這次握手並立刻重連
 - **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)
 - **心跳**: 每 30 秒發送 `ping`
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
@@ -239,7 +240,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 |---|---|
 | `pong` | 忽略 |
 | `maintenance_status_update` | → `appInfoStore.setMaintenanceInfo()` |
-| `room_state` | → `bossStore.setBossTypes()` + `setClearedAt()` + `setBossRecords()` + `roomStore.setUserCount()` |
+| `room_state` | → `bossStore.setBossTypes()` + `roomStore.setRoomSettings()` + `setClearedAt()` + `setBossRecords()` + `roomStore.setUserCount()` |
 | `boss_update` | → `bossStore.updateBossRecord()` + `recordHistoryStore.upsertRecord()` |
 | `record_deleted` | → `bossStore.deleteBossRecord(record_id, replacement)` + `recordHistoryStore.removeRecord(record_id)` |
 | `boss_type_cleared` | → `bossStore.clearBossTypeRecords(boss_type_id, cleared_at)` |

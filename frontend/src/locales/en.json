@@ -228,6 +228,7 @@
     "discordWebhookSection": "💬 Discord Webhook (Room Specific)",
     "webhookInfoTooltip": "Enabling this will only notify for new records. Past records will not be notified.",
     "webhookUrl": "Webhook URL",
+    "webhookUrlPlaceholder": "https://discord.com/api/webhooks/...",
     "webhookNotifyEvents": "Send Real-time Record Notifications",
     "webhookNotifyKilled": "Killed",
     "webhookNotifyAlive": "Alive",

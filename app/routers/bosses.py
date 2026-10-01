@@ -1,12 +1,12 @@
 # app/routers/bosses.py
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, Query, Request, HTTPException
-from sqlalchemy import or_
+from sqlalchemy import or_, func, text
 from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from app.database.database import get_db
-from app.database.models import BossType, BossRecord
+from app.database.models import BossType, BossRecord, Room
 from app.dependencies import limiter, verify_user_session, get_connection_manager
 from app.schemas.boss import (
     BossRecordHistoryPage,
@@ -167,16 +167,17 @@ async def delete_boss_record(
             if task_id:
                 celery_app.control.revoke(task_id, terminate=False)
 
-    # commit 後 record 會過期，先記下需要的欄位以免重新查詢
+    # commit 後 ORM 物件會過期，先記下需要的欄位以免重新查詢
     channel, boss_type_id = record.channel, record.boss_type_id
     room = get_room_by_id(db, room_id)
+    last_cleared_at = room.last_cleared_at if room else None
 
     # 2. Soft delete
     record.is_archived = True
     db.commit()
 
     # 3. 該頻道改由前一筆仍有效的紀錄接手（不跨過換輪分界線），沒有則為 None
-    replacement = get_effective_record(db, room, channel, boss_type_id) if room else None
+    replacement = get_effective_record(db, room_id, last_cleared_at, channel, boss_type_id) if room else None
 
     # 4. WebSocket Broadcast
     await manager.broadcast_to_room(
@@ -227,11 +228,17 @@ async def clear_boss_type_records(
                 if task_id:
                     celery_app.control.revoke(task_id, terminate=False)
 
-    # 更新 last_cleared_at（重新賦值整個 dict 確保 SQLAlchemy 偵測到 JSONB 變更）
+    # 以 jsonb || 在資料庫端原子合併，只寫入這個 Boss 種類的 key，
+    # 避免同時換輪不同 Boss 時讀出-修改-寫回互相覆蓋
     cleared_at = datetime.now(timezone.utc)
-    updated = dict(room.last_cleared_at or {})
-    updated[str(boss_type_id)] = cleared_at.isoformat()
-    room.last_cleared_at = updated
+    db.query(Room).filter(Room.room_id == room.room_id).update(
+        {
+            Room.last_cleared_at: func.coalesce(Room.last_cleared_at, text("'{}'::jsonb")).op('||')(
+                func.jsonb_build_object(str(boss_type_id), cleared_at.isoformat())
+            )
+        },
+        synchronize_session=False,
+    )
     db.commit()
 
     await manager.broadcast_to_room(

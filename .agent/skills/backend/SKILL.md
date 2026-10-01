@@ -289,7 +289,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | type | 說明 |
 |---|---|
 | `pong` | 心跳回應 |
-| `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at) |
+| `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at + room_settings)；重連時用來重建所有房間狀態 |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
 | `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "...", "replacement": BossRecordResponse \| null }`) |
 | `boss_type_added` | 房間新增自訂 Boss（BossTypeResponse） |

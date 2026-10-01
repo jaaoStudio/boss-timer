@@ -105,6 +105,21 @@ export const useWebSocketStore = defineStore('websocket', () => {
     return false
   }
 
+  /**
+   * 身分變更（登入 / 登出）通知。連線建立中時，握手已帶著舊的 cookie 送出，
+   * 送不出去的訊息也不會補送，所以改為放棄這次握手、立刻重連，讓新連線以新的 cookie 建立身分。
+   */
+  function sendIdentityChange(message: WSMessage) {
+    if (sendMessage(message)) return
+    const ws = socket.value
+    if (ws && ws.readyState === WebSocket.CONNECTING) {
+      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+      ws.close()
+      socket.value = null
+      connect()
+    }
+  }
+
   // Each handler name declares which stores it touches.
   // Handlers that update multiple stores make it explicit rather than hiding it in a case block.
 
@@ -116,6 +131,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     const bossTypes = msg.boss_types as BossType[] | undefined
     const bossRecords = msg.boss_records as BossRecord[]
     if (bossTypes) bossStore.setBossTypes(bossTypes)
+    if (msg.room_settings) roomStore.setRoomSettings(msg.room_settings as RoomSettings)
     bossStore.setClearedAt((msg.last_cleared_at as Record<string, string> | undefined) ?? {})
     bossStore.setBossRecords(bossRecords)
     roomStore.setUserCount(msg.user_count as number)
@@ -224,5 +240,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connect,
     disconnect,
     sendMessage,
+    sendIdentityChange,
   }
 })

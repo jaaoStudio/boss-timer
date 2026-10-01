@@ -29,7 +29,7 @@
       <div class="space-y-4 pl-1" v-if="webhookEnabled">
         <div class="flex flex-col gap-2">
           <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('settings.webhookUrl') }}</span>
-          <el-input v-model="webhookUrl" placeholder="https://discord.com/api/webhooks/..." clearable @change="saveWebhookUrl" />
+          <el-input v-model="webhookUrl" :placeholder="t('settings.webhookUrlPlaceholder')" clearable @change="saveWebhookUrl" />
           <span v-if="webhookEnabled && !webhookUrl" class="text-xs text-orange-500 mt-1">
             {{ t('settings.webhookUrlEmptyWarning') }}
           </span>
@@ -174,28 +174,41 @@ async function handleViewModeChange(mode: string) {
 }
 
 // Webhook state
+const DEFAULT_NOTIFY_EVENTS = ['killed', 'alive', 'not_found']
 const webhookEnabled = ref(false)
-const webhookNotifyEvents = ref<string[]>(['killed', 'alive', 'not_found'])
+const webhookNotifyEvents = ref<string[]>(DEFAULT_NOTIFY_EVENTS)
 const webhookUrl = ref('')
 const webhookAlertType = ref('none')
 
-function applyRoomSettings(roomInfo: RoomSettings) {
-  webhookEnabled.value = roomInfo.discord_webhook_enabled || false
-  webhookNotifyEvents.value = roomInfo.webhook_notify_events ?? ['killed', 'alive', 'not_found']
-  webhookUrl.value = roomInfo.discord_webhook_url || ''
-  webhookAlertType.value = roomInfo.webhook_alert_type || 'none'
+type WebhookField = keyof RoomSettings
+const WEBHOOK_FIELDS: WebhookField[] = ['discord_webhook_enabled', 'webhook_notify_events', 'discord_webhook_url', 'webhook_alert_type']
+
+// 伺服器的值 → 畫面使用的值（補上預設值）
+function normalize(s: RoomSettings) {
+  return {
+    discord_webhook_enabled: s.discord_webhook_enabled || false,
+    webhook_notify_events: s.webhook_notify_events ?? DEFAULT_NOTIFY_EVENTS,
+    discord_webhook_url: s.discord_webhook_url || '',
+    webhook_alert_type: s.webhook_alert_type || 'none',
+  }
 }
 
-// 其他成員修改設定時（room_settings_updated 廣播）即時更新畫面。
-// 逐欄位監聽：只有真的變動的欄位會被套用，不會蓋掉自己正在輸入、尚未存檔的其他欄位
-const settingsOf = () => roomStore.roomSettings
-watch(() => settingsOf()?.discord_webhook_enabled, (v) => { if (settingsOf()) webhookEnabled.value = v || false })
-watch(() => settingsOf()?.webhook_notify_events?.join(','), () => {
-  const s = settingsOf()
-  if (s) webhookNotifyEvents.value = s.webhook_notify_events ?? ['killed', 'alive', 'not_found']
+function applyRoomSettings(s: RoomSettings, fields: WebhookField[] = WEBHOOK_FIELDS) {
+  const n = normalize(s)
+  if (fields.includes('discord_webhook_enabled')) webhookEnabled.value = n.discord_webhook_enabled
+  if (fields.includes('webhook_notify_events')) webhookNotifyEvents.value = [...n.webhook_notify_events]
+  if (fields.includes('discord_webhook_url')) webhookUrl.value = n.discord_webhook_url
+  if (fields.includes('webhook_alert_type')) webhookAlertType.value = n.webhook_alert_type
+}
+
+// 其他成員修改設定時（room_settings_updated 廣播、重連時的 room_state）即時更新畫面。
+// 只套用真的變動的欄位，不會蓋掉自己正在輸入、尚未存檔的其他欄位
+watch(() => roomStore.roomSettings, (next, prev) => {
+  if (!next) return
+  const n = normalize(next)
+  const p = prev ? normalize(prev) : null
+  applyRoomSettings(next, WEBHOOK_FIELDS.filter((f) => !p || String(n[f]) !== String(p[f])))
 })
-watch(() => settingsOf()?.discord_webhook_url, (v) => { if (settingsOf()) webhookUrl.value = v || '' })
-watch(() => settingsOf()?.webhook_alert_type, (v) => { if (settingsOf()) webhookAlertType.value = v || 'none' })
 
 const loadRoomSettings = async () => {
   if (!roomStore.roomId) return
@@ -223,6 +236,8 @@ const saveWebhookSettings = async (changes: RoomSettings) => {
     showMessage.success(t('settings.webhookUpdated'))
   } catch (e) {
     console.log(e)
+    // 存檔失敗時把剛改的欄位還原成伺服器的值，避免畫面與實際設定不一致
+    if (roomStore.roomSettings) applyRoomSettings(roomStore.roomSettings, Object.keys(changes) as WebhookField[])
     showMessage.error(t('settings.webhookUpdateFailed'))
   }
 }

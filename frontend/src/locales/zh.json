@@ -228,6 +228,7 @@
     "discordWebhookSection": "💬 Discord Webhook (房間專屬)",
     "webhookInfoTooltip": "開啟後僅對「新建立」的擊殺紀錄生效，過去已記錄的王不會補發通知喔！",
     "webhookUrl": "Webhook URL",
+    "webhookUrlPlaceholder": "https://discord.com/api/webhooks/...",
     "webhookNotifyEvents": "發送即時紀錄通知",
     "webhookNotifyKilled": "擊殺",
     "webhookNotifyAlive": "存活",

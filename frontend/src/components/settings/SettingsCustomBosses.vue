@@ -75,6 +75,8 @@ import { useI18n } from 'vue-i18n'
 import { storeToRefs } from 'pinia'
 import { useBossStore } from '@/stores/bossStore'
 import { useRoomStore } from '@/stores/roomStore'
+import { useRecordHistoryStore } from '@/stores/recordHistoryStore'
+import { isAxiosError } from 'axios'
 import { showMessage } from '@/composables/useElementPlus'
 import { ElMessageBox } from 'element-plus'
 import ApiService from '@/services/apiService'
@@ -82,6 +84,7 @@ import ApiService from '@/services/apiService'
 const { t } = useI18n()
 const bossStore = useBossStore()
 const roomStore = useRoomStore()
+const recordHistoryStore = useRecordHistoryStore()
 const { bossTypes } = storeToRefs(bossStore)
 const { roomId } = storeToRefs(roomStore)
 
@@ -117,6 +120,13 @@ const addBoss = async () => {
   }
 }
 
+// 不依賴 boss_type_deleted 廣播：自己的連線若剛好斷線，也要讓畫面與資料庫一致
+function removeLocally(id: number) {
+  bossStore.removeCustomBossType(id)
+  recordHistoryStore.removeBossType(id)
+  showMessage.success(t('settings.customBoss.deleteSuccess'))
+}
+
 const deleteBoss = async (id: number) => {
   if (!roomId.value) return
   try {
@@ -138,11 +148,15 @@ const deleteBoss = async (id: number) => {
   bossStore.markSelfDeletingBossType(id)
   try {
     await ApiService.deleteCustomBossType(roomId.value, id)
-    bossStore.removeCustomBossType(id)
-    showMessage.success(t('settings.customBoss.deleteSuccess'))
-  } catch {
-    bossStore.unmarkSelfDeletingBossType(id)
-    showMessage.error(t('settings.customBoss.deleteFailed'))
+    removeLocally(id)
+  } catch (err) {
+    // 404：已被其他成員先刪除，結果與預期相同，視為成功
+    if (isAxiosError(err) && err.response?.status === 404) {
+      removeLocally(id)
+    } else {
+      bossStore.unmarkSelfDeletingBossType(id)
+      showMessage.error(t('settings.customBoss.deleteFailed'))
+    }
   } finally {
     deletingId.value = null
   }

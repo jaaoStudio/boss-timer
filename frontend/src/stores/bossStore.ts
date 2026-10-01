@@ -2,8 +2,10 @@ import { defineStore } from 'pinia'
 
 let _statusTickId: ReturnType<typeof setInterval> | null = null
 
-// 自己發起刪除的自訂 Boss：收到 boss_type_deleted 廣播時用來區分「自己刪的」與「被其他成員刪的」
+// 自己發起刪除的自訂 Boss：收到 boss_type_deleted 廣播時用來區分「自己刪的」與「被其他成員刪的」。
+// 沒收到廣播（例如斷線）時標記會在一段時間後自動失效
 const _selfDeletingBossTypeIds = new Set<number>()
+const SELF_DELETE_MARK_TTL_MS = 10_000
 
 export function calculateCurrentStatus(record: BossRecord, now = new Date()): string {
   if (record.status !== 'killed') return record.status
@@ -168,6 +170,7 @@ export const useBossStore = defineStore('boss', {
 
     markSelfDeletingBossType(bossTypeId: number) {
       _selfDeletingBossTypeIds.add(bossTypeId)
+      setTimeout(() => _selfDeletingBossTypeIds.delete(bossTypeId), SELF_DELETE_MARK_TTL_MS)
     },
 
     unmarkSelfDeletingBossType(bossTypeId: number): boolean {
