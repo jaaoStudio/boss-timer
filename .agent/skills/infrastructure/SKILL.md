@@ -241,7 +241,7 @@ uv run alembic upgrade head
 
 ### CI/CD 自動部署（主要流程）
 
-專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到 `main` 分支後自動執行：
+專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到 `main` 分支後自動執行（runner 為原生 arm64 的 `ubuntu-24.04-arm`，不經 QEMU 模擬；job 逾時 30 分鐘）：
 
 1. **建置後端映像** — context 為專案根目錄，推送 `harbor.jaao.tw/boss_service/boss_service:<sha>` + `:latest`
 2. **建置前端映像** — 透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等），推送至 Harbor
