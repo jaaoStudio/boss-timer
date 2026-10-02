@@ -1,7 +1,7 @@
 # Frontend Dockerfile (frontend/Dockerfile)
 # builder 固定跑在建置機的原生平台：產物是與 CPU 架構無關的靜態檔，
-# 在 CI（x86 runner 建 arm64 映像）時可避開 QEMU 模擬——Node 在模擬下偶發
-# Illegal instruction 崩潰並卡住整個 job。只有最後的 nginx 階段是目標平台。
+# 在 x86 機器上建 arm64 映像（例如本機）時可避開 QEMU 模擬——Node 在模擬下偶發
+# Illegal instruction 崩潰並卡住。只有最後的 nginx 階段是目標平台。
 FROM --platform=$BUILDPLATFORM node:22-alpine AS builder
 
 # 設置工作目錄
