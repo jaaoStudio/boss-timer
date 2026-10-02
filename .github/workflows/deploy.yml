@@ -19,6 +19,8 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v4
