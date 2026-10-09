@@ -252,15 +252,15 @@ uv run alembic upgrade head
 
 正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換：
 
-0. 取得部署鎖（`flock`，最多等 30 分鐘）。CI 端 `deploy.yml` / `rollback.yml` 共用 `concurrency: production-deploy` 排隊；鎖擋的是手動執行與 CI 撞在一起——兩個部署同時跑會讀到同一個 active slot、互相重建同一組容器
+0. 取得部署鎖（`flock`，最多等 10 分鐘；ssh-action 的 `command_timeout` 設為 20 分鐘以容納等待）。兩個部署 / 回滾同時跑會讀到同一個 active slot、互相重建同一組容器。CI 端 `deploy.yml` 另有 `concurrency: production-deploy` 讓部署排隊；`rollback.yml` **刻意不加入同一群組**（GitHub 每個群組只保留一個排隊中的 run，共用會讓回滾與部署互相取消），由鎖互斥
 1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
 3. `docker compose pull` 拉新 image
 4. `docker compose run --rm <service> alembic upgrade head` 跑 migration（只跑一次）
 5. `docker compose up -d` 起 next slot 容器
 6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
-7. 確認 Traefik 容器內連得到新 slot 的 nginx（`docker exec traefik wget`；未被路由使用的 service 不做健康檢查，切換前只能這樣確認），再 `sed` 改 Traefik 設定切流量（`service: boss-frontend-<slot>@file`）
-8. **輪詢 Traefik API 確認路由已指向新 slot 且其健康檢查為 UP**，才等 10 秒讓舊 slot 完成進行中的請求、**停掉舊 slot**（`docker compose stop`）。任何一步確認不到就還原路由、保留舊 slot 並以失敗結束。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
+7. 確認 Traefik 容器內連得到新 slot 的 `/api/health`（`docker exec traefik wget`，經 nginx 轉給同 slot 後端，前後端都通才算；未被路由使用的 service 不做健康檢查，切換前只能這樣確認），再 `sed` 改 Traefik 設定切流量（`service: boss-frontend-<slot>@file`）
+8. **輪詢 Traefik API 確認新 slot 的 service 已被路由使用（`usedBy`）且健康檢查為 UP**（最多 60 秒），才等 3 秒讓舊 slot 完成進行中的請求、**停掉舊 slot**（`docker compose stop`）。任何一步確認不到就還原路由、保留舊 slot 並以失敗結束。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
 9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
 
 回滾：執行 `~/boss-tracker/rollback.sh`（或 GitHub Actions 的 Rollback workflow）——重新啟動舊 slot、等健康檢查通過、切回流量（同樣的鎖與 Traefik 確認）、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。
@@ -277,7 +277,7 @@ repo 的 `deploy/` 對應正式機的 `~/boss-tracker/`，Traefik 設定對應 `
 | `deploy/sync_cloudflare_ips.py` | `~/boss-tracker/` | 每日 cron，見下方 cf-only |
 | `deploy/docker-compose.yaml` | `~/boss-tracker/docker-compose.yaml` | 正式機實際使用的 compose（blue/green） |
 | `deploy/frontend/nginx/nginx-{blue,green}.conf` | `~/boss-tracker/frontend/nginx/` | 各 slot 的 nginx，`/api/` 轉給同 slot 的後端 |
-| `deploy/traefik/dynamic/boss-services.yml` | `/opt/traefik/dynamic/` | blue/green service 與 healthCheck |
+| `deploy/traefik/dynamic/boss-services.yml` | `/opt/traefik/dynamic/` | blue/green service 與 healthCheck（`/api/health`） |
 | `deploy/traefik/dynamic/boss-timer.yml` | `/opt/traefik/dynamic/` | 路由；`service:` 行由 `lib.sh` 改寫，正式機上的值代表目前 slot，**同步時保留正式機的 slot** |
 
 不納入版控：`/opt/traefik/dynamic/cloudflare-ips.yml`（自動產生）、正式機 `.env`（含密碼）。

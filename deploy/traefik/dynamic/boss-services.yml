@@ -1,7 +1,7 @@
 # 正式機路徑：/opt/traefik/dynamic/boss-services.yml
 # boss-timer blue/green 前端 service（取代 nginx 容器上的 traefik labels）
 # 容器不再帶 traefik labels，Traefik 就不會替它們自動產生沒掛 cf-only 的預設路由。
-# healthCheck：docker provider 原本會自動排除不健康的容器，改用檔案定義後由這裡補上；
+# healthCheck 打 /api/health（nginx 轉給同 slot 的後端），前後端都正常才算 UP；docker provider 原本會自動排除不健康的容器，改用檔案定義後由這裡補上；
 # deploy/lib.sh 也靠它的狀態確認新 slot 就緒後才切換流量。
 http:
   services:
@@ -10,7 +10,7 @@ http:
         servers:
           - url: "http://boss_timer_nginx_blue:80"
         healthCheck:
-          path: /
+          path: /api/health
           interval: 10s
           timeout: 3s
     boss-frontend-green:
@@ -18,6 +18,6 @@ http:
         servers:
           - url: "http://boss_timer_nginx_green:80"
         healthCheck:
-          path: /
+          path: /api/health
           interval: 10s
           timeout: 3s

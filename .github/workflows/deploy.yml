@@ -11,9 +11,8 @@ on:
       - '.claude/**'
       - 'docs/**'
 
-# 同一時間只允許一個部署 / 回滾對正式機執行（與 rollback.yml 共用群組）。
-# 連續合併多個 PR 時，後面的 run 會排隊等前一個跑完；排隊中的舊 run 會被更新的取代，
-# 最新的 main 已包含所有變更，所以不會漏部署。正式機上的 deploy/lib.sh 另有 flock 擋手動執行。
+# 部署依序執行：連續合併多個 PR 時，後面的 run 會排隊等前一個跑完；排隊中的舊 run 會被更新的取代，
+# 最新的 main 已包含所有變更，所以不會漏部署。回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥。
 concurrency:
   group: production-deploy
   cancel-in-progress: false
@@ -81,4 +80,6 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          # 須大於 lib.sh 等部署鎖的上限（10 分鐘）＋部署本身的時間
+          command_timeout: 20m
           script: ~/boss-tracker/deploy.sh ${{ github.sha }}
