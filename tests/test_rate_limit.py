@@ -4,9 +4,11 @@ import uuid
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
+from jose import jwt
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request as StarletteRequest
 
+from app.config import settings
 from app.dependencies import (
     IP_CEILING_MULTIPLIER,
     get_client_ip,
@@ -39,11 +41,19 @@ def reset_limiter():
     limiter.reset()
 
 
-def call(ip: str, anon_id: str | None = None) -> int:
+def call(ip: str, anon_id: str | None = None, access_token: str | None = None) -> int:
     client.cookies.clear()
     if anon_id:
         client.cookies.set("anonymous_user_id", anon_id)
+    if access_token:
+        client.cookies.set("access_token", access_token)
     return client.get("/limited", headers={"CF-Connecting-IP": ip}).status_code
+
+
+def exhaust_ip_ceiling(ip: str) -> None:
+    for _ in range(CEILING):
+        call(ip, str(uuid.uuid4()))
+    assert call(ip, str(uuid.uuid4())) == 429
 
 
 def make_request(headers: dict[str, str] | None = None, cookies: str | None = None) -> StarletteRequest:
@@ -67,7 +77,12 @@ def test_client_ip_falls_back_to_connection_source():
 
 def test_personal_key_uses_anonymous_cookie_then_real_ip():
     assert get_user_identifier(make_request(cookies="anonymous_user_id=abc")) == "anon:abc"
-    assert get_user_identifier(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "203.0.113.7"
+    assert get_user_identifier(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
+
+
+def test_ipv6_key_collapses_to_64_prefix():
+    key = get_user_identifier(make_request({"CF-Connecting-IP": "2407:4d00:bc01:14e3:64a0:b1e7:f2a2:e28d"}))
+    assert key == "ip:2407:4d00:bc01:14e3::/64"
 
 
 def test_same_cookie_is_limited_by_personal_quota():
@@ -89,7 +104,21 @@ def test_shared_ip_players_each_get_full_personal_quota():
 
 
 def test_different_ips_have_independent_ceilings():
-    for _ in range(CEILING):
-        call("203.0.113.1", str(uuid.uuid4()))
-    assert call("203.0.113.1", str(uuid.uuid4())) == 429
+    exhaust_ip_ceiling("203.0.113.1")
     assert call("198.51.100.9", str(uuid.uuid4())) == 200
+
+
+def test_rotating_ipv6_within_same_64_shares_ceiling():
+    codes = [
+        call(f"2407:4d00:bc01:14e3::{i:x}", str(uuid.uuid4()))
+        for i in range(1, CEILING + 2)
+    ]
+    assert codes[:CEILING] == [200] * CEILING
+    assert codes[CEILING] == 429
+    assert call("2407:4d00:bc01:9999::1", str(uuid.uuid4())) == 200
+
+
+def test_logged_in_user_is_not_blocked_by_exhausted_ip_ceiling():
+    exhaust_ip_ceiling("203.0.113.1")
+    token = jwt.encode({"sub": "42"}, settings.secret_key, algorithm=settings.algorithm)
+    assert call("203.0.113.1", access_token=token) == 200

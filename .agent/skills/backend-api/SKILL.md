@@ -130,7 +130,7 @@ async def get_room_state(db, room_id) -> dict:
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 15/min | 建立新房間 |
+| POST | `/room/` | Session | 15/min、50/day | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 查詢房間是否存在，同時回傳 Webhook 設定 |
 | PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定（Webhook/預警模式） |
 
