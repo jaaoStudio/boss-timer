@@ -34,7 +34,7 @@ wait_healthy() {
 switch_and_stop() {
   local to_slot="$1" from_slot="$2"
   echo "▶ 切換流量到 ${to_slot}..."
-  sed -i "s/service: boss-frontend-.*/service: boss-frontend-${to_slot}@docker/" "$TRAEFIK_DYNAMIC"
+  sed -i "s/service: boss-frontend-.*/service: boss-frontend-${to_slot}@file/" "$TRAEFIK_DYNAMIC"
   echo "▶ 等待 Traefik 套用新路由（${SWITCH_GRACE_SECONDS} 秒）..."
   sleep "$SWITCH_GRACE_SECONDS"
   echo "▶ 停止 ${from_slot}..."
