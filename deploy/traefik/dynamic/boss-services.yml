@@ -1,0 +1,16 @@
+# 正式機路徑：/opt/traefik/dynamic/boss-services.yml
+# boss-timer blue/green 前端 service（取代 nginx 容器上的 traefik labels）
+# 容器不再帶 traefik labels，Traefik 就不會替它們自動產生沒掛 cf-only 的預設路由。
+# 刻意不設 healthCheck：每個 slot 只有一台，健康檢查無從容錯，一次回應慢就會讓整站回 503，
+# 維護模式（nginx 的 maintenance.on）也會被判為 DOWN 而看不到維護頁。
+# 切換時由 deploy/lib.sh 主動確認新 slot 可用。
+http:
+  services:
+    boss-frontend-blue:
+      loadBalancer:
+        servers:
+          - url: "http://boss_timer_nginx_blue:80"
+    boss-frontend-green:
+      loadBalancer:
+        servers:
+          - url: "http://boss_timer_nginx_green:80"

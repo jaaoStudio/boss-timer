@@ -1,0 +1,14 @@
+# 正式機路徑：/opt/traefik/dynamic/boss-timer.yml
+# 最後一行的 service 由 deploy/lib.sh 在 blue/green 切換時以 sed 改寫，正式機上的值代表目前接流量的 slot。
+# cf-only 定義在 cloudflare-ips.yml（由 deploy/sync_cloudflare_ips.py 自動產生，不納入版控）。
+http:
+  routers:
+    boss-frontend:
+      rule: "Host(`boss-timer.jaao.tw`)"
+      entryPoints:
+        - websecure
+      middlewares:
+        - cf-only@file
+      tls:
+        certResolver: cf
+      service: boss-frontend-green@file

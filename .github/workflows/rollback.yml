@@ -4,6 +4,8 @@ name: Rollback
 on:
   workflow_dispatch:  # 手動觸發，在 GitHub UI 上按按鈕
 
+# 不與 deploy.yml 共用 concurrency 群組：GitHub 每個群組只保留一個排隊中的 run，共用會讓回滾與部署互相取消。
+# 與部署的互斥由正式機上 deploy/lib.sh 的 flock 處理（部署進行中按回滾，會等部署跑完才執行）。
 jobs:
   rollback:
     runs-on: ubuntu-latest
@@ -14,4 +16,6 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          # 須大於 lib.sh 等部署鎖的上限（10 分鐘）＋回滾本身的時間
+          command_timeout: 20m
           script: ~/boss-tracker/rollback.sh

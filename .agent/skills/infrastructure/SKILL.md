@@ -45,7 +45,7 @@ boss-timing/
 │
 ├── docker-compose.yaml        # 開發/建置用 (含 build 指令)
 ├── docker-compose.dev.yaml    # 開發環境精簡版 (只啟動 Redis)
-├── docker-compose.prod.yaml   # 正式環境 (全容器化)
+├── deploy/                    # 正式機部署腳本與設定（對應正式機 ~/boss-tracker/，見「正式機設定的版控」）
 │
 ├── app/                       # 後端程式碼
 │   ├── .env                   # 後端應用程式環境變數 (DB, Auth, Redis)
@@ -142,18 +142,15 @@ services:
 | `celery_worker_fast` | 一般任務 Worker (concurrency=4) | — |
 | `celery_worker_discord` | Discord 推播 Worker (concurrency=1) | — |
 
-### 正式環境 (`docker-compose.prod.yaml`)
+### 正式環境（`deploy/docker-compose.yaml`，正式機 `~/boss-tracker/docker-compose.yaml`）
 
-在建置版本基礎上增加：
-
-| 服務 | 額外設定 |
+| 服務 | 說明 |
 |---|---|
-| `db` | PostgreSQL, port 4521, 持久化 volume |
-| `boss_service` | healthcheck, env_file, 網路隔離 |
-| `boss_timer_nginx` | depends_on service_healthy, 掛載 nginx.conf |
-| `redis` | 網路隔離 |
-| `celery_worker_fast` | depends_on redis + db |
-| `celery_worker_discord` | depends_on redis + db |
+| `db` | PostgreSQL，只綁 `127.0.0.1:15432`，持久化 volume |
+| `redis` | Celery Broker |
+| `celery_worker_fast` / `celery_worker_discord` | 共用 `ACTIVE_TAG` image，不分 blue/green |
+| `boss_service_blue` / `boss_service_green` | 後端，各用 `BLUE_TAG` / `GREEN_TAG`，有 healthcheck，不對外開埠 |
+| `boss_timer_nginx_blue` / `boss_timer_nginx_green` | 前端 nginx，掛載 `frontend/nginx/nginx-<slot>.conf`（`/api/` 轉給同 slot 後端）；**不帶 traefik labels**，由 Traefik 檔案設定的 `boss-frontend-<slot>@file` 連線 |
 
 **所有服務指定 `platform: linux/arm64`**，確保拉取 ARM 映像。
 
@@ -165,7 +162,7 @@ services:
 ```
 REMOTE_REGISTRY_IP=harbor.jaao.tw
 
-# 本地 docker-compose.yaml / docker-compose.prod.yaml 用的 image tag
+# 本地 docker-compose.yaml 用的 image tag
 # CI 推 Harbor 的 tag 永遠是 git SHA + latest，與此處無關
 BACKEND_VERSION=2.7.0
 FRONTEND_VERSION=2.7.0
@@ -196,7 +193,7 @@ GOOGLE_CLIENT_SECRET=...
 
 ### Docker 容器內的 `.env` 掛載
 - `docker-compose.yaml`: `./app/.env:/project/.env` (掛載到 WORKDIR)
-- `docker-compose.prod.yaml`: 使用 `env_file: - .env` 讀取根目錄 `.env`
+- 正式機 `deploy/docker-compose.yaml`: 使用 `env_file: - .env` 讀取 `~/boss-tracker/.env`
 - `REDIS_URL` 透過 `environment` 直接注入 (`redis://redis:6379/0`)
 
 ---
@@ -253,19 +250,39 @@ uv run alembic upgrade head
 
 ### Blue/Green 部署（正式機 `deploy.sh`）
 
-正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換（腳本版控於 repo 的 `deploy/`：`deploy.sh`、`rollback.sh` 與兩者共用的 `lib.sh`，修改後需手動把三支一起同步到正式機；同目錄的 `sync_cloudflare_ips.py` 是獨立的 cron 腳本，見下方 cf-only）：
+正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換：
 
+0. 取得部署鎖（`flock`，最多等 10 分鐘；ssh-action 的 `command_timeout` 設為 20 分鐘以容納等待）。兩個部署 / 回滾同時跑會讀到同一個 active slot、互相重建同一組容器。CI 端 `deploy.yml` 另有 `concurrency: production-deploy` 讓部署排隊；`rollback.yml` **刻意不加入同一群組**（GitHub 每個群組只保留一個排隊中的 run，共用會讓回滾與部署互相取消），由鎖互斥
 1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
 3. `docker compose pull` 拉新 image
 4. `docker compose run --rm <service> alembic upgrade head` 跑 migration（只跑一次）
 5. `docker compose up -d` 起 next slot 容器
 6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
-7. `sed` 改 Traefik 設定切流量到 next slot（`service: boss-frontend-<slot>@file`，Traefik 自動偵測檔案變更）
-8. 等 10 秒後**停掉舊 slot**（`docker compose stop`）。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
+7. 確認 Traefik 容器內連得到新 slot 的 `/api/health`（`docker exec traefik wget`，經 nginx 轉給同 slot 後端，前後端都通才算；未被路由使用的 service 不做健康檢查，切換前只能這樣確認），再 `sed` 改 Traefik 設定切流量（`service: boss-frontend-<slot>@file`）
+8. **輪詢 Traefik API 確認新 slot 的 service 已被路由使用（`usedBy`，約 2 分鐘內），再打一次新 slot 的 `/api/health`**，才等 3 秒讓舊 slot 完成進行中的請求、**停掉舊 slot**（`docker compose stop`）。確認不到就還原路由、**停掉新 slot**（切換期間連進新 slot 的 WebSocket 會重連回舊 slot，避免同一房間分成兩群）並以失敗結束。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
 9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
 
-回滾：執行 `~/boss-tracker/rollback.sh`——重新啟動舊 slot、等健康檢查通過、切回流量、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。
+部署在切換完成前失敗（任何一步）：還原 `.env` 的 next slot tag 並停掉 next slot，否則 `.env` 會留著沒通過檢查的版本，之後回滾會切到它。成功的部署 / 回滾會記錄在 `~/boss-tracker/.last_switch`。
+
+回滾：執行 `~/boss-tracker/rollback.sh`（或 GitHub Actions 的 Rollback workflow）——重新啟動舊 slot、等健康檢查通過、切回流量（同樣的鎖與 Traefik 確認）、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。**上一次切換已經是回滾時會拒絕執行**（連按兩次回滾，第二次會把第一次切回去）；要切回去請重新部署，或手動執行 `rollback.sh --force`。
+
+> 舊 slot 停止時結束碼常為 `137`：nginx 的 `STOPSIGNAL` 是 `SIGQUIT`（優雅關閉）、uvicorn 也會等連線結束，而 WebSocket 長連線不會自己斷，`docker compose stop` 等滿 10 秒後強制終止。這是預期行為（舊 slot 本來就要把 WS 斷掉讓前端重連），不需處理。
+
+#### 正式機設定的版控（`deploy/`）
+
+repo 的 `deploy/` 對應正式機的 `~/boss-tracker/`，Traefik 設定對應 `/opt/traefik/dynamic/`。**正式機上沒有 git，修改後需手動同步**；腳本彼此相依（`deploy.sh` / `rollback.sh` 呼叫 `lib.sh` 的函式），一律整組同步：
+
+| repo | 正式機 | 說明 |
+|---|---|---|
+| `deploy/deploy.sh`、`rollback.sh`、`lib.sh` | `~/boss-tracker/` | 部署 / 回滾腳本 |
+| `deploy/sync_cloudflare_ips.py` | `~/boss-tracker/` | 每日 cron，見下方 cf-only |
+| `deploy/docker-compose.yaml` | `~/boss-tracker/docker-compose.yaml` | 正式機實際使用的 compose（blue/green） |
+| `deploy/frontend/nginx/nginx-{blue,green}.conf` | `~/boss-tracker/frontend/nginx/` | 各 slot 的 nginx，`/api/` 轉給同 slot 的後端 |
+| `deploy/traefik/dynamic/boss-services.yml` | `/opt/traefik/dynamic/` | blue/green service（刻意不設 healthCheck，見檔案註解） |
+| `deploy/traefik/dynamic/boss-timer.yml` | `/opt/traefik/dynamic/` | 路由；`service:` 行由 `lib.sh` 改寫，正式機上的值代表目前 slot，**同步時保留正式機的 slot** |
+
+不納入版控：`/opt/traefik/dynamic/cloudflare-ips.yml`（自動產生）、正式機 `.env`（含密碼）。
 
 ### 只接受 Cloudflare 來的連線（cf-only）
 
@@ -278,6 +295,7 @@ boss-timer 的 DNS 經 Cloudflare 代理，但 gitlab / harbor / mail 與它在�
 - `deploy/lib.sh` 只 `sed` 修改 `service:` 那一行，不影響 `middlewares`
 - 已移除 `blue.boss-timer.jaao.tw` / `green.boss-timer.jaao.tw` 預覽路由（它們沒有 DNS、只能直連，會繞過 cf-only）；要在切換前測試新 slot，從主機直接打容器
 - **nginx 容器不帶任何 traefik labels**：只要容器有 `traefik.enable=true` 卻沒定義路由，Traefik 就會自動產生 `Host(<容器名>)` 預設路由，且沒掛 cf-only。blue/green 的 service 因此改定義在 `/opt/traefik/dynamic/boss-services.yml`（以容器名 `boss_timer_nginx_<slot>:80` 連線，Traefik 與 nginx 同在 `traefik-net`），路由指向 `boss-frontend-<slot>@file`。勿在 compose 替 nginx 加回 traefik labels
+- **service 刻意不設 healthCheck**：每個 slot 只有一台，健康檢查沒有備援可切，一次回應慢（>timeout）就會讓整站回 503，nginx 維護模式（`maintenance.on`）也會被判 DOWN 而看不到維護頁。切換時由 `lib.sh` 主動確認新 slot 的 `/api/health`。切換流程依賴正式機上的 `jq`、`curl`、`flock`（腳本開頭會檢查）
 
 ### 手動建置（本地測試用）
 
@@ -292,16 +310,20 @@ docker push harbor.jaao.tw/boss_service/boss_service:${BACKEND_VERSION}
 docker push harbor.jaao.tw/boss_service/boss_timer_nginx:${FRONTEND_VERSION}
 ```
 
-### 在正式機啟動
+### 在正式機部署 / 回滾
 ```bash
-docker compose -f docker-compose.prod.yaml up -d
+cd ~/boss-tracker
+./deploy.sh <git sha>   # 一般由 CI 執行；手動執行會與 CI 共用部署鎖
+./rollback.sh
 ```
+**勿直接 `docker compose up` 兩個 slot 或手動改 Traefik 路由**，切換一律經腳本（含部署鎖與 Traefik 確認）。
 
 ### 資料庫遷移 (正式機)
+`deploy.sh` 部署時會自動執行。需要手動執行時，對目前接流量的 slot：
 ```bash
-# 在正式機進入 boss_service 容器執行
-docker compose -f docker-compose.prod.yaml exec boss_service \
-  alembic upgrade head
+cd ~/boss-tracker
+SLOT=$(grep -m1 "service: boss-frontend-" /opt/traefik/dynamic/boss-timer.yml | grep -o -m1 'blue\|green')
+docker compose run --rm "boss_service_${SLOT}" alembic upgrade head
 ```
 
 ---

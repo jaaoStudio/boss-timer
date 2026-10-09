@@ -11,6 +11,12 @@ on:
       - '.claude/**'
       - 'docs/**'
 
+# 部署依序執行：連續合併多個 PR 時，後面的 run 會排隊等前一個跑完；排隊中的舊 run 會被更新的取代，
+# 最新的 main 已包含所有變更，所以不會漏部署。回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥。
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 env:
   HARBOR: ${{ secrets.HARBOR_URL }}
   IMAGE_BACKEND: ${{ secrets.HARBOR_URL }}/boss_service/boss_service
@@ -20,8 +26,9 @@ jobs:
   build-and-deploy:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
-    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
-    timeout-minutes: 30
+    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限。
+    # 須大於建置（約 10 分鐘）＋ SSH 部署的 command_timeout（20 分鐘），避免切換到一半被砍
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -74,4 +81,6 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USER }}
           key: ${{ secrets.VM_SSH_KEY }}
+          # 須大於 lib.sh 等部署鎖的上限（10 分鐘）＋部署本身的時間
+          command_timeout: 20m
           script: ~/boss-tracker/deploy.sh ${{ github.sha }}
