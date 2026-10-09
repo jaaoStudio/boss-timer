@@ -261,7 +261,7 @@ uv run alembic upgrade head
 4. `docker compose run --rm <service> alembic upgrade head` 跑 migration（只跑一次）
 5. `docker compose up -d` 起 next slot 容器
 6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
-7. `sed` 改 Traefik 設定切流量到 next slot（Traefik 自動偵測檔案變更）
+7. `sed` 改 Traefik 設定切流量到 next slot（`service: boss-frontend-<slot>@file`，Traefik 自動偵測檔案變更）
 8. 等 10 秒後**停掉舊 slot**（`docker compose stop`）。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
 9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
 
@@ -277,6 +277,7 @@ boss-timer 的 DNS 經 Cloudflare 代理，但 gitlab / harbor / mail 與它在�
 - mailcow 對外經 OCI Email Delivery 寄出，**寄件者必須是 OCI 已核准的地址**，否則會被退信；目前用 `boss-timer@jaao.tw`（腳本預設值，可用 `MAIL_FROM` 覆寫）
 - `deploy/lib.sh` 只 `sed` 修改 `service:` 那一行，不影響 `middlewares`
 - 已移除 `blue.boss-timer.jaao.tw` / `green.boss-timer.jaao.tw` 預覽路由（它們沒有 DNS、只能直連，會繞過 cf-only）；要在切換前測試新 slot，從主機直接打容器
+- **nginx 容器不帶任何 traefik labels**：只要容器有 `traefik.enable=true` 卻沒定義路由，Traefik 就會自動產生 `Host(<容器名>)` 預設路由，且沒掛 cf-only。blue/green 的 service 因此改定義在 `/opt/traefik/dynamic/boss-services.yml`（以容器名 `boss_timer_nginx_<slot>:80` 連線，Traefik 與 nginx 同在 `traefik-net`），路由指向 `boss-frontend-<slot>@file`。勿在 compose 替 nginx 加回 traefik labels
 
 ### 手動建置（本地測試用）
 
