@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from typing import Optional, Annotated
 
+from limits import parse_many
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -15,12 +16,32 @@ from app.database import models
 from app.database.database import SessionLocal
 from app.websocket.manager import ConnectionManager
 from app.services.auth_service import get_current_user # 引入 get_current_user
+
+# IP 天花板 = 個人額度 × 50（假設單一 IP 後最多 50 位真實玩家，見 docs/adr/0007）
+IP_CEILING_MULTIPLIER = 50
+
+
+def get_client_ip(request: Request) -> str:
+    """
+    使用者的真實 IP。
+    request.client 是 Traefik 轉來的 Cloudflare 節點 IP，真實 IP 在 CF-Connecting-IP；
+    Traefik 只接受 Cloudflare 來的連線（cf-only），這個 header 才不會被偽造。
+    沒有這個 header（本機開發、直連後端）時退回連線來源。
+    """
+    return request.headers.get("cf-connecting-ip") or get_remote_address(request)
+
+
+def get_ip_ceiling_key(request: Request) -> str:
+    return f"ip:{get_client_ip(request)}"
+
+
 def get_user_identifier(request: Request) -> str:
     """
-    自定義限流識別碼提取函數：
+    自定義限流識別碼提取函數（個人額度）：
     1. 優先使用登入使用者的 user_id (解析 access_token)
     2. 其次使用訪客的 anonymous_user_id
     3. 最後才退回使用真實 IP
+    cookie 可被客戶端任意更換，所以另有 IP 天花板擋繞過，見 rate_limit()。
     """
     token = request.cookies.get("access_token")
     if token:
@@ -38,9 +59,33 @@ def get_user_identifier(request: Request) -> str:
     if anon_id:
         return f"anon:{anon_id}"
 
-    return get_remote_address(request)
+    return get_client_ip(request)
 
 limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
+
+
+def scale_limit(limit_value: str, factor: int) -> str:
+    """把 "15/minute;50/day" 的每條上限乘上 factor。"""
+    return ";".join(
+        f"{item.amount * factor} per {item.multiples} {item.GRANULARITY.name}"
+        for item in parse_many(limit_value)
+    )
+
+
+def rate_limit(limit_value: str):
+    """
+    雙層限流（見 docs/adr/0007）：
+    - 個人額度：limit_value，以登入身分 / anonymous_user_id cookie 計算，維持公平
+    - IP 天花板：limit_value × IP_CEILING_MULTIPLIER，以真實 IP 計算，擋換 cookie 繞過與灌爆
+    學校等共用 IP 的玩家各用各的個人額度，只有換 cookie 狂打才會撞到天花板。
+    """
+    personal = limiter.limit(limit_value)
+    ceiling = limiter.limit(scale_limit(limit_value, IP_CEILING_MULTIPLIER), key_func=get_ip_ceiling_key)
+
+    def decorator(func):
+        return ceiling(personal(func))
+
+    return decorator
 
 # 自定義速率限制超過時的例外處理函式
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import get_current_admin_user, limiter
+from app.dependencies import get_current_admin_user, rate_limit
 from app.schemas.feedback import (
     FeedbackCreate,
     FeedbackListResponse,
@@ -52,7 +52,7 @@ def _require_user(
 
 
 @router.get("/", response_model=FeedbackListResponse)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def list_feedback(
     request: Request,
     sort: str = Query("votes", pattern="^(votes|newest)$"),
@@ -70,7 +70,7 @@ async def list_feedback(
 
 
 @router.post("/", response_model=FeedbackResponse, status_code=201)
-@limiter.limit("20/minute")
+@rate_limit("20/minute")
 async def create_feedback(
     request: Request,
     payload: FeedbackCreate,
@@ -97,7 +97,7 @@ async def create_feedback(
 
 
 @router.post("/{feedback_id}/vote", response_model=FeedbackVoteResponse)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def toggle_vote(
     request: Request,
     feedback_id: int,
@@ -122,7 +122,7 @@ async def toggle_vote(
 
 
 @router.patch("/{feedback_id}", response_model=FeedbackResponse)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def admin_update_status(
     request: Request,
     feedback_id: int,
@@ -158,7 +158,7 @@ async def admin_update_status(
 
 
 @router.delete("/{feedback_id}", status_code=204)
-@limiter.limit("30/minute")
+@rate_limit("30/minute")
 async def admin_delete(
     request: Request,
     feedback_id: int,

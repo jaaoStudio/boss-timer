@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
-from app.dependencies import limiter, verify_user_session, get_connection_manager
+from app.dependencies import rate_limit, verify_user_session, get_connection_manager
 from app.services.room_service import create_room as room_service_create_room, get_room_by_id
 from app.schemas.room import RoomResponse, RoomExists, RoomSettingsUpdate
 from app.websocket.manager import ConnectionManager
@@ -13,7 +13,7 @@ router = APIRouter(prefix="/room", tags=["rooms"])
 
 
 @router.post("/", response_model=RoomResponse)
-@limiter.limit("15/minute")
+@rate_limit("15/minute;50/day")
 async def create_room(
         request: Request,
         db: Session = Depends(get_db),
@@ -31,7 +31,7 @@ async def create_room(
 
 
 @router.get("/{room_id}/exists", response_model=RoomExists)
-@limiter.limit("15/minute")
+@rate_limit("15/minute")
 async def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
                             db: Session = Depends(get_db)):
     """檢查房間是否存在"""
@@ -61,7 +61,7 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
         raise HTTPException(status_code=500, detail="Failed to check room existence")
 
 @router.patch("/{room_id}/settings", response_model=RoomResponse)
-@limiter.limit("30/minute")
+@rate_limit("30/minute")
 async def update_room_settings(
         request: Request,
         settings_data: RoomSettingsUpdate,

@@ -166,12 +166,22 @@ async def get_room_state(db, room_id) -> dict:
 
 ## Rate Limiting / 限流
 
-使用 `slowapi`，在 `dependencies.py` 中初始化 `Limiter`：
+使用 `slowapi`，一律透過 `dependencies.py` 的 `rate_limit()` 掛上**雙層限流**（見 ADR-0007），**勿直接用 `@limiter.limit`**：
 
 ```python
-@router.post("/", dependencies=[Depends(RateLimiter(times=5, seconds=60))])
-async def create_room(...):
+@router.post("/", response_model=RoomResponse)
+@rate_limit("15/minute;50/day")   # 多條上限以 ; 分隔
+async def create_room(request: Request, ...):   # 必須有 request 參數
 ```
+
+| 層 | key | 額度 | 用途 |
+|---|---|---|---|
+| 個人額度 | `get_user_identifier`：`user:{id}` → `anon:{cookie}` → 真實 IP | `limit_value` | 公平；學校等共用 IP 的玩家各用各的 |
+| IP 天花板 | `get_ip_ceiling_key`：`ip:{真實 IP}` | `limit_value` × `IP_CEILING_MULTIPLIER`（50） | cookie 可任意更換，擋換 cookie 繞過與灌爆 |
+
+- **真實 IP** 由 `get_client_ip()` 取得：優先讀 `CF-Connecting-IP`（`request.client` 是 Cloudflare 節點 IP）。這個 header 可信的前提是 Traefik 的 cf-only，只接受 Cloudflare 來的連線（見 infrastructure skill）
+- 計數器存在記憶體，每次部署歸零（可接受，見 ADR-0007）
+- 測試：`uv run pytest`（`tests/test_rate_limit.py`）
 
 ---
 
