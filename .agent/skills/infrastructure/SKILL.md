@@ -260,10 +260,12 @@ uv run alembic upgrade head
 5. `docker compose up -d` 起 next slot 容器
 6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
 7. 確認 Traefik 容器內連得到新 slot 的 `/api/health`（`docker exec traefik wget`，經 nginx 轉給同 slot 後端，前後端都通才算；未被路由使用的 service 不做健康檢查，切換前只能這樣確認），再 `sed` 改 Traefik 設定切流量（`service: boss-frontend-<slot>@file`）
-8. **輪詢 Traefik API 確認新 slot 的 service 已被路由使用（`usedBy`）且健康檢查為 UP**（最多 60 秒），才等 3 秒讓舊 slot 完成進行中的請求、**停掉舊 slot**（`docker compose stop`）。任何一步確認不到就還原路由、保留舊 slot 並以失敗結束。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
+8. **輪詢 Traefik API 確認新 slot 的 service 已被路由使用（`usedBy`，約 2 分鐘內），再打一次新 slot 的 `/api/health`**，才等 3 秒讓舊 slot 完成進行中的請求、**停掉舊 slot**（`docker compose stop`）。確認不到就還原路由、**停掉新 slot**（切換期間連進新 slot 的 WebSocket 會重連回舊 slot，避免同一房間分成兩群）並以失敗結束。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
 9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
 
-回滾：執行 `~/boss-tracker/rollback.sh`（或 GitHub Actions 的 Rollback workflow）——重新啟動舊 slot、等健康檢查通過、切回流量（同樣的鎖與 Traefik 確認）、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。
+部署在切換完成前失敗（任何一步）：還原 `.env` 的 next slot tag 並停掉 next slot，否則 `.env` 會留著沒通過檢查的版本，之後回滾會切到它。成功的部署 / 回滾會記錄在 `~/boss-tracker/.last_switch`。
+
+回滾：執行 `~/boss-tracker/rollback.sh`（或 GitHub Actions 的 Rollback workflow）——重新啟動舊 slot、等健康檢查通過、切回流量（同樣的鎖與 Traefik 確認）、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。**上一次切換已經是回滾時會拒絕執行**（連按兩次回滾，第二次會把第一次切回去）；要切回去請重新部署，或手動執行 `rollback.sh --force`。
 
 > 舊 slot 停止時結束碼常為 `137`：nginx 的 `STOPSIGNAL` 是 `SIGQUIT`（優雅關閉）、uvicorn 也會等連線結束，而 WebSocket 長連線不會自己斷，`docker compose stop` 等滿 10 秒後強制終止。這是預期行為（舊 slot 本來就要把 WS 斷掉讓前端重連），不需處理。
 
@@ -277,7 +279,7 @@ repo 的 `deploy/` 對應正式機的 `~/boss-tracker/`，Traefik 設定對應 `
 | `deploy/sync_cloudflare_ips.py` | `~/boss-tracker/` | 每日 cron，見下方 cf-only |
 | `deploy/docker-compose.yaml` | `~/boss-tracker/docker-compose.yaml` | 正式機實際使用的 compose（blue/green） |
 | `deploy/frontend/nginx/nginx-{blue,green}.conf` | `~/boss-tracker/frontend/nginx/` | 各 slot 的 nginx，`/api/` 轉給同 slot 的後端 |
-| `deploy/traefik/dynamic/boss-services.yml` | `/opt/traefik/dynamic/` | blue/green service 與 healthCheck（`/api/health`） |
+| `deploy/traefik/dynamic/boss-services.yml` | `/opt/traefik/dynamic/` | blue/green service（刻意不設 healthCheck，見檔案註解） |
 | `deploy/traefik/dynamic/boss-timer.yml` | `/opt/traefik/dynamic/` | 路由；`service:` 行由 `lib.sh` 改寫，正式機上的值代表目前 slot，**同步時保留正式機的 slot** |
 
 不納入版控：`/opt/traefik/dynamic/cloudflare-ips.yml`（自動產生）、正式機 `.env`（含密碼）。
@@ -293,6 +295,7 @@ boss-timer 的 DNS 經 Cloudflare 代理，但 gitlab / harbor / mail 與它在�
 - `deploy/lib.sh` 只 `sed` 修改 `service:` 那一行，不影響 `middlewares`
 - 已移除 `blue.boss-timer.jaao.tw` / `green.boss-timer.jaao.tw` 預覽路由（它們沒有 DNS、只能直連，會繞過 cf-only）；要在切換前測試新 slot，從主機直接打容器
 - **nginx 容器不帶任何 traefik labels**：只要容器有 `traefik.enable=true` 卻沒定義路由，Traefik 就會自動產生 `Host(<容器名>)` 預設路由，且沒掛 cf-only。blue/green 的 service 因此改定義在 `/opt/traefik/dynamic/boss-services.yml`（以容器名 `boss_timer_nginx_<slot>:80` 連線，Traefik 與 nginx 同在 `traefik-net`），路由指向 `boss-frontend-<slot>@file`。勿在 compose 替 nginx 加回 traefik labels
+- **service 刻意不設 healthCheck**：每個 slot 只有一台，健康檢查沒有備援可切，一次回應慢（>timeout）就會讓整站回 503，nginx 維護模式（`maintenance.on`）也會被判 DOWN 而看不到維護頁。切換時由 `lib.sh` 主動確認新 slot 的 `/api/health`。切換流程依賴正式機上的 `jq`、`curl`、`flock`（腳本開頭會檢查）
 
 ### 手動建置（本地測試用）
 

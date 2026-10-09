@@ -26,8 +26,9 @@ jobs:
   build-and-deploy:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
-    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
-    timeout-minutes: 30
+    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限。
+    # 須大於建置（約 10 分鐘）＋ SSH 部署的 command_timeout（20 分鐘），避免切換到一半被砍
+    timeout-minutes: 40
     steps:
       - name: Checkout
         uses: actions/checkout@v4

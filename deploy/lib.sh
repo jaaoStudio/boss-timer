@@ -1,16 +1,33 @@
 #!/usr/bin/env bash
 # deploy.sh / rollback.sh 共用的 blue/green 切換步驟。由兩支腳本 source，需在 $COMPOSE_DIR 下執行。
 
-TRAEFIK_DYNAMIC=/opt/traefik/dynamic/boss-timer.yml
+TRAEFIK_DYNAMIC="${TRAEFIK_DYNAMIC:-/opt/traefik/dynamic/boss-timer.yml}"
 TRAEFIK_API="${TRAEFIK_API:-http://127.0.0.1:8081}"   # 與 sync_cloudflare_ips.py 相同的 base URL
 TRAEFIK_ROUTER=boss-frontend@file
 SWITCH_GRACE_SECONDS=3
-# 確認 slot 可用的路徑：經 nginx 轉給同 slot 的後端，前後端都正常才算通（與 boss-services.yml 的 healthCheck 相同）
+# 確認 slot 可用的路徑：經 nginx 轉給同 slot 的後端，前後端都正常才算通
 SLOT_PROBE_PATH=/api/health
 
 # slot 對應的 Traefik service（定義在 /opt/traefik/dynamic/boss-services.yml）
 frontend_service() {
   echo "boss-frontend-$1@file"
+}
+
+# 切換流程用到的工具。jq / curl 讀 Traefik API，缺少時確認一定失敗，先明確擋下
+require_tools() {
+  local tool
+  for tool in docker curl jq flock; do
+    command -v "$tool" >/dev/null || { echo "❌ 正式機缺少 ${tool}，無法執行部署 / 回滾"; exit 1; }
+  done
+}
+
+# 記錄最後一次成功的切換（deploy / rollback），回滾用來擋重複執行
+record_switch() {
+  echo "$1 $2 $(date -Is)" > "${COMPOSE_DIR}/.last_switch"
+}
+
+last_switch_kind() {
+  cut -d' ' -f1 "${COMPOSE_DIR}/.last_switch" 2>/dev/null || true
 }
 
 # 同一時間只允許一個部署 / 回滾：兩邊同時跑會讀到同一個 active slot、互相重建同一組容器。
@@ -60,18 +77,18 @@ wait_healthy() {
 }
 
 # 從 Traefik 容器內連得到 slot（與 Traefik 轉送走同一個網路與 DNS），容器內重試約 15 秒。
-# 未被路由使用的 service 不會做健康檢查，切換前只能這樣確認
+# boss-services.yml 刻意不設 healthCheck：每個 slot 只有一台，健康檢查無從容錯，
+# 一次回應慢就會讓整站回 503，所以由這裡在切換前後主動確認
 traefik_can_reach() {
   docker exec traefik sh -c \
     "for _ in 1 2 3 4 5; do wget -q -T 3 -O /dev/null http://boss_timer_nginx_$1:80${SLOT_PROBE_PATH} && exit 0; sleep 2; done; exit 1" \
     2>/dev/null
 }
 
-# slot 的 service 已被路由使用，且 Traefik 對它的健康檢查回報 UP
-traefik_serving() {
-  curl -fsS --max-time 5 "${TRAEFIK_API}/api/http/services/$(frontend_service "$1")" 2>/dev/null \
-    | jq -e --arg router "$TRAEFIK_ROUTER" \
-      '(.usedBy // [] | index($router)) != null and ([.serverStatus[]?] == ["UP"])' >/dev/null 2>&1
+# Traefik 已重新載入設定，路由正在使用 slot 的 service
+traefik_routed_to() {
+  curl -fsS --max-time 2 "${TRAEFIK_API}/api/http/services/$(frontend_service "$1")" 2>/dev/null \
+    | jq -e --arg router "$TRAEFIK_ROUTER" '(.usedBy // [] | index($router)) != null' >/dev/null
 }
 
 point_traefik_to() {
@@ -89,10 +106,14 @@ switch_and_stop() {
 
   echo "▶ 切換流量到 ${to_slot}..."
   point_traefik_to "$to_slot"
-  # 等 Traefik 重新載入檔案並對新 slot 做健康檢查，最多 60 秒
-  if ! retry 30 2 traefik_serving "$to_slot"; then
-    echo "❌ Traefik 未改用 ${to_slot} 或健康檢查未通過，還原路由（流量仍在 ${from_slot}）"
+  # 等 Traefik 重新載入檔案（每次最多約 4 秒，共約 2 分鐘），再確認一次新 slot 仍可用
+  if ! retry 30 2 traefik_routed_to "$to_slot" || ! traefik_can_reach "$to_slot"; then
+    echo "❌ Traefik 未改用 ${to_slot} 或 ${to_slot} 已無法使用，還原路由到 ${from_slot}"
     point_traefik_to "$from_slot"
+    retry 15 2 traefik_routed_to "$from_slot" || echo "⚠️ Traefik 尚未確認改回 ${from_slot}，請手動檢查"
+    # 切換期間可能已有 WebSocket 連進新 slot；停掉讓它們重連回舊 slot，避免同一房間分成兩群（ADR-0005）
+    echo "▶ 停止 ${to_slot}..."
+    docker compose stop "boss_service_${to_slot}" "boss_timer_nginx_${to_slot}"
     exit 1
   fi
 
