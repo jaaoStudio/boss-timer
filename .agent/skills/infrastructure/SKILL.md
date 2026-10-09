@@ -253,7 +253,7 @@ uv run alembic upgrade head
 
 ### Blue/Green 部署（正式機 `deploy.sh`）
 
-正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換（腳本版控於 repo 的 `deploy/`：`deploy.sh`、`rollback.sh` 與兩者共用的 `lib.sh`，修改後需手動把三支一起同步到正式機）：
+正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換（腳本版控於 repo 的 `deploy/`：`deploy.sh`、`rollback.sh` 與兩者共用的 `lib.sh`，修改後需手動把三支一起同步到正式機；同目錄的 `sync_cloudflare_ips.py` 是獨立的 cron 腳本，見下方 cf-only）：
 
 1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
@@ -266,6 +266,17 @@ uv run alembic upgrade head
 9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）
 
 回滾：執行 `~/boss-tracker/rollback.sh`——重新啟動舊 slot、等健康檢查通過、切回流量、停掉目前 slot，並把 Celery worker 一併回到舊版（約 1 分鐘）。
+
+### 只接受 Cloudflare 來的連線（cf-only）
+
+boss-timer 的 DNS 經 Cloudflare 代理，但 gitlab / harbor / mail 與它在同一台主機且未代理，源站 IP 是公開的；直連源站 IP 並帶 `Host: boss-timer.jaao.tw` 就能繞過 Cloudflare WAF。因此 Traefik 的 `boss-frontend` 路由掛了 `cf-only@file` middleware（`ipAllowList`），只放行 Cloudflare 網段，直連會回 403。這也是後端信任 `CF-Connecting-IP` 作為使用者真實 IP 的前提（見 ADR-0007）。
+
+- **只套用在 boss-timer**，其他專案是直連的，套用會全掛
+- 網段定義在 `/opt/traefik/dynamic/cloudflare-ips.yml`，由 `deploy/sync_cloudflare_ips.py` 自動產生，**勿手動修改**
+- 網段不保證永久不變：正式機 cron 每天台灣 04:17（UTC 20:17）執行同步腳本（`~/boss-tracker/sync_cloudflare_ips.py`），比對 Cloudflare `/ips` 的 etag，有變動就重新產生檔案（Traefik 自動載入），變動或失敗都經本機 mailcow 寄信通知；log 在 `~/boss-tracker/logs/cf-ips-sync.log`
+- mailcow 對外經 OCI Email Delivery 寄出，**寄件者必須是 OCI 已核准的地址**，否則會被退信；目前用 `boss-timer@jaao.tw`（腳本預設值，可用 `MAIL_FROM` 覆寫）
+- `deploy/lib.sh` 只 `sed` 修改 `service:` 那一行，不影響 `middlewares`
+- 已移除 `blue.boss-timer.jaao.tw` / `green.boss-timer.jaao.tw` 預覽路由（它們沒有 DNS、只能直連，會繞過 cf-only）；要在切換前測試新 slot，從主機直接打容器
 
 ### 手動建置（本地測試用）
 
