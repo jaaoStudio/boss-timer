@@ -190,9 +190,12 @@ uv run alembic upgrade head
 /home/jack/miniconda3/envs/boss-timing/bin/alembic upgrade head
 ```
 
-### 在正式機執行（容器內）
+### 在正式機執行
+部署（`deploy.sh`）會自動執行 migration。需要手動執行時，對目前接流量的 slot（詳見 infrastructure skill）：
 ```bash
-docker compose -f docker-compose.prod.yaml exec boss_service alembic upgrade head
+cd ~/boss-tracker
+SLOT=$(grep -m1 "service: boss-frontend-" /opt/traefik/dynamic/boss-timer.yml | grep -o -m1 'blue\|green')
+docker compose run --rm "boss_service_${SLOT}" alembic upgrade head
 ```
 
 ---

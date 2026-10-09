@@ -169,17 +169,9 @@ docker push ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BACKEND_VERSION}
 docker push ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${FRONTEND_VERSION}
 ```
 
-### 在正式機啟動
+### 正式機部署
 
-```bash
-docker compose -f docker-compose.prod.yaml up -d
-```
-
-### 正式機執行 DB Migration
-
-```bash
-docker compose -f docker-compose.prod.yaml exec boss_service alembic upgrade head
-```
+推送到 `main` 後由 GitHub Actions 建置映像，並在正式機執行 blue/green 部署（`deploy/deploy.sh`，含 DB migration）。正式機的 compose、nginx 與 Traefik 設定版控於 `deploy/`，詳見 `.agent/skills/infrastructure/SKILL.md`。
 
 ---
 
@@ -214,7 +206,7 @@ boss-timing/
 ├── docker-compose.yaml         # 建置用（含 build 指令）
 ├── docker-compose.dev.yaml     # 開發用（只啟動 Redis）
 ├── docker-compose.local.yaml   # 本機容器化（後端+前端+Redis，DB 連外部）
-├── docker-compose.prod.yaml    # 正式環境（全容器化）
+├── deploy/                     # 正式機部署腳本與設定（blue/green、Traefik）
 ├── pyproject.toml              # Python 套件定義 (uv)
 └── uv.lock
 ```

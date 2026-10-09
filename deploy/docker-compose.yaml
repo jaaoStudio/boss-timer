@@ -1,0 +1,168 @@
+# 正式機路徑：~/boss-tracker/docker-compose.yaml（blue/green 部署實際使用的設定，以此為準）
+# 前端 nginx 不帶 traefik labels，service 由 deploy/traefik/dynamic/boss-services.yml 定義（見 infrastructure skill）
+services:
+
+  # ── 基礎設施（共用，不參與藍綠）──────────────────
+  db:
+    image: postgres:latest
+    platform: linux/arm64
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_DB: ${DB_NAME}
+    networks:
+      - boss_network
+    ports:
+      - "127.0.0.1:15432:5432"
+    volumes:
+      - ./db-data:/var/lib/postgresql/data
+      - ./db-init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    platform: linux/arm64
+    container_name: boss_redis_prod
+    restart: always
+    networks:
+      - boss_network
+
+  celery_worker_fast:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${ACTIVE_TAG}
+    platform: linux/arm64
+    container_name: boss_celery_worker_fast_prod
+    command: celery -A app.celery_app worker -Q celery --concurrency=4 --loglevel=info
+    env_file: .env
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    networks:
+      - boss_network
+    depends_on:
+      - redis
+      - db
+
+  celery_worker_discord:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${ACTIVE_TAG}
+    platform: linux/arm64
+    container_name: boss_celery_worker_discord_prod
+    command: celery -A app.celery_app worker -Q discord_queue --concurrency=1 --loglevel=info
+    env_file: .env
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    restart: always
+    networks:
+      - boss_network
+    depends_on:
+      - redis
+      - db
+
+  # ── Blue ──────────────────────────────────────────
+  boss_service_blue:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BLUE_TAG}
+    platform: linux/arm64
+    container_name: boss_service_blue
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
+    env_file: .env
+    volumes:
+      - ./app/maintenance.json:/app/maintenance.json
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - boss_network
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  boss_timer_nginx_blue:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${BLUE_TAG}
+    platform: linux/arm64
+    container_name: boss_timer_nginx_blue
+    volumes:
+      - ./frontend/nginx/nginx-blue.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    networks:
+      - boss_network
+      - traefik-net
+    depends_on:
+      boss_service_blue:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ── Green ─────────────────────────────────────────
+  boss_service_green:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${GREEN_TAG}
+    platform: linux/arm64
+    container_name: boss_service_green
+    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
+    env_file: .env
+    volumes:
+      - ./app/maintenance.json:/app/maintenance.json
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - boss_network
+    environment:
+      - ENV=production
+      - REDIS_URL=redis://redis:6379/0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  boss_timer_nginx_green:
+    image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${GREEN_TAG}
+    platform: linux/arm64
+    container_name: boss_timer_nginx_green
+    volumes:
+      - ./frontend/nginx/nginx-green.conf:/etc/nginx/nginx.conf:ro
+    restart: unless-stopped
+    networks:
+      - boss_network
+      - traefik-net
+    depends_on:
+      boss_service_green:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  boss_network:
+    driver: bridge
+  traefik-net:
+    external: true
+
+volumes:
+  boss_data:
+    driver: local

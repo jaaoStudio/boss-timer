@@ -4,6 +4,11 @@ name: Rollback
 on:
   workflow_dispatch:  # 手動觸發，在 GitHub UI 上按按鈕
 
+# 與 deploy.yml 共用群組：部署進行中按回滾會排隊，等部署跑完才執行，避免兩者同時切換 slot。
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
 jobs:
   rollback:
     runs-on: ubuntu-latest

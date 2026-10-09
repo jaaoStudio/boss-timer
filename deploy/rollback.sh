@@ -6,6 +6,7 @@ set -euo pipefail
 COMPOSE_DIR=~/boss-tracker
 source "$(dirname "$0")/lib.sh"
 cd "$COMPOSE_DIR"
+acquire_deploy_lock
 
 CURRENT=$(active_slot)
 PREV=$(other_slot "$CURRENT")

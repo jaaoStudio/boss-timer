@@ -6,6 +6,7 @@ COMPOSE_DIR=~/boss-tracker
 source "$(dirname "$0")/lib.sh"
 
 cd "$COMPOSE_DIR"
+acquire_deploy_lock
 
 # 1. 判斷目前 active slot
 CURRENT=$(active_slot)
