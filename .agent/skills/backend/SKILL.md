@@ -360,7 +360,7 @@ ConnectionManager
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 15/min | 建立新房間 |
+| POST | `/room/` | Session | 15/min、50/day | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 檢查房間是否存在 |
 | PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定 (Webhook URL, 預警模式) |
 
@@ -484,5 +484,5 @@ ConnectionManager
 - ⚠️ 匿名記錄者資訊使用結構化的 `RecorderInfo` schema，防止任意 JSON 注入
 - ⚠️ Room ID 路徑參數限制長度: `min_length=10, max_length=10`
 - ⚠️ 管理員端點使用 `Depends(get_current_admin_user)` 保護
-- ⚠️ 所有 HTTP API 使用 slowapi 限流
+- ⚠️ 所有 HTTP API 使用 `rate_limit()` 雙層限流（個人額度 + 真實 IP ×50 天花板，見 ADR-0007 與 backend-api skill），勿直接用 `@limiter.limit`
 - ⚠️ Celery Worker 不使用 root 執行 (Docker 中建議加 `--uid` 參數)

@@ -7,7 +7,7 @@ import logging
 
 from app.database import models
 from app.websocket.manager import ConnectionManager
-from app.dependencies import get_current_admin_user, get_connection_manager, limiter
+from app.dependencies import get_current_admin_user, get_connection_manager, rate_limit
 
 class MaintenanceInfo(BaseModel):
     is_maintenance: bool
@@ -27,7 +27,7 @@ MAINTENANCE_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "maintenan
 
 router = APIRouter(prefix="/system", tags=["system"])
 @router.get("/maintenance-info", response_model=MaintenanceInfo)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def get_maintenance_info(request: Request):
     """
     獲取系統維護公告資訊。
@@ -55,7 +55,7 @@ async def get_maintenance_info(request: Request):
 
 
 @router.post("/maintenance-config", response_model=MaintenanceConfigUpdate)
-@limiter.limit("10/minute")
+@rate_limit("10/minute")
 async def update_maintenance_config(
     request: Request,
     config: MaintenanceConfigUpdate,

@@ -1,4 +1,4 @@
-import type { AxiosResponse } from 'axios'
+import { isAxiosError, type AxiosResponse } from 'axios'
 import { bossService } from '@/axios'
 import type { BossType, BossRecord } from '@/stores/bossStore'
 import type { User } from '@/stores/userStore'
@@ -76,7 +76,9 @@ class ApiService {
     try {
       const res = await this.client.post<ValidateTokenResponse>('/auth/validate')
       return res.data
-    } catch {
+    } catch (error) {
+      // 被限流不代表未登入，往外丟讓 initializeAuth 保留登入狀態；其他錯誤視為未登入
+      if (isAxiosError(error) && error.response?.status === 429) throw error
       return { valid: false }
     }
   }

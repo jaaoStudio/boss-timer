@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia';
+import { isAxiosError } from 'axios';
 import apiService from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
@@ -118,8 +119,12 @@ export const useUserStore = defineStore('user', {
         }
       } catch (error) {
         console.error('Auth initialization failed:', error);
-        this.clearAuth();
-        this.anonymousName = this.getAnonymousName();
+        // 被限流（例如同 IP 有人狂打導致 IP 天花板滿）不代表登入失效，token 仍然有效；
+        // 保留本地的登入資訊，否則已登入的使用者會因為別人被登出。
+        if (!(isAxiosError(error) && error.response?.status === 429 && this.restoreUserFromStorage())) {
+          this.clearAuth();
+          this.anonymousName = this.getAnonymousName();
+        }
       } finally {
         this.isLoading = false;
         this._initialized = true;
@@ -134,7 +139,9 @@ export const useUserStore = defineStore('user', {
       try {
         await apiService.refresh_token();
         return true;
-      } catch {
+      } catch (error) {
+        // 被限流不代表 refresh token 失效，往外丟讓 initializeAuth 保留登入狀態
+        if (isAxiosError(error) && error.response?.status === 429) throw error;
         return false;
       }
     },
@@ -208,6 +215,19 @@ export const useUserStore = defineStore('user', {
       this.user = null;
       this.isLoggedIn = false;
       localStorage.removeItem('user_info');
+    },
+
+    // 以 localStorage 的 user_info 恢復登入狀態；沒有或格式損壞時回傳 false
+    restoreUserFromStorage(): boolean {
+      const cached = localStorage.getItem('user_info');
+      if (!cached) return false;
+      try {
+        this.user = JSON.parse(cached) as User;
+        this.isLoggedIn = true;
+        return true;
+      } catch {
+        return false;
+      }
     },
 
     // --- Anonymous User Name Logic ---

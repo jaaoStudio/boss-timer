@@ -6,7 +6,7 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import limiter
+from app.dependencies import rate_limit
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
-@limiter.limit("10/minute")
+@rate_limit("10/minute")
 async def login_with_google(
         request: Request,
         login_data: auth_schemas.GoogleLoginRequest,
@@ -97,7 +97,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@limiter.limit("30/minute")
+@rate_limit("30/minute")
 async def refresh_token(
         request: Request,
         response: Response,
@@ -140,7 +140,7 @@ async def refresh_token(
 
 
 @router.post("/validate", response_model=auth_schemas.ValidateResponse)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def validate_token(
         request: Request,
         authorization: str = Header(None),
@@ -172,7 +172,7 @@ async def validate_token(
         return {"valid": False}
 
 @router.get("/me", response_model=auth_schemas.User)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def read_users_me(request: Request, current_user: models.User = Depends(auth_service.get_current_user)):
     """
     獲取當前登入的用戶資訊。
@@ -181,7 +181,7 @@ async def read_users_me(request: Request, current_user: models.User = Depends(au
 
 
 @router.post("/logout")
-@limiter.limit("10/minute")
+@rate_limit("10/minute")
 async def logout(
         request: Request,
         response: Response,
@@ -203,7 +203,7 @@ async def logout(
 
 
 @router.put("/me/preferences", response_model=auth_schemas.User)
-@limiter.limit("30/minute")
+@rate_limit("30/minute")
 async def update_preferences(
         request: Request,
         preferences: Dict[str, Any],
@@ -220,7 +220,7 @@ async def update_preferences(
 
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
-@limiter.limit("60/minute")
+@rate_limit("60/minute")
 async def init_session(
         request: Request,
         response: Response,
