@@ -58,8 +58,10 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(cleanup_inactive_rooms())
+    heartbeat_task = asyncio.create_task(get_connection_manager().run_heartbeat())
     yield
     cleanup_task.cancel()
+    heartbeat_task.cancel()
 
 app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifespan)
 
@@ -98,4 +100,4 @@ if __name__ == "__main__":
     import uvicorn
     # WebSocket 設定與 app/Dockerfile 的 UVICORN_WS* 一致（死連線偵測靠協定層 ping，見 #43）
     uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api", proxy_headers=True, forwarded_allow_ips="*",
-                ws="websockets", ws_ping_interval=20, ws_ping_timeout=20)
+                ws="websockets", ws_ping_interval=20, ws_ping_timeout=60)

@@ -53,8 +53,7 @@
   },
   "bossTracker": {
     "roomNotFound": "Room does not exist",
-    "failedToEnter": "Failed to enter room, please try again",
-    "connectionLost": "Connection lost. Please rejoin the room."
+    "failedToEnter": "Failed to enter room, please try again"
   },
   "appFooter": {
     "credits": "Attributions & Credits",

@@ -29,7 +29,8 @@ MAX_CONNECTIONS = 10
 # 超過連線限制時以此 close code 關閉，前端據此顯示提示
 CLOSE_CODE_LIMITED = 4429
 
-# 死連線偵測交給 uvicorn 協定層的 WebSocket ping（設定見 app/Dockerfile 的 UVICORN_WS*）。
+# 死連線偵測交給 uvicorn 協定層的 WebSocket ping（設定見 app/Dockerfile 的 UVICORN_WS*）；
+# 用戶端偵測斷線靠 ConnectionManager.run_heartbeat 的定時 heartbeat（ADR-0008）。
 # 勿再加「N 秒沒收到前端訊息就關閉」的應用層逾時：背景分頁被節流或凍結時連線仍活著，會被誤踢而反覆重連（#43）
 
 
@@ -108,7 +109,7 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
 
 async def _reject_connection(websocket: WebSocket) -> None:
     """
-    超過握手頻率或同時連線數：接受後立即以明確的 close code 關閉，前端據此顯示提示並停止自動重連。
+    超過握手頻率或同時連線數：接受後立即以明確的 close code 關閉，前端據此顯示提示。
     不另送錯誤訊息：前端收到伺服器訊息就會重置重連次數，被拒絕時不該重置。
     """
     await websocket.accept()
@@ -166,9 +167,14 @@ async def websocket_endpoint(
             message = json.loads(data)
             message_type = message.get("type")
 
-            if message_type in ("ping", "authenticate", "deauthenticate"):
-                # 已不再使用：死連線改由協定層 ping 偵測（#43）、身分改由握手時的 cookie 決定。
-                # 部署切換期間仍開著的舊版前端可能送出，直接忽略（不進 handle_message，避免開 DB session）
+            if message_type == "ping":
+                # 前端看門狗的探測：回 pong 讓它確認連線仍通（ADR-0008）。只回應、不以有沒有收到 ping 判斷生死
+                await websocket.send_text(json.dumps({"type": "pong"}))
+                continue
+
+            if message_type in ("authenticate", "deauthenticate"):
+                # 已不再使用：身分改由握手時的 cookie 決定。部署切換期間仍開著的舊版前端可能送出，
+                # 直接忽略（不進 handle_message，避免開 DB session）
                 continue
 
             with SessionLocal() as db:

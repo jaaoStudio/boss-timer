@@ -1,5 +1,5 @@
 ---
-status: proposed
+status: accepted
 ---
 
 # WebSocket 連線韌性：原生 WebSocket 加上業界標準做法，不改用 Socket.IO

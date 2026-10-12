@@ -233,15 +233,15 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
 - **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
-- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)。**連線穩定維持 10 秒才重置次數**（`STABLE_CONNECTION_MS`，不在 `onopen` 立即重置）：伺服器拒絕時是「接受後立刻關閉」，立即重置會無限重連。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
-- **心跳**: 前端不送應用層 `ping`；伺服器以協定層 WebSocket ping 偵測死連線，瀏覽器網路層自動回應（背景分頁被節流 / 凍結也不受影響，見 #43）
+- **自動重連**: 指數退避加抖動、**不放棄**：`min(30s, 1s × 2^次數) + 0～1s`。**收到伺服器第一則訊息才重置次數**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」且不送訊息，在 `onopen` 重置會一直以最短間隔重連。`connect()` 會取消等待中的重連計時器；分頁回到前景、`online` 事件時若正在等待重連，立即重連。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
+- **斷線偵測（ADR-0008）**: 伺服器端靠協定層 WebSocket ping（瀏覽器網路層自動回應，背景分頁被節流 / 凍結也不受影響，見 #43）。前端靠**看門狗**：伺服器每 25 秒送 `heartbeat`，**只在分頁可見時**檢查，超過 45 秒（`IDLE_PROBE_MS`）沒收到任何訊息就送 `ping` 探測，10 秒內仍無回應就 `reconnect()`；分頁回到前景、`online` 事件時立即探測。先探測再重連：凍結的分頁恢復時連線可能仍正常。**勿改成定時送 `ping`、勿在背景分頁判斷斷線**
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:
 
 | 訊息 type | 處理方式 |
 |---|---|
-| `pong` | 忽略 |
+| `heartbeat` / `pong` | 不處理，只更新看門狗的最後收到訊息時間 |
 | `maintenance_status_update` | → `appInfoStore.setMaintenanceInfo()` |
 | `room_state` | → `bossStore.setBossTypes()` + `roomStore.setRoomSettings()` + `setClearedAt()` + `setBossRecords()` + `roomStore.setUserCount()` |
 | `boss_update` | → `bossStore.updateBossRecord()` + `recordHistoryStore.upsertRecord()` |

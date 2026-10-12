@@ -277,7 +277,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | payload | 說明 |
 |---|---|---|
-| `ping` | — | **已移除**（舊版前端送出時忽略）。死連線由 uvicorn 協定層 WebSocket ping 偵測：`app/Dockerfile` 以 `UVICORN_WS=websockets`、`UVICORN_WS_PING_INTERVAL/TIMEOUT=20` 明確指定（只有 `websockets` 實作會主動送 ping；`websockets` 套件鎖 `<16`）；瀏覽器網路層自動回應，背景分頁被節流或凍結時連線不會被踢掉（#43）。**勿再加應用層逾時** |
+| `ping` | — | 前端看門狗的探測，伺服器回 `pong`（ADR-0008）。**只回應、不以它判斷連線生死**：死連線由 uvicorn 協定層 WebSocket ping 偵測，`app/Dockerfile` 以 `UVICORN_WS=websockets`、`UVICORN_WS_PING_INTERVAL=20`、`UVICORN_WS_PING_TIMEOUT=60` 明確指定（只有 `websockets` 實作會主動送 ping；`websockets` 套件鎖 `<16`；逾時 60 秒讓 event loop 短暫阻塞時不會一次斷光所有連線）；瀏覽器網路層自動回應，背景分頁被節流或凍結時連線不會被踢掉（#43）。**勿再加「N 秒沒收到前端訊息就關閉」的應用層逾時** |
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
 | `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
@@ -287,6 +287,8 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | 說明 |
 |---|---|
+| `pong` | 回應前端的 `ping` |
+| `heartbeat` | 每 25 秒送給所有連線（`ConnectionManager.run_heartbeat`，lifespan 啟動的單一全域 loop），讓前端偵測無聲中斷的連線 |
 | `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at + room_settings)；重連時用來重建所有房間狀態 |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
 | `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "...", "replacement": BossRecordResponse \| null }`) |
@@ -307,7 +309,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | 握手頻率 | `HANDSHAKE_LIMIT` 170/10 分鐘（約 1000/小時，撞到上限最多 10 分鐘恢復；所有分頁共用，#43 修好後可收緊） | × 200 | 接受後立即以 close code **4429**（reason `connection_limited`）關閉，不另送訊息 |
 | 同時連線數 | `MAX_CONNECTIONS` 10 | × 200 | 同上 |
 
-前端收到 4429 不自動重連（限制以分鐘 / 小時計，馬上重試只會再被擋），使用者下次操作時才會再連線。
+前端收到 4429 不自動重連（限制以分鐘 / 小時計，馬上重試只會再被擋），使用者下次操作時才會再連線。被拒的連線不會收到 `heartbeat`（尚未加入 `active_connections`），前端不會因此重置重連次數。
 
 ### ConnectionManager 架構
 ```
@@ -477,7 +479,7 @@ ConnectionManager
 - 廣播: 使用 `manager.broadcast_to_room()` 或 `manager.broadcast_to_all()`
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
 - **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 在每個需要 DB 的 message handler 內短暫取用，用完即還給 pool
-- **`ping` 訊息**在進入 `SessionLocal` 之前直接 `continue`，不觸碰 DB
+- **`ping` 訊息**在進入 `SessionLocal` 之前回 `pong` 並 `continue`，不觸碰 DB
 
 ### 錯誤處理
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼

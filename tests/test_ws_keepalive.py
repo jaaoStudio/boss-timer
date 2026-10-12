@@ -1,30 +1,42 @@
 """
-WebSocket 死連線偵測靠 uvicorn 協定層 ping（#43）。這組設定若在升級時靜靜失效（例如 uvicorn 的
+WebSocket 死連線偵測靠 uvicorn 協定層 ping（#43、ADR-0008）。這組設定若在升級時靜靜失效（例如 uvicorn 的
 "websockets" 改指向不送 ping 的實作），死連線會一直留在 ConnectionManager、佔用同時連線數上限。
 """
-import inspect
+import asyncio
 import re
-from importlib import import_module
 from pathlib import Path
 
-from uvicorn.config import WS_PROTOCOLS
+from uvicorn.config import Config
+from uvicorn.server import ServerState
+
+from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS
 
 DOCKERFILE = Path(__file__).resolve().parent.parent / "app" / "Dockerfile"
 
 
-def test_dockerfile_pins_websocket_keepalive():
+def dockerfile_env() -> dict[str, str]:
     content = DOCKERFILE.read_text(encoding="utf-8")
-    assert re.search(r"UVICORN_WS=websockets\b", content)
-    assert re.search(r"UVICORN_WS_PING_INTERVAL=\d+", content)
-    assert re.search(r"UVICORN_WS_PING_TIMEOUT=\d+", content)
+    return dict(re.findall(r"\b(UVICORN_WS\w*)=(\S+)", content))
 
 
 def test_ping_interval_is_below_cloudflare_idle_limit():
-    interval = int(re.search(r"UVICORN_WS_PING_INTERVAL=(\d+)", DOCKERFILE.read_text(encoding="utf-8")).group(1))
-    assert 0 < interval < 100   # Cloudflare 的 WebSocket 閒置上限為 100 秒
+    assert 0 < int(dockerfile_env()["UVICORN_WS_PING_INTERVAL"]) < 100   # Cloudflare 的 WebSocket 閒置上限為 100 秒
 
 
-def test_uvicorn_websockets_impl_sends_keepalive_pings():
-    module_path, class_name = WS_PROTOCOLS["websockets"].split(":")
-    source = inspect.getsource(getattr(import_module(module_path), class_name))
-    assert "ping_interval=self.config.ws_ping_interval" in source
+def test_heartbeat_is_below_cloudflare_idle_limit():
+    assert 0 < HEARTBEAT_INTERVAL_SECONDS < 100
+
+
+def test_dockerfile_settings_produce_a_pinging_protocol():
+    """以 Dockerfile 的設定建立 uvicorn 實際使用的 protocol，確認它真的帶著 ping 間隔與逾時。"""
+    env = dockerfile_env()
+    interval, timeout = int(env["UVICORN_WS_PING_INTERVAL"]), int(env["UVICORN_WS_PING_TIMEOUT"])
+    config = Config(lambda *_: None, ws=env["UVICORN_WS"], ws_ping_interval=interval, ws_ping_timeout=timeout)
+    config.load()
+
+    async def build():   # protocol 建構時需要執行中的 event loop
+        return config.ws_protocol_class(config=config, server_state=ServerState(), app_state={})
+
+    protocol = asyncio.run(build())
+
+    assert (protocol.ping_interval, protocol.ping_timeout) == (interval, timeout)

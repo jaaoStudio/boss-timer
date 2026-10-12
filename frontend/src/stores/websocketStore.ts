@@ -17,18 +17,23 @@ interface WSMessage {
 
 // 伺服器因握手頻率或同時連線數超過上限而關閉連線（app/routers/websocket.py 的 CLOSE_CODE_LIMITED）
 const CLOSE_CODE_CONNECTION_LIMITED = 4429
-// 連線維持這麼久才視為成功、重置重連次數
-const STABLE_CONNECTION_MS = 10000
+// 看門狗（ADR-0008）：伺服器每 25 秒送 heartbeat（app/websocket/manager.py 的 HEARTBEAT_INTERVAL_SECONDS），
+// 超過 IDLE_PROBE_MS 沒收到任何訊息就送 ping 探測，PROBE_TIMEOUT_MS 內仍沒有回應就視為無聲中斷、重連
+const IDLE_PROBE_MS = 45000
+const PROBE_TIMEOUT_MS = 10000
+const WATCHDOG_TICK_MS = 5000
+// 重連延遲：min(上限, 1 秒 × 2^次數) + 0～1 秒抖動，不放棄
+const BASE_BACKOFF_MS = 1000
+const MAX_BACKOFF_MS = 30000
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
   const isManualDisconnect = ref(false)
-  const reconnectAttempts = ref(0)
-  let stableTimer: ReturnType<typeof setTimeout> | null = null
-  const maxReconnectAttempts = 5
-  const isMaxReconnectReached = ref(false)
+  let reconnectAttempts = 0
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  let lastMessageAt = 0
+  let probeTimeout: ReturnType<typeof setTimeout> | null = null
 
   const appInfoStore = useAppInfoStore()
   const bossStore = useBossStore()
@@ -46,6 +51,11 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return
     }
 
+    if (reconnectTimeout) {
+      clearTimeout(reconnectTimeout)
+      reconnectTimeout = null
+    }
+
     try {
       const ws = apiService.createWebSocket()
       socket.value = ws
@@ -54,13 +64,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         console.log('WebSocket connected.')
         isConnected.value = true
         isManualDisconnect.value = false
-        // 連線穩定維持一段時間才算成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」，
-        // 若一連上就重置，每次都會被重置而無限重連
-        if (stableTimer) clearTimeout(stableTimer)
-        stableTimer = setTimeout(() => {
-          reconnectAttempts.value = 0
-          isMaxReconnectReached.value = false
-        }, STABLE_CONNECTION_MS)
+        lastMessageAt = Date.now()
         // 連線時重建伺服器端狀態：身分由 cookie 決定，房間以 roomStore.roomId 重新加入
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
@@ -72,13 +76,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       ws.onmessage = (event: MessageEvent) => {
+        lastMessageAt = Date.now()
+        // 收到伺服器訊息才算連線成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」且不送訊息，
+        // 若在 onopen 就重置，每次都會被重置而一直以最短間隔重連
+        reconnectAttempts = 0
         const message: WSMessage = JSON.parse(event.data)
         handleMessage(message)
       }
 
       ws.onclose = (event: CloseEvent) => {
         console.log('WebSocket disconnected.')
-        if (stableTimer) clearTimeout(stableTimer)
+        clearProbe()
         isConnected.value = false
         socket.value = null
         // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
@@ -126,9 +134,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
    * 或其他分頁登入 / 登出時，既有連線帶的仍是舊 cookie，需要重連才會換成新身分。
    */
   function reconnect() {
-    if (reconnectTimeout) clearTimeout(reconnectTimeout)
+    clearProbe()
     isManualDisconnect.value = false
-    isMaxReconnectReached.value = false
     const ws = socket.value
     if (ws) {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
@@ -136,9 +143,54 @@ export const useWebSocketStore = defineStore('websocket', () => {
       socket.value = null
       isConnected.value = false
     }
-    reconnectAttempts.value = 0
+    reconnectAttempts = 0
     connect()
   }
+
+  function clearProbe() {
+    if (probeTimeout) {
+      clearTimeout(probeTimeout)
+      probeTimeout = null
+    }
+  }
+
+  /**
+   * 送 ping 探測連線是否仍通，PROBE_TIMEOUT_MS 內沒收到任何伺服器訊息就重連。
+   * 先探測再重連：凍結的分頁恢復時 lastMessageAt 雖然很舊，連線可能仍然正常
+   */
+  function probe() {
+    const ws = socket.value
+    if (!ws || ws.readyState !== WebSocket.OPEN || probeTimeout) return
+    const sentAt = Date.now()
+    ws.send(JSON.stringify({ type: 'ping' }))
+    probeTimeout = setTimeout(() => {
+      probeTimeout = null
+      if (socket.value === ws && lastMessageAt < sentAt) {
+        console.warn('WebSocket probe timed out, reconnecting.')
+        reconnect()
+      }
+    }, PROBE_TIMEOUT_MS)
+  }
+
+  /** 分頁回到前景或網路恢復時：連線中就立即探測；正在等待重連就不再等，馬上重連 */
+  function checkConnection() {
+    if (socket.value) {
+      probe()
+    } else if (reconnectTimeout) {
+      connect()
+    }
+  }
+
+  // 看門狗只在分頁可見時檢查：背景分頁的計時器會被節流、凍結，此時的「很久沒收到訊息」不代表斷線
+  setInterval(() => {
+    if (document.visibilityState === 'visible' && Date.now() - lastMessageAt > IDLE_PROBE_MS) {
+      probe()
+    }
+  }, WATCHDOG_TICK_MS)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkConnection()
+  })
+  window.addEventListener('online', checkConnection)
 
   // Each handler name declares which stores it touches.
   // Handlers that update multiple stores make it explicit rather than hiding it in a case block.
@@ -211,6 +263,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   const MESSAGE_HANDLERS: Record<string, (msg: WSMessage) => void> = {
+    // 只用來更新 lastMessageAt（看門狗），不需處理
+    heartbeat: () => {},
+    pong: () => {},
     room_state: onRoomState,
     boss_update: onBossUpdate,
     record_deleted: onRecordDeleted,
@@ -233,21 +288,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function attemptReconnect() {
-    if (reconnectAttempts.value < maxReconnectAttempts) {
-      if (reconnectTimeout) clearTimeout(reconnectTimeout)
-      reconnectTimeout = setTimeout(() => {
-        reconnectAttempts.value++
-        connect()
-      }, 2000 * (reconnectAttempts.value + 1))
-    } else {
-      console.error('WebSocket max reconnect attempts reached.')
-      isMaxReconnectReached.value = true
-    }
+    if (reconnectTimeout) clearTimeout(reconnectTimeout)
+    const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** reconnectAttempts) + Math.random() * 1000
+    reconnectTimeout = setTimeout(() => {
+      reconnectTimeout = null
+      reconnectAttempts++
+      connect()
+    }, delay)
   }
 
   return {
     isConnected,
-    isMaxReconnectReached,
     connect,
     disconnect,
     sendMessage,

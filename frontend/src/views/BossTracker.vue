@@ -59,11 +59,9 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, watch } from 'vue'
-import { storeToRefs } from 'pinia'
+import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/userStore'
-import { useWebSocketStore } from '@/stores/websocketStore'
 import AppHeader from '@/components/AppHeader.vue'
 import BossControlPanel from '@/components/boss/BossControlPanel.vue'
 import BossInfo from '@/components/boss/BossInfo.vue'
@@ -83,16 +81,7 @@ import { VueDraggable } from 'vue-draggable-plus'
 const { t } = useI18n()
 const router = useRouter()
 const userStore = useUserStore()
-const websocketStore = useWebSocketStore()
-const { isMaxReconnectReached } = storeToRefs(websocketStore)
 const { enter, leave } = useRoomSession()
-
-watch(isMaxReconnectReached, (reached) => {
-  if (reached) {
-    router.push({ name: 'RoomSelection' })
-    showMessage.error(t('bossTracker.connectionLost'))
-  }
-})
 
 useBossAlerts()
 

@@ -6,6 +6,10 @@ from typing import Dict, Set
 from fastapi import WebSocket
 from collections import Counter, defaultdict
 
+# 伺服器應用層心跳間隔：前端以「一段時間沒收到伺服器訊息」判斷連線已無聲中斷（休眠喚醒、切換網路），
+# 須小於前端看門狗的閒置門檻（frontend/src/stores/websocketStore.ts 的 IDLE_PROBE_MS）
+HEARTBEAT_INTERVAL_SECONDS = 25
+
 class ConnectionManager:
     def __init__(self):
         # A set of all active connections
@@ -114,3 +118,15 @@ class ConnectionManager:
         count = self.get_room_user_count(room_id)
         await self.broadcast_to_room(room_id, {"type": "user_count_update", "count": count})
         logging.info(f"Broadcasted user count ({count}) for room {room_id}.")
+
+    async def run_heartbeat(self, interval: float = HEARTBEAT_INTERVAL_SECONDS):
+        """
+        定時對所有連線送 heartbeat（一個全域 loop，不必每條連線一個 task）。只讓用戶端能偵測斷線；
+        伺服器端的死連線偵測靠 uvicorn 協定層 ping，勿以用戶端有沒有回應判斷生死（#43）。
+        """
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.broadcast_to_all({"type": "heartbeat"})
+            except Exception as e:
+                logging.error(f"Heartbeat broadcast failed: {e}")
