@@ -1,11 +1,9 @@
 """雙層限流（個人額度 + IP 天花板）的行為測試，見 docs/adr/0007。"""
 import uuid
 
-import pytest
-from fastapi import FastAPI, Request
+from fastapi import Request
 from fastapi.testclient import TestClient
 from jose import jwt
-from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request as StarletteRequest
 
 from app.config import settings
@@ -14,18 +12,15 @@ from app.dependencies import (
     IP_CEILING_MULTIPLIER,
     get_client_ip,
     get_user_identifier,
-    limiter,
     rate_limit,
-    rate_limit_exceeded_handler,
     scale_limit,
 )
+from tests.helpers import make_limited_app, set_cookies
 
 PERSONAL_LIMIT = 2
 CEILING = PERSONAL_LIMIT * IP_CEILING_MULTIPLIER
 
-app = FastAPI()
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app = make_limited_app()
 
 
 @app.get("/limited")
@@ -37,18 +32,8 @@ async def limited_endpoint(request: Request):
 client = TestClient(app)
 
 
-@pytest.fixture(autouse=True)
-def reset_limiter():
-    limiter.reset()
-
-
 def call(ip: str, anon_id: str | None = None, access_token: str | None = None, signed: bool = True) -> int:
-    """anon_id 預設以伺服器簽章送出（合法的匿名身分）；signed=False 模擬客戶端自己編造的值。"""
-    client.cookies.clear()
-    if anon_id:
-        client.cookies.set("anonymous_user_id", anonymous_id.sign(anon_id) if signed else anon_id)
-    if access_token:
-        client.cookies.set("access_token", access_token)
+    set_cookies(client, anon_id, signed, **({"access_token": access_token} if access_token else {}))
     return client.get("/limited", headers={"CF-Connecting-IP": ip}).status_code
 
 
@@ -79,14 +64,16 @@ def test_client_ip_falls_back_to_connection_source():
 
 def test_personal_key_uses_signed_anonymous_cookie_then_real_ip():
     signed = anonymous_id.sign("abc")
-    assert get_user_identifier(make_request(cookies=f"anonymous_user_id={signed}")) == "anon:abc"
+    assert get_user_identifier(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == "anon:abc"
     assert get_user_identifier(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
 
 
 def test_forged_or_legacy_cookie_falls_back_to_real_ip():
+    # verify() 的各種拒絕情境在 test_anonymous_id.py；這裡只確認接線：不是伺服器簽發的值就用 IP
     headers = {"CF-Connecting-IP": "203.0.113.7"}
-    for value in ["abc", f"abc.{anonymous_id.sign('other').split('.')[1]}", str(uuid.uuid4())]:
-        assert get_user_identifier(make_request(headers, cookies=f"anonymous_user_id={value}")) == "ip:203.0.113.7"
+    for value in ["made-up", str(uuid.uuid4())]:
+        request = make_request(headers, cookies=f"{anonymous_id.COOKIE_NAME}={value}")
+        assert get_user_identifier(request) == "ip:203.0.113.7"
 
 
 def test_ipv4_mapped_ipv6_uses_ipv4_key():

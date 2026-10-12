@@ -485,5 +485,5 @@ ConnectionManager
 - ⚠️ Room ID 路徑參數限制長度: `min_length=10, max_length=10`
 - ⚠️ 管理員端點使用 `Depends(get_current_admin_user)` 保護
 - ⚠️ 所有 HTTP API 使用 `rate_limit()` 雙層限流（個人額度 + 真實 IP ×200 天花板，見 ADR-0007 與 backend-api skill），勿直接用 `@limiter.limit`
-- ⚠️ 匿名身分一律經 `app/utils/anonymous_id.verify()` 讀取，勿直接信任 `anonymous_user_id` cookie 原值
+- ⚠️ 請求者身分一律經 `app/utils/identity.resolve_identity()` 判斷，勿直接信任 `access_token` / `anonymous_user_id` cookie 原值
 - ⚠️ Celery Worker 不使用 root 執行 (Docker 中建議加 `--uid` 參數)

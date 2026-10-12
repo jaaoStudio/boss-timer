@@ -31,10 +31,8 @@ def sign(anonymous_id: str) -> str:
 
 def verify(cookie_value: Optional[str]) -> Optional[str]:
     """簽章正確時回傳匿名 UUID，否則回傳 None。"""
-    if not cookie_value or "." not in cookie_value:
-        return None
-    anonymous_id, signature = cookie_value.rsplit(".", 1)
-    if not hmac.compare_digest(signature, _signature(anonymous_id)):
+    anonymous_id, separator, signature = (cookie_value or "").rpartition(".")
+    if not separator or not hmac.compare_digest(signature, _signature(anonymous_id)):
         return None
     return anonymous_id
 

@@ -6,11 +6,12 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit, allow_anonymous_id_mint
+from app.dependencies import rate_limit, check_anonymous_id_mint
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
 from app.utils import anonymous_id
+from app.utils.identity import resolve_identity
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -225,30 +226,25 @@ async def update_preferences(
 async def init_session(
         request: Request,
         response: Response,
-        access_token: Optional[str] = Cookie(None),
-        anonymous_user_id: Optional[str] = Cookie(None)
 ):
     """
     初始化使用者工作階段。
     未登入時確保有一個伺服器簽發的匿名身分（cookie 為「UUID.簽章」，見 app/utils/anonymous_id.py）：
     - 簽章正確：沿用
-    - 簽章上線前的舊 UUID cookie：換發同一個 UUID 的簽章版本，舊紀錄的記錄者仍對得上
+    - 簽章上線前的舊 UUID cookie：換發同一個 UUID 的簽章版本，舊紀錄的記錄者仍對得上（2027-10 後移除，見 issue #54）
     - 沒有或編造的值：發放新身分
     換發與新發都計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
     回應 body 只回傳 UUID（前端存 localStorage 顯示用），cookie 為 httponly。
     """
-    if access_token:
-        # 如果使用者已登入，我們不需要匿名ID
+    identity = resolve_identity(request)
+    # access token 過期但還有 refresh token：是即將換發 token 的登入者，不是新訪客，不發匿名身分也不計入發放上限
+    if identity.kind == "user" or request.cookies.get("refresh_token"):
         return {"status": "authenticated", "anonymous_user_id": None}
+    if identity.kind == "anon":
+        return {"status": "session_ok", "anonymous_user_id": identity.id}
 
-    session_id = anonymous_id.verify(anonymous_user_id)
-    if session_id:
-        return {"status": "session_ok", "anonymous_user_id": session_id}
-
-    if not allow_anonymous_id_mint(request):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many new sessions from this network")
-
-    legacy = anonymous_id.legacy_id(anonymous_user_id)
+    check_anonymous_id_mint(request)
+    legacy = identity.id if identity.kind == "legacy" else None
     session_id = legacy or str(uuid.uuid4())
     response.set_cookie(
         key=anonymous_id.COOKIE_NAME,

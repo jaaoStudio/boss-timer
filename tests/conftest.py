@@ -10,3 +10,12 @@ for key, value in {
     "DB_NAME": "test",
 }.items():
     os.environ.setdefault(key, value)
+
+
+import pytest  # noqa: E402  設定環境變數後才載入 app
+
+
+@pytest.fixture(autouse=True)
+def reset_limiter():
+    from app.dependencies import limiter
+    limiter.reset()

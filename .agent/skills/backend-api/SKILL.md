@@ -233,7 +233,17 @@ except Exception as e:
 
 ### 匿名使用者
 `POST /auth/session` 發放 httponly 的 `anonymous_user_id` cookie，值為「UUID.簽章」（`app/utils/anonymous_id.py`，以 `SECRET_KEY` 做 HMAC-SHA256）；回應 body 只回傳 UUID。
-- **一律用 `anonymous_id.verify()` 讀身分**，簽章不符視為沒有匿名身分；勿直接讀 cookie 原值當身分
-- 簽章正確 → 沿用；簽章上線前的舊 UUIDv4 cookie → 換發同一個 UUID 的簽章版本；沒有或編造 → 發放新身分
-- 換發與新發都計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429
-- 過渡期：`verify_user_session` 也接受舊 UUID cookie（避免部署前開著的分頁寫入時被 401 踢出房間），但限流只認有簽章的身分
+
+**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(request)`**（HTTP 與 WebSocket 皆可用，同一連線只解析一次並存在 `state`），回傳 `Identity(kind, id)`：
+| kind | 條件 |
+|---|---|
+| `user` | `access_token` 能解出使用者 |
+| `anon` | 匿名 cookie 簽章正確 |
+| `legacy` | 簽章上線前的舊 UUIDv4 cookie（過渡期，**不可當成已驗證的身分**） |
+| `none` | 都不是（含編造的值、解不開的 token） |
+
+- 限流個人額度只認 `user` / `anon`；`verify_user_session` 拒絕 `none`（過渡期接受 `legacy`，避免部署前開著的分頁寫入時被 401 踢出房間）
+- `/auth/session`：`user` 或帶 `refresh_token`（即將換發的登入者）→ 不發匿名身分；`anon` → 沿用；`legacy` → 換發同一個 UUID；`none` → 發放新身分
+- 換發與新發經 `check_anonymous_id_mint()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429
+- **勿直接讀 `access_token` / `anonymous_user_id` cookie 原值當身分**
+- legacy 過渡處理的移除時程見 issue #54

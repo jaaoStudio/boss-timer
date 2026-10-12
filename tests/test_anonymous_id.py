@@ -2,18 +2,18 @@
 import uuid
 
 import pytest
-from fastapi import Depends, FastAPI
+from fastapi import Depends
 from fastapi.testclient import TestClient
-from slowapi.errors import RateLimitExceeded
+from jose import jwt
 
 import app.dependencies as deps
-from app.dependencies import limiter, rate_limit_exceeded_handler, verify_user_session
+from app.config import settings
+from app.dependencies import verify_user_session
 from app.routers import auth
 from app.utils import anonymous_id
+from tests.helpers import make_limited_app, set_cookies
 
-app = FastAPI()
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app = make_limited_app()
 app.include_router(auth.router)
 
 
@@ -25,15 +25,8 @@ async def needs_session():
 client = TestClient(app)
 
 
-@pytest.fixture(autouse=True)
-def reset_limiter():
-    limiter.reset()
-
-
-def init_session(ip: str = "203.0.113.1", cookie: str | None = None):
-    client.cookies.clear()
-    if cookie:
-        client.cookies.set(anonymous_id.COOKIE_NAME, cookie)
+def init_session(ip: str = "203.0.113.1", cookie: str | None = None, **extra: str):
+    set_cookies(client, cookie, signed=False, **extra)
     return client.post("/auth/session", headers={"CF-Connecting-IP": ip})
 
 
@@ -92,6 +85,16 @@ def test_forged_cookie_gets_a_fresh_identity():
     assert res.json()["anonymous_user_id"] != "made-up-value"
 
 
+def test_logged_in_user_with_expired_access_token_is_not_minted(monkeypatch):
+    # 只剩 refresh token 的登入者即將換發 token，不發匿名身分、也不計入發放上限
+    monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
+    for _ in range(3):
+        res = init_session(refresh_token="opaque")
+        assert res.json() == {"status": "authenticated", "anonymous_user_id": None}
+        assert issued_cookie(res) is None
+    assert init_session().status_code == 200
+
+
 def test_mint_limit_per_ip_does_not_affect_existing_identities(monkeypatch):
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "3/hour")
     assert [init_session().status_code for _ in range(4)] == [200, 200, 200, 429]
@@ -106,14 +109,17 @@ def test_legacy_migration_counts_toward_mint_limit(monkeypatch):
     assert init_session(cookie=str(uuid.uuid4())).status_code == 429
 
 
-@pytest.mark.parametrize("cookie, expected", [
-    (anonymous_id.sign(str(uuid.uuid4())), 200),
-    (str(uuid.uuid4()), 200),   # 過渡期：舊 cookie 仍可使用，避免開著的分頁被踢出房間
-    ("made-up-value", 401),
-    (None, 401),
+VALID_TOKEN = jwt.encode({"sub": "42"}, settings.secret_key, algorithm=settings.algorithm)
+
+
+@pytest.mark.parametrize("cookies, expected", [
+    ({"anon": str(uuid.uuid4()), "signed": True}, 200),
+    ({"anon": str(uuid.uuid4()), "signed": False}, 200),   # 過渡期：舊 cookie 仍可使用（見 issue #54）
+    ({"anon": "made-up-value", "signed": False}, 401),
+    ({"access_token": VALID_TOKEN}, 200),
+    ({"access_token": "not-a-jwt"}, 401),                   # 只檢查有沒有 token 已不夠，要能解出身分
+    ({}, 401),
 ])
-def test_verify_user_session(cookie, expected):
-    client.cookies.clear()
-    if cookie:
-        client.cookies.set(anonymous_id.COOKIE_NAME, cookie)
+def test_verify_user_session(cookies, expected):
+    set_cookies(client, **cookies)
     assert client.get("/needs-session").status_code == expected
