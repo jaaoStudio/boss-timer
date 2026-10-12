@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from app.database.database import get_db
 from app.database.models import BossType, BossRecord, Room
-from app.dependencies import rate_limit, verify_user_session, get_connection_manager
+from app.dependencies import rate_limit, get_connection_manager
 from app.schemas.boss import (
     BossRecordHistoryPage,
     BossRecordResponse,
@@ -36,8 +36,7 @@ async def create_custom_boss_type(
     room_id: str,
     payload: CustomBossTypeCreate,
     db: Session = Depends(get_db),
-    manager: ConnectionManager = Depends(get_connection_manager),
-    _ = Depends(verify_user_session)
+    manager: ConnectionManager = Depends(get_connection_manager)
 ):
     """新增房間自訂 Boss"""
     if not get_room_by_id(db, room_id):
@@ -69,8 +68,7 @@ async def delete_custom_boss_type(
     room_id: str,
     boss_type_id: int,
     db: Session = Depends(get_db),
-    manager: ConnectionManager = Depends(get_connection_manager),
-    _ = Depends(verify_user_session)
+    manager: ConnectionManager = Depends(get_connection_manager)
 ):
     """刪除房間自訂 Boss（只能刪自己房間的）"""
     boss = db.query(BossType).filter(
@@ -147,8 +145,7 @@ async def delete_boss_record(
     room_id: str,
     record_id: int,
     db: Session = Depends(get_db),
-    manager: ConnectionManager = Depends(get_connection_manager),
-    _ = Depends(verify_user_session)
+    manager: ConnectionManager = Depends(get_connection_manager)
 ):
     """撤銷(作廢) BOSS 紀錄，並撤銷已註冊的 Celery 預警推播。"""
     record = db.query(BossRecord).filter(

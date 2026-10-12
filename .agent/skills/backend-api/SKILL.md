@@ -130,16 +130,16 @@ async def get_room_state(db, room_id) -> dict:
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 15/min、50/day | 建立新房間 |
+| POST | `/room/` | 無 | 15/min、50/day | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 查詢房間是否存在，同時回傳 Webhook 設定 |
-| PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定（Webhook/預警模式） |
+| PATCH | `/room/{room_id}/settings` | 無 | 30/min | 更新房間設定（Webhook/預警模式） |
 
 ### Boss (`/boss`)
 | Method | Path | 說明 |
 |---|---|---|
 | GET | `/boss/boss-types` | 取得所有 Boss 類型，15/min |
-| POST | `/boss/room/{room_id}/boss-types` | 新增房間自訂 Boss（Session），30/min |
-| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | 刪除房間自訂 Boss（Session），30/min |
+| POST | `/boss/room/{room_id}/boss-types` | 新增房間自訂 Boss，30/min |
+| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | 刪除房間自訂 Boss，30/min |
 | GET | `/boss/room/{room_id}/records` | 歷史紀錄 cursor 分頁（`before_id`/`limit`/`start`/`end`/`boss_type_id`），回傳 `BossRecordHistoryPage`（records + has_more + next_cursor），60/min |
 | DELETE | `/boss/room/{room_id}/records/{record_id}` | 撤銷紀錄 + 撤銷 Celery 預警，15/min |
 | POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 清除指定 Boss 種類頻道總覽（換輪用）；撤銷 Celery 預警、更新 `room.last_cleared_at`、廣播 `boss_type_cleared`；任何人可觸發，10/min |
@@ -160,7 +160,7 @@ async def get_room_state(db, room_id) -> dict:
 | DELETE | `/feedback/{id}` | Admin | 30/min | 硬刪除（CASCADE 刪 votes） |
 
 > 路由註冊在 `main.py`，受 `check_maintenance_mode` dependency 保護。
-> 不依賴 `verify_user_session`——`/feedback/` GET 對匿名開放；其他 endpoint 用自訂 `_require_user` / `get_current_admin_user` 強制登入。
+> `/feedback/` GET 對匿名開放；其他 endpoint 用自訂 `_require_user` / `get_current_admin_user` 強制登入。
 
 ---
 
@@ -176,12 +176,15 @@ async def create_room(request: Request, ...):   # 必須有 request 參數
 
 | 層 | key | 額度 | 用途 |
 |---|---|---|---|
-| 個人額度 | `get_user_identifier`：`user:{id}` → `anon:{cookie}` → 真實 IP | `limit_value` | 公平；學校等共用 IP 的玩家各用各的 |
-| IP 天花板 | `get_ip_ceiling_key`：`ip:{真實 IP}` | `limit_value` × `IP_CEILING_MULTIPLIER`（50） | cookie 可任意更換，擋換 cookie 繞過與灌爆 |
+| 個人額度 | `get_user_identifier`：`user:{id}` → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
+| IP 天花板 | `get_ip_ceiling_key`：登入者 `user:{id}`（登入者無法換身分、不受同 IP 影響），否則 IP key | `limit_value` × `IP_CEILING_MULTIPLIER`（200） | 最後防線，擋大量申請新身分與灌爆 |
+
+**IP key**（`get_ip_rate_limit_key`）：`ip:{真實 IP}`；IPv6 縮成 /64（不縮到 /56：行動網路常替每支手機各配一段 /64，縮太粗會把不相干的使用者算在一起），IPv4-mapped IPv6 視為 IPv4。
 
 - **真實 IP** 由 `get_client_ip()` 取得：優先讀 `CF-Connecting-IP`（`request.client` 是 Cloudflare 節點 IP）。這個 header 可信的前提是 Traefik 的 cf-only，只接受 Cloudflare 來的連線（見 infrastructure skill）
 - 計數器存在記憶體，每次部署歸零（可接受，見 ADR-0007）
-- 測試：`uv run pytest`（`tests/test_rate_limit.py`）
+- 匿名身分不能任意編造（見下方「匿名使用者」），換 cookie 拿新額度只能經 `/auth/session` 申請新身分，受發放上限限制
+- 測試：`uv run pytest`（`tests/test_rate_limit.py`、`tests/test_anonymous_id.py`）
 
 ---
 
@@ -229,4 +232,18 @@ except Exception as e:
 > ⚠️ **`/auth/validate` 故意永遠回 `200`**：token 無效/過期時回 `{ "valid": false }`（而非 401）。它是「查詢登入狀態」的端點，對匿名訪客而言「未登入」是正常結果。前端 `userStore.initializeAuth` 依賴此契約：拿到 `valid:false` 後自行決定是否用 refresh token 換新。**勿改成回 401** —— 會波及匿名訪客（觸發前端的全站 401 refresh/導向 interceptor）。token 過期的自動續期由前端負責，不是這個端點。
 
 ### 匿名使用者
-`POST /auth/session` — 建立 UUID 匿名 ID，存入 Cookie
+`POST /auth/session` 發放 httponly 的 `anonymous_user_id` cookie，值為「UUID.簽章」（`app/utils/anonymous_id.py`，以 `SECRET_KEY` 做 HMAC-SHA256）；回應 body 只回傳 UUID。
+
+**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(request)`**（HTTP 與 WebSocket 皆可用，同一連線只解析一次並存在 `state`），回傳 `Identity(kind, id)`：
+| kind | 條件 |
+|---|---|
+| `user` | `access_token` 能解出使用者 |
+| `anon` | 匿名 cookie 簽章正確 |
+| `none` | 都不是（含編造的值、簽章上線前的舊 cookie、過期或類型不是 access 的 token） |
+
+- **沒有任何端點要求「必須有身分」**（ADR-0007 更新）：`none` 只是限流改以 IP 計算。原本的 `verify_user_session` 門檻已移除——它擋不了濫用（打一次 `/auth/session` 就有身分），卻會在拿不到身分時讓前端的 401 處理把匿名使用者踢出房間
+- `/auth/session`：`user` 或帶 `refresh_token`（即將換發的登入者）→ 不發匿名身分；`anon` → 沿用；`none` → 發放新身分。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
+- 新發經 `check_anonymous_id_mint()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429（這次沒有身分、以 IP 限流）
+- `/auth/refresh` 的個人額度以 refresh token 裡的使用者計算（`get_refresh_token_user_key`）：呼叫者的 access token 已過期，退回 IP 會讓同 IP 的登入者互相擋到被登出
+- `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 連線中途會切換身分，不快取
+- 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

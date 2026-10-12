@@ -133,15 +133,14 @@ export const useUserStore = defineStore('user', {
     },
 
     // 嘗試用 refresh token 換新的 access token。
-    // 成功回傳 true；失敗（無 refresh cookie / 已過期）回傳 false，
-    // 由 axios interceptor 處理後續導向與提示。
+    // 成功回傳 true；任何失敗（無 refresh cookie / 已過期 / 被限流）回傳 false，
+    // 由 axios interceptor 處理後續導向與提示。被限流也不恢復登入狀態：此時 validate 已回 valid:false，
+    // 恢復的話畫面顯示已登入、WebSocket 卻以過期的 cookie 連成匿名。
     async tryRefreshToken(): Promise<boolean> {
       try {
         await apiService.refresh_token();
         return true;
-      } catch (error) {
-        // 被限流不代表 refresh token 失效，往外丟讓 initializeAuth 保留登入狀態
-        if (isAxiosError(error) && error.response?.status === 429) throw error;
+      } catch {
         return false;
       }
     },

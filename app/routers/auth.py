@@ -6,10 +6,12 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit
+from app.dependencies import rate_limit, check_anonymous_id_mint, get_refresh_token_user_key
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
+from app.utils import anonymous_id
+from app.utils.identity import resolve_identity
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -97,7 +99,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@rate_limit("30/minute")
+@rate_limit("30/minute", personal_key_func=get_refresh_token_user_key)
 async def refresh_token(
         request: Request,
         response: Response,
@@ -224,32 +226,31 @@ async def update_preferences(
 async def init_session(
         request: Request,
         response: Response,
-        access_token: Optional[str] = Cookie(None),
-        anonymous_user_id: Optional[str] = Cookie(None)
 ):
     """
     初始化使用者工作階段。
-    如果使用者未登入（沒有 access_token）且沒有匿名ID，則創建一個新的匿名ID。
-    永遠返回當前有效的匿名ID（如果存在）。
+    未登入時確保有一個伺服器簽發的匿名身分（cookie 為「UUID.簽章」，見 app/utils/anonymous_id.py）：
+    - 簽章正確：沿用
+    - 沒有、編造或簽章上線前的舊 cookie：發放新身分。舊 cookie 不換發成同一個 UUID：匿名 UUID 會廣播給
+      房間所有人，伺服器無法確認送來的人就是本人，換發會讓任何人拿到他人身分的合法簽章
+    新發計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
+    回應 body 只回傳 UUID（前端存 localStorage 顯示用），cookie 為 httponly。
     """
-    session_id = anonymous_user_id
-
-    if access_token:
-        # 如果使用者已登入，我們不需要匿名ID
+    identity = resolve_identity(request)
+    # access token 過期但還有 refresh token：是即將換發 token 的登入者，不是新訪客，不發匿名身分也不計入發放上限
+    if identity.kind == "user" or request.cookies.get("refresh_token"):
         return {"status": "authenticated", "anonymous_user_id": None}
+    if identity.kind == "anon":
+        return {"status": "session_ok", "anonymous_user_id": identity.id}
 
-    if not session_id:
-        # 如果沒有匿名ID，創建一個新的
-        session_id = str(uuid.uuid4())
-        response.set_cookie(
-            key="anonymous_user_id",
-            value=session_id,
-            httponly=False,  # 允許前端JS讀取
-            samesite='lax',
-            secure=settings.env == "production",
-            max_age=365 * 24 * 60 * 60  # 一年
-        )
-        return {"status": "anonymous_session_created", "anonymous_user_id": session_id}
-    
-    # 如果已有匿名ID，直接返回
-    return {"status": "session_ok", "anonymous_user_id": session_id}
+    check_anonymous_id_mint(request)
+    session_id = str(uuid.uuid4())
+    response.set_cookie(
+        key=anonymous_id.COOKIE_NAME,
+        value=anonymous_id.sign(session_id),
+        httponly=True,
+        samesite='lax',
+        secure=settings.env == "production",
+        max_age=365 * 24 * 60 * 60  # 一年
+    )
+    return {"status": "anonymous_session_created", "anonymous_user_id": session_id}

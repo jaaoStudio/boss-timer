@@ -204,6 +204,26 @@ def revoke_refresh_token(db: Session, refresh_token: str):
         pass  # 忽略無效的 token
 
 
+def decode_token_user_id(token: Optional[str], token_type: str = "access") -> Optional[str]:
+    """
+    解析 JWT 並回傳其中的使用者 ID；簽章、到期或類型（access / refresh）不符時回傳 None。
+    所有解析 JWT 取得使用者的地方都經這裡，避免各自實作而漏掉類型檢查（refresh token 冒充 access token）。
+    只驗證 token 本身，不查資料庫（refresh token 的撤銷狀態見 verify_refresh_token）。
+    """
+    if not token:
+        return None
+    if token.startswith("Bearer "):
+        token = token.split(" ")[1]
+    try:
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+    except JWTError:
+        return None
+    user_id = payload.get("sub")
+    if payload.get("type") != token_type or not user_id:
+        return None
+    return str(user_id)
+
+
 def get_current_user_from_token(token: str, db: Session) -> models.User:
     """
     從 token 字符串解析並獲取當前使用者。
@@ -213,21 +233,11 @@ def get_current_user_from_token(token: str, db: Session) -> models.User:
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-
-        # 檢查 token 類型
-        if payload.get("type") != "access":
-            raise credentials_exception
-
-        user_id: int = int(payload.get("sub"))
-        if user_id is None:
-            raise credentials_exception
-
-    except JWTError:
+    user_id = decode_token_user_id(token)
+    if user_id is None:
         raise credentials_exception
 
-    user = db.query(models.User).filter(models.User.id == user_id).first()
+    user = db.query(models.User).filter(models.User.id == int(user_id)).first()
     if user is None:
         raise credentials_exception
     return user
