@@ -7,6 +7,7 @@ from app.database.models import Room, BossRecord, BossType
 from app.schemas.boss import BossRecordResponse, BossRecordCreate
 from app.websocket.manager import ConnectionManager
 from app.services.notification_policy import NotificationPolicy
+from app.utils.identity import Identity
 
 
 class BossService:
@@ -88,16 +89,23 @@ class BossService:
             db: Session,
             record: BossRecordCreate,
             respawn_times: dict,
-            user_id: Optional[str]
+            identity: Identity
     ) -> BossRecord:
-
+        """
+        記錄者以伺服器端的身分為準（見 docs/adr/0007）：登入者寫 recorder_id；匿名者的 anonymous_id 取自
+        伺服器簽發的 cookie，前端送來的 anonymous_id 一律忽略（匿名 UUID 會廣播給房間所有人，採信前端就能冒用他人）。
+        暱稱仍由前端提供。
+        """
         recorder_id_to_save = None
         recorder_info_to_save = None
 
-        if user_id:
-            recorder_id_to_save = int(user_id)
+        if identity.kind == "user":
+            recorder_id_to_save = int(identity.id)
         else:
-            recorder_info_to_save = record.recorder_info.model_dump() if record.recorder_info else None
+            anonymous_id = identity.id if identity.kind == "anon" else None
+            anonymous_name = record.recorder_info.anonymous_name if record.recorder_info else None
+            if anonymous_id or anonymous_name:
+                recorder_info_to_save = {"anonymous_id": anonymous_id, "anonymous_name": anonymous_name}
 
         """創建 BOSS 記錄"""
         boss_record = BossRecord(
@@ -119,14 +127,14 @@ class BossService:
         return boss_record
 
     @staticmethod
-    async def record_boss_from_websocket(db: Session, record: BossRecordCreate, user_id: Optional[str], manager: ConnectionManager):
+    async def record_boss_from_websocket(db: Session, record: BossRecordCreate, identity: Identity, manager: ConnectionManager):
         """Handles boss recording initiated from a WebSocket message."""
         try:
             room = await BossService._validate_room_exists(db, record.room_id)
             room.last_active = datetime.now(timezone.utc)
             boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
             respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
-            boss_record = await BossService._create_boss_record(db, record, respawn_times, user_id)
+            boss_record = await BossService._create_boss_record(db, record, respawn_times, identity)
 
             record_with_recorder = db.query(BossRecord).options(
                 joinedload(BossRecord.recorder),

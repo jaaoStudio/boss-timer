@@ -16,7 +16,6 @@ interface UserState {
   user: User | null;
   isLoggedIn: boolean;
   isLoading?: boolean;
-  anonymousId: string | null;
   anonymousName: string | null;
   _channel?: BroadcastChannel;
   _initialized: boolean;
@@ -28,7 +27,6 @@ export const useUserStore = defineStore('user', {
     user: null,
     isLoggedIn: false,
     isLoading: false,
-    anonymousId: null,
     anonymousName: null,
     _channel: undefined,
     _initialized: false,
@@ -51,7 +49,11 @@ export const useUserStore = defineStore('user', {
           } else if (event.data.type === 'LOGIN') {
             this.user = event.data.user;
             this.isLoggedIn = true;
+          } else {
+            return;
           }
+          // cookie 已由該分頁更新；WebSocket 的身分由握手時的 cookie 決定，重連才會換成新身分
+          useWebSocketStore().reconnect();
         };
       }
     },
@@ -92,12 +94,8 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        const session = await apiService.initSession();
-
-        if (session.anonymous_user_id) {
-          this.anonymousId = session.anonymous_user_id;
-          localStorage.setItem('anonymous_id', session.anonymous_user_id);
-        }
+        // 確保有伺服器簽發的匿名身分 cookie（已登入時不發放）
+        await apiService.initSession();
 
         let res = await apiService.validateToken();
 
@@ -151,26 +149,27 @@ export const useUserStore = defineStore('user', {
         // 清理本地和後端的認證狀態
         this.clearAuth();
         await apiService.logout();
-        this.notifyLogout();
-
-        // 登出後，使用者恢復匿名身份，我們需要載入他的匿名名稱
         this.anonymousName = this.getAnonymousName();
 
-        // 發送 deauthenticate 訊息通知 WebSocket 連線身份變更
-        websocketStore.sendIdentityChange({ type: 'deauthenticate' });
-
+        // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
+        await apiService.initSession();
       } catch (error) {
-        console.error('Logout error:', error);
+        console.error('Logout failed:', error);
+      } finally {
+        // 即使取得匿名身分失敗也要通知其他分頁並重連，否則 WebSocket 會停留在登入身分。
+        // 伺服器已撤銷 refresh token，重連後會是匿名（或無身分）
+        this.notifyLogout();
+        websocketStore.reconnect();
       }
     },
 
     async loginWithGoogle(payload: string | { credential?: string; code?: string }) {
       const websocketStore = useWebSocketStore();
       try {
+        // 換帳號：不需廣播 LOGOUT，其他分頁收到下方的 LOGIN 就會更新並重連
         if (this.isLoggedIn) {
           this.clearAuth();
           await apiService.logout();
-          this.notifyLogout();
         }
 
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
@@ -179,10 +178,8 @@ export const useUserStore = defineStore('user', {
         this.isLoggedIn = true;
         localStorage.setItem('user_info', JSON.stringify(response.user));
 
-        websocketStore.sendIdentityChange({
-          type: 'authenticate',
-          token: response.access_token
-        });
+        // 登入回應已設好 access_token cookie；WebSocket 身分由握手時的 cookie 決定，重連即換成登入身分
+        websocketStore.reconnect();
 
         this.notifyLogin();
 

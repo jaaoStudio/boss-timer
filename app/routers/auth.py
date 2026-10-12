@@ -1,5 +1,6 @@
 # app/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Header, Cookie
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 import uuid
@@ -115,13 +116,13 @@ async def refresh_token(
             detail="Refresh token not found",
         )
 
-    # 驗證 refresh token
+    # 驗證 refresh token；無效（過期、被撤銷，例如在其他裝置登入）時一併刪除 cookie，
+    # 否則 /auth/session 會一直把這個人當成「即將換發的登入者」而不發匿名身分
     user_id = auth_service.verify_refresh_token(db, refresh_token)
     if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token",
-        )
+        rejected = JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid refresh token"})
+        rejected.delete_cookie(key="refresh_token", httponly=True, secure=settings.env == "production", samesite="lax")
+        return rejected
 
     # 生成新的 access token
     new_access_token = auth_service.create_access_token(data={"sub": str(user_id)})
@@ -226,6 +227,7 @@ async def update_preferences(
 async def init_session(
         request: Request,
         response: Response,
+        db: Session = Depends(get_db),
 ):
     """
     初始化使用者工作階段。
@@ -237,8 +239,10 @@ async def init_session(
     回應 body 只回傳 UUID（前端存 localStorage 顯示用），cookie 為 httponly。
     """
     identity = resolve_identity(request)
-    # access token 過期但還有 refresh token：是即將換發 token 的登入者，不是新訪客，不發匿名身分也不計入發放上限
-    if identity.kind == "user" or request.cookies.get("refresh_token"):
+    # access token 過期但 refresh token 仍有效：是即將換發 token 的登入者，不是新訪客，不發匿名身分也不計入發放上限。
+    # 要查資料庫確認未被撤銷：被撤銷的 refresh token（例如在其他裝置登入）不能讓人一直拿不到匿名身分
+    refresh_token = request.cookies.get("refresh_token")
+    if identity.kind == "user" or (refresh_token and auth_service.verify_refresh_token(db, refresh_token)):
         return {"status": "authenticated", "anonymous_user_id": None}
     if identity.kind == "anon":
         return {"status": "session_ok", "anonymous_user_id": identity.id}

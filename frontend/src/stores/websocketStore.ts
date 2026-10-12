@@ -15,6 +15,9 @@ interface WSMessage {
   [key: string]: unknown
 }
 
+// 伺服器因握手頻率或同時連線數超過上限而關閉連線（app/routers/websocket.py 的 CLOSE_CODE_LIMITED）
+const CLOSE_CODE_CONNECTION_LIMITED = 4429
+
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
@@ -47,9 +50,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       ws.onopen = () => {
         console.log('WebSocket connected.')
         isConnected.value = true
-        reconnectAttempts.value = 0
         isManualDisconnect.value = false
-        isMaxReconnectReached.value = false
         // 連線時重建伺服器端狀態：身分由 cookie 決定，房間以 roomStore.roomId 重新加入
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
@@ -61,15 +62,23 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       ws.onmessage = (event: MessageEvent) => {
+        // 收到伺服器訊息才算連線成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」，
+        // 若在 onopen 就重置，每次都會被重置而無限重連
+        reconnectAttempts.value = 0
+        isMaxReconnectReached.value = false
         const message: WSMessage = JSON.parse(event.data)
         handleMessage(message)
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         console.log('WebSocket disconnected.')
         isConnected.value = false
         socket.value = null
-        if (!isManualDisconnect.value) {
+        // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
+        // 之後使用者一有操作，sendMessage 會再嘗試連線
+        if (event.code === CLOSE_CODE_CONNECTION_LIMITED) {
+          notify('warning', 'roomSelection.errors.connectionLimit')
+        } else if (!isManualDisconnect.value) {
           attemptReconnect()
         }
       }
@@ -106,18 +115,22 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   /**
-   * 身分變更（登入 / 登出）通知。連線建立中時，握手已帶著舊的 cookie 送出，
-   * 送不出去的訊息也不會補送，所以改為放棄這次握手、立刻重連，讓新連線以新的 cookie 建立身分。
+   * 以目前的 cookie 重新建立連線。身分由握手時的 cookie 決定，登出後拿到新的匿名 cookie、
+   * 或其他分頁登入 / 登出時，既有連線帶的仍是舊 cookie，需要重連才會換成新身分。
    */
-  function sendIdentityChange(message: WSMessage) {
-    if (sendMessage(message)) return
+  function reconnect() {
+    if (reconnectTimeout) clearTimeout(reconnectTimeout)
+    isManualDisconnect.value = false
+    isMaxReconnectReached.value = false
     const ws = socket.value
-    if (ws && ws.readyState === WebSocket.CONNECTING) {
+    if (ws) {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
       ws.close()
       socket.value = null
-      connect()
+      isConnected.value = false
     }
+    reconnectAttempts.value = 0
+    connect()
   }
 
   // Each handler name declares which stores it touches.
@@ -240,6 +253,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connect,
     disconnect,
     sendMessage,
-    sendIdentityChange,
+    reconnect,
   }
 })

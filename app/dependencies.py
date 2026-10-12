@@ -1,33 +1,31 @@
 # app/dependencies.py
 import ipaddress
+from functools import lru_cache
 
-from fastapi import Depends, WebSocket, status, HTTPException, Request
-from fastapi.exceptions import WebSocketException
+from fastapi import Depends, status, HTTPException, Request
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
-from typing import Optional
 
-from limits import parse, parse_many
+from limits import parse_many
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from starlette.requests import HTTPConnection
 
 from app.database import models
-from app.database.database import SessionLocal
 from app.websocket.manager import ConnectionManager
-from app.services.auth_service import decode_token_user_id, get_current_user, get_current_user_from_token
-from app.utils.identity import resolve_identity
+from app.services.auth_service import decode_token_user_id, get_current_user
+from app.utils.identity import Identity, resolve_identity
 
 # IP 天花板 = 個人額度 × 200（見 docs/adr/0007）。匿名身分有簽章、無法任意編造後，
 # 天花板只是最後防線，放寬到能容納學校、行動網路 CGNAT 等大量玩家共用一個 IP
 IP_CEILING_MULTIPLIER = 200
 
-# 每個 IP 每小時最多發放幾個新匿名身分（含舊 cookie 換發）：要容納整班學生第一次同時進站；
+# 每個 IP 每小時最多發放幾個新匿名身分：要容納整班學生第一次同時進站；
 # 正常使用者 cookie 有效期一年，幾乎不會重新申請
 ANONYMOUS_ID_MINT_LIMIT = "100/hour"
 
 
-def get_client_ip(request: Request) -> str:
+def get_client_ip(request: HTTPConnection) -> str:
     """
     使用者的真實 IP。
     request.client 是 Traefik 轉來的 Cloudflare 節點 IP，真實 IP 在 CF-Connecting-IP；
@@ -37,7 +35,7 @@ def get_client_ip(request: Request) -> str:
     return request.headers.get("cf-connecting-ip") or get_remote_address(request)
 
 
-def get_ip_rate_limit_key(request: Request) -> str:
+def get_ip_rate_limit_key(request: HTTPConnection) -> str:
     """
     以 IP 限流時的 key。IPv6 縮成 /64：一般家用網路會分到整段 /64，
     以單一位址計算的話，每次換位址就是全新的額度。不縮到 /56：行動網路常從共用的大段位址
@@ -55,26 +53,62 @@ def get_ip_rate_limit_key(request: Request) -> str:
     return f"ip:{addr}"
 
 
-def get_ip_ceiling_key(request: Request) -> str:
+def personal_limit_key(identity: Identity, conn: HTTPConnection) -> str:
+    """個人額度的 key：登入者 user:{id} → 伺服器簽發的匿名身分 anon:{uuid} → 真實 IP。"""
+    if identity.kind in ("user", "anon"):
+        return f"{identity.kind}:{identity.id}"
+    return get_ip_rate_limit_key(conn)
+
+
+def ceiling_limit_key(identity: Identity, conn: HTTPConnection) -> str:
     """
     IP 天花板的 key。登入者無法更換身分，以自己的 user key 計算，不受同 IP 其他人影響
     （天花板遠大於個人額度，實際上永遠先撞個人額度）。
     """
-    identity = resolve_identity(request)
-    return f"user:{identity.id}" if identity.kind == "user" else get_ip_rate_limit_key(request)
+    return f"user:{identity.id}" if identity.kind == "user" else get_ip_rate_limit_key(conn)
+
+
+def limit_keys(identity: Identity, conn: HTTPConnection) -> tuple[str, str]:
+    """(個人額度 key, IP 天花板 key)。"""
+    return personal_limit_key(identity, conn), ceiling_limit_key(identity, conn)
+
+
+def get_ip_ceiling_key(request: Request) -> str:
+    """slowapi 的 key_func：IP 天花板，見 ceiling_limit_key。"""
+    return ceiling_limit_key(resolve_identity(request), request)
 
 
 def get_user_identifier(request: Request) -> str:
-    """
-    個人額度的 key：登入者 user:{id} → 伺服器簽發的匿名身分 anon:{uuid} → 真實 IP。
-    編造的 cookie 與舊版無簽章的 cookie 都不算身分，退回 IP。
-    """
-    identity = resolve_identity(request)
-    if identity.kind in ("user", "anon"):
-        return f"{identity.kind}:{identity.id}"
-    return get_ip_rate_limit_key(request)
+    """slowapi 的預設 key_func：個人額度，見 personal_limit_key。"""
+    return personal_limit_key(resolve_identity(request), request)
 
 limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
+
+
+@lru_cache(maxsize=None)
+def _limit_items(limit_value: str, factor: int = 1) -> tuple:
+    """解析 "30/minute;1000/day" 並把每條上限乘上 factor；設定值固定，只解析一次。"""
+    return tuple(type(item)(item.amount * factor, item.multiples) for item in parse_many(limit_value))
+
+
+def _hit_all(limit_value: str, scope: str, key: str, factor: int = 1) -> bool:
+    """依序計數每條上限，任一條超過就回傳 False（之後的不再計數）。"""
+    if not limiter.enabled:
+        return True
+    return all(limiter.limiter.hit(item, scope, key) for item in _limit_items(limit_value, factor))
+
+
+def check_dual_limit(limit_value: str, scope: str, keys: tuple[str, str]) -> bool:
+    """
+    給無法用 rate_limit() decorator 的地方（WebSocket 訊息、握手）使用的雙層限流：
+    個人額度 limit_value，IP 天花板為其 IP_CEILING_MULTIPLIER 倍；keys 為 limit_keys() 的結果。
+    與 decorator 的差異：個人額度被擋時不計入天花板（decorator 由 slowapi 依序計數，結果相同）。
+    """
+    personal_key, ceiling_key = keys
+    if not _hit_all(limit_value, f"{scope}:personal", personal_key):
+        return False
+    # 登入者兩個 key 相同，天花板永遠不會先觸發，不必再計數
+    return ceiling_key == personal_key or _hit_all(limit_value, f"{scope}:ceiling", ceiling_key, IP_CEILING_MULTIPLIER)
 
 
 def check_anonymous_id_mint(request: Request) -> None:
@@ -82,18 +116,15 @@ def check_anonymous_id_mint(request: Request) -> None:
     發放新匿名身分前呼叫：以真實 IP 計數，超過 ANONYMOUS_ID_MINT_LIMIT 就回 429。
     不用 rate_limit()：只有真的發放時才計數，已有身分的請求不算。
     """
-    if not limiter.enabled:
-        return
-    item = parse(ANONYMOUS_ID_MINT_LIMIT)
-    if not limiter.limiter.hit(item, "anonymous_id_mint", get_ip_rate_limit_key(request)):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Rate limit exceeded: {item}")
+    if not _hit_all(ANONYMOUS_ID_MINT_LIMIT, "anonymous_id_mint", get_ip_rate_limit_key(request)):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail=f"Rate limit exceeded: {ANONYMOUS_ID_MINT_LIMIT}")
 
 
 def scale_limit(limit_value: str, factor: int) -> str:
-    """把 "15/minute;50/day" 的每條上限乘上 factor。"""
+    """把 "15/minute;50/day" 的每條上限乘上 factor（給 slowapi decorator 用的字串版本）。"""
     return ";".join(
-        f"{item.amount * factor} per {item.multiples} {item.GRANULARITY.name}"
-        for item in parse_many(limit_value)
+        f"{item.amount} per {item.multiples} {item.GRANULARITY.name}" for item in _limit_items(limit_value, factor)
     )
 
 
@@ -143,20 +174,3 @@ async def get_current_admin_user(current_user: models.User = Depends(get_current
     if not current_user or not current_user.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Not authorized to perform this action")
     return current_user
-
-
-async def get_current_user_from_ws(
-    websocket: WebSocket,
-) -> Optional[models.User]:
-    """
-    從 WebSocket 連線的 access_token cookie 取得使用者；token 無效、過期或類型不符時回傳 None（匿名）。
-    使用短暫的 DB session，不長持連線。
-    """
-    token = websocket.cookies.get("access_token")
-    if not token:
-        return None
-    with SessionLocal() as db:
-        try:
-            return get_current_user_from_token(token, db)
-        except HTTPException:
-            return None
