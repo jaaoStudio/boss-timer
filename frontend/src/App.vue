@@ -5,14 +5,12 @@ import AppFooter from "@/components/AppFooter.vue";
 import MaintenanceBanner from "@/components/ui/MaintenanceBanner.vue"; // 引入元件
 import { useUserStore } from '@/stores/userStore';
 import { useAppInfoStore } from '@/stores/appInfo'; // 引入 store
-import { useWebSocketStore } from '@/stores/websocketStore'; // 引入 websocket store
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference';
 import { useFavoriteBosses } from '@/composables/useFavoriteBosses';
 import { useLayoutConfig } from '@/composables/useLayoutConfig';
 
 const userStore = useUserStore();
 const appInfoStore = useAppInfoStore(); // 實例化 store
-const websocketStore = useWebSocketStore(); // 實例化 websocket store
 const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
 const { syncFromUser: syncLayout } = useLayoutConfig();
@@ -28,9 +26,9 @@ watch(() => userStore.isLoggedIn, (loggedIn) => {
 
 // When the component is mounted, try to fetch the user data
 onMounted(async () => {
-  // 初始化 WebSocket 連線
-  websocketStore.connect();
-  // 初始化認證狀態
+  // 初始化認證狀態；完成後（finally）才建立 WebSocket 連線。
+  // WebSocket 的身分在握手時以 cookie 決定、整條連線固定，必須等 /auth/session 發好匿名 cookie 再連，
+  // 否則第一次來的訪客整條連線都沒有身分
   await userStore.initializeAuth();
   // 檢查維護狀態 (首次載入時)
   await appInfoStore.checkMaintenanceStatus();

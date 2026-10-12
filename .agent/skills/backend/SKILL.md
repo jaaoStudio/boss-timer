@@ -305,7 +305,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | 限制 | 個人 | IP 天花板 | 超過時 |
 |---|---|---|---|
 | `record_boss` | `RECORD_BOSS_LIMIT` 30/分鐘、1000/天 | × 200 | 回 `error` `rate_limited` |
-| 握手頻率 | `HANDSHAKE_LIMIT` 120/小時 | × 200 | 接受後立即以 close code **4429**（reason `connection_limited`）關閉，不另送訊息 |
+| 握手頻率 | `HANDSHAKE_LIMIT` 170/10 分鐘（約 1000/小時，撞到上限最多 10 分鐘恢復；所有分頁共用，#43 修好後可收緊） | × 200 | 接受後立即以 close code **4429**（reason `connection_limited`）關閉，不另送訊息 |
 | 同時連線數 | `MAX_CONNECTIONS` 10 | × 200 | 同上 |
 
 前端收到 4429 不自動重連（限制以分鐘 / 小時計，馬上重試只會再被擋），使用者下次操作時才會再連線。

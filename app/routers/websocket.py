@@ -21,8 +21,10 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # 限流（見 docs/adr/0007）：個人額度以伺服器端身分計算（重連不會歸零），IP 天花板為其 IP_CEILING_MULTIPLIER 倍
 RECORD_BOSS_LIMIT = "30/minute;1000/day"
-# 握手頻率：背景分頁目前每小時會重連數十次（#43），留一倍緩衝
-HANDSHAKE_LIMIT = "120/hour"
+# 握手頻率：以身分計，所有分頁共用；背景分頁目前每小時會重連數十次（#43），多開幾個分頁就會累加。
+# 約每小時 1000 次；用 10 分鐘的時間窗，撞到上限後最多 10 分鐘就恢復（固定時間窗，1 小時的窗最壞要等近 1 小時）。
+# #43 修好後可收緊
+HANDSHAKE_LIMIT = "170/10 minutes"
 # 同時連線數（多開分頁、手機加電腦）
 MAX_CONNECTIONS = 10
 # 超過連線限制時以此 close code 關閉，前端據此顯示提示
