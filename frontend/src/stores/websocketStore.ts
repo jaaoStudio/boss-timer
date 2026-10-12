@@ -17,12 +17,15 @@ interface WSMessage {
 
 // 伺服器因握手頻率或同時連線數超過上限而關閉連線（app/routers/websocket.py 的 CLOSE_CODE_LIMITED）
 const CLOSE_CODE_CONNECTION_LIMITED = 4429
+// 連線維持這麼久才視為成功、重置重連次數
+const STABLE_CONNECTION_MS = 10000
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
   const isManualDisconnect = ref(false)
   const reconnectAttempts = ref(0)
+  let stableTimer: ReturnType<typeof setTimeout> | null = null
   const maxReconnectAttempts = 5
   const isMaxReconnectReached = ref(false)
   let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
@@ -51,6 +54,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
         console.log('WebSocket connected.')
         isConnected.value = true
         isManualDisconnect.value = false
+        // 連線穩定維持一段時間才算成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」，
+        // 若一連上就重置，每次都會被重置而無限重連
+        if (stableTimer) clearTimeout(stableTimer)
+        stableTimer = setTimeout(() => {
+          reconnectAttempts.value = 0
+          isMaxReconnectReached.value = false
+        }, STABLE_CONNECTION_MS)
         // 連線時重建伺服器端狀態：身分由 cookie 決定，房間以 roomStore.roomId 重新加入
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
@@ -62,16 +72,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       ws.onmessage = (event: MessageEvent) => {
-        // 收到伺服器訊息才算連線成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」，
-        // 若在 onopen 就重置，每次都會被重置而無限重連
-        reconnectAttempts.value = 0
-        isMaxReconnectReached.value = false
         const message: WSMessage = JSON.parse(event.data)
         handleMessage(message)
       }
 
       ws.onclose = (event: CloseEvent) => {
         console.log('WebSocket disconnected.')
+        if (stableTimer) clearTimeout(stableTimer)
         isConnected.value = false
         socket.value = null
         // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
@@ -204,7 +211,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   const MESSAGE_HANDLERS: Record<string, (msg: WSMessage) => void> = {
-    pong: () => {},
     room_state: onRoomState,
     boss_update: onBossUpdate,
     record_deleted: onRecordDeleted,
@@ -238,14 +244,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
       isMaxReconnectReached.value = true
     }
   }
-
-  setInterval(() => {
-    if (isConnected.value) {
-      if (socket.value && socket.value.readyState === WebSocket.OPEN) {
-        sendMessage({ type: 'ping' })
-      }
-    }
-  }, 30000)
 
   return {
     isConnected,

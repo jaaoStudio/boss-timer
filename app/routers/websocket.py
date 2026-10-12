@@ -20,19 +20,17 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # 限流（見 docs/adr/0007）：個人額度以伺服器端身分計算（重連不會歸零），IP 天花板為其 IP_CEILING_MULTIPLIER 倍
 RECORD_BOSS_LIMIT = "30/minute;1000/day"
-# 握手頻率：以身分計，所有分頁共用；背景分頁目前每小時會重連數十次（#43），多開幾個分頁就會累加。
-# 約每小時 1000 次；用 10 分鐘的時間窗，撞到上限後最多 10 分鐘就恢復（固定時間窗，1 小時的窗最壞要等近 1 小時）。
-# #43 修好後可收緊
+# 握手頻率：以身分計，所有分頁共用。約每小時 1000 次；用 10 分鐘的時間窗，撞到上限後最多 10 分鐘就恢復
+# （固定時間窗，1 小時的窗最壞要等近 1 小時）。原本為背景分頁反覆重連（#43）而放寬，#43 已修，
+# 部署後觀察正式環境的重連頻率再收緊
 HANDSHAKE_LIMIT = "170/10 minutes"
 # 同時連線數（多開分頁、手機加電腦）
 MAX_CONNECTIONS = 10
 # 超過連線限制時以此 close code 關閉，前端據此顯示提示
 CLOSE_CODE_LIMITED = 4429
 
-# 死連線偵測交給 uvicorn 協定層的 WebSocket ping（預設每 20 秒，20 秒內沒回 pong 就關閉，
-# --ws-ping-interval / --ws-ping-timeout）。瀏覽器的網路層會自動回應，不需執行 JS。
-# 不再用「N 秒沒收到前端 ping 就關閉」的應用層逾時：背景分頁被節流（ping 間隔拉長到 60～90 秒）
-# 或被凍結（JS 完全停止）時，連線其實還活著，應用層逾時只會把它們踢掉、造成反覆重連（#43）。
+# 死連線偵測交給 uvicorn 協定層的 WebSocket ping（設定見 app/Dockerfile 的 UVICORN_WS*）。
+# 勿再加「N 秒沒收到前端訊息就關閉」的應用層逾時：背景分頁被節流或凍結時連線仍活著，會被誤踢而反覆重連（#43）
 
 
 @router.get("/connections/count")
@@ -168,13 +166,9 @@ async def websocket_endpoint(
             message = json.loads(data)
             message_type = message.get("type")
 
-            if message_type == "ping":
-                await websocket.send_text(json.dumps({"type": "pong"}))
-                continue
-
-            if message_type in ("authenticate", "deauthenticate"):
-                # 已不再使用：身分改由握手時的 cookie 決定，前端登入 / 登出時重新連線。
-                # 部署切換期間仍開著的舊版前端可能送出，直接忽略
+            if message_type in ("ping", "authenticate", "deauthenticate"):
+                # 已不再使用：死連線改由協定層 ping 偵測（#43）、身分改由握手時的 cookie 決定。
+                # 部署切換期間仍開著的舊版前端可能送出，直接忽略（不進 handle_message，避免開 DB session）
                 continue
 
             with SessionLocal() as db:

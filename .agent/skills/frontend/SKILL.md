@@ -65,7 +65,7 @@ frontend/
     │   ├── roomStore.ts          # 房間狀態 (roomId, userCount, 連線狀態)
     │   ├── bossStore.ts          # Boss 資料 (bossTypes, bossRecords, 篩選/排序/刪除)
     │   ├── recordHistoryStore.ts # 歷史紀錄 (cursor 分頁、日期/Boss 篩選、race-free upsert/remove)
-    │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連/心跳)
+    │   └── websocketStore.ts     # WebSocket 連線管理 (連線/斷線/重連)
     │
     ├── services/
     │   └── apiService.ts         # API 服務層 (封裝所有 HTTP/WS 調用)
@@ -233,8 +233,8 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
 - **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
-- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)。**收到伺服器第一則訊息才重置次數**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」，在 `onopen` 重置會無限重連。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
-- **心跳**: 每 30 秒發送 `ping`（只維持流量，伺服器不以它判斷連線生死；背景分頁被節流時間隔會拉長到 60 秒以上也無妨，見 #43）
+- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)。**連線穩定維持 10 秒才重置次數**（`STABLE_CONNECTION_MS`，不在 `onopen` 立即重置）：伺服器拒絕時是「接受後立刻關閉」，立即重置會無限重連。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
+- **心跳**: 前端不送應用層 `ping`；伺服器以協定層 WebSocket ping 偵測死連線，瀏覽器網路層自動回應（背景分頁被節流 / 凍結也不受影響，見 #43）
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:

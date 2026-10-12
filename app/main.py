@@ -96,4 +96,6 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api", proxy_headers=True, forwarded_allow_ips="*")
+    # WebSocket 設定與 app/Dockerfile 的 UVICORN_WS* 一致（死連線偵測靠協定層 ping，見 #43）
+    uvicorn.run(app, host="0.0.0.0", port=1254, root_path="/api", proxy_headers=True, forwarded_allow_ips="*",
+                ws="websockets", ws_ping_interval=20, ws_ping_timeout=20)

@@ -277,7 +277,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | payload | 說明 |
 |---|---|---|
-| `ping` | — | 前端每 30 秒送一次，伺服器回 `pong`。**伺服器不以它判斷連線生死**：死連線由 uvicorn 協定層 WebSocket ping（每 20 秒、20 秒逾時）偵測，背景分頁被節流或凍結時連線不會被踢掉（#43） |
+| `ping` | — | **已移除**（舊版前端送出時忽略）。死連線由 uvicorn 協定層 WebSocket ping 偵測：`app/Dockerfile` 以 `UVICORN_WS=websockets`、`UVICORN_WS_PING_INTERVAL/TIMEOUT=20` 明確指定（只有 `websockets` 實作會主動送 ping；`websockets` 套件鎖 `<16`）；瀏覽器網路層自動回應，背景分頁被節流或凍結時連線不會被踢掉（#43）。**勿再加應用層逾時** |
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
 | `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
@@ -287,7 +287,6 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | 說明 |
 |---|---|
-| `pong` | 心跳回應 |
 | `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at + room_settings)；重連時用來重建所有房間狀態 |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
 | `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "...", "replacement": BossRecordResponse \| null }`) |

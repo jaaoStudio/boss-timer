@@ -35,5 +35,13 @@ ENV PATH="/opt/venv/bin:$PATH"
 ENV PYTHONPATH=/project
 ENV PYTHONUNBUFFERED=1
 
+# WebSocket 死連線偵測（#43）：伺服器每 20 秒送協定層 ping，20 秒內沒回 pong 就關閉。
+# 只有 uvicorn 的 "websockets" 實作會主動送 ping（wsproto / websockets-sansio 只會回應），
+# 所以明確指定而不靠 --ws auto 的預設。uvicorn CLI 會讀 UVICORN_* 環境變數，compose 的各份啟動指令都套用。
+# ping 間隔須遠小於 Cloudflare 的 WebSocket 閒置上限（100 秒）
+ENV UVICORN_WS=websockets \
+    UVICORN_WS_PING_INTERVAL=20 \
+    UVICORN_WS_PING_TIMEOUT=20
+
 # 啟動命令
 CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 1254"]
