@@ -5,7 +5,6 @@ from fastapi import Depends, WebSocket, status, HTTPException, Request
 from fastapi.exceptions import WebSocketException
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from jose import JWTError, jwt
 from typing import Optional
 
 from limits import parse, parse_many
@@ -13,11 +12,10 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 
-from app.config import settings
 from app.database import models
 from app.database.database import SessionLocal
 from app.websocket.manager import ConnectionManager
-from app.services.auth_service import get_current_user # 引入 get_current_user
+from app.services.auth_service import decode_token_user_id, get_current_user, get_current_user_from_token
 from app.utils.identity import resolve_identity
 
 # IP 天花板 = 個人額度 × 200（見 docs/adr/0007）。匿名身分有簽章、無法任意編造後，
@@ -99,7 +97,16 @@ def scale_limit(limit_value: str, factor: int) -> str:
     )
 
 
-def rate_limit(limit_value: str):
+def get_refresh_token_user_key(request: Request) -> str:
+    """
+    /auth/refresh 的個人額度 key：以 refresh token 裡的使用者計算。呼叫者的 access token 已過期，
+    若退回 IP，同一個 IP 上的登入者會共用額度、互相把對方擋到被登出。
+    """
+    user_id = decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh")
+    return f"user:{user_id}" if user_id else get_user_identifier(request)
+
+
+def rate_limit(limit_value: str, personal_key_func=None):
     """
     雙層限流（見 docs/adr/0007）：
     - 個人額度：limit_value，以登入身分或伺服器簽發的匿名身分計算（都沒有時以 IP），維持公平；
@@ -107,7 +114,7 @@ def rate_limit(limit_value: str):
     - IP 天花板：limit_value × IP_CEILING_MULTIPLIER，以真實 IP（IPv6 以 /64）計算，是最後防線：
       擋同一個 IP 申請大量身分後灌爆；登入者改以自己的身分計算，不受同 IP 其他人影響
     """
-    personal = limiter.limit(limit_value)
+    personal = limiter.limit(limit_value, key_func=personal_key_func)
     ceiling = limiter.limit(scale_limit(limit_value, IP_CEILING_MULTIPLIER), key_func=get_ip_ceiling_key)
 
     def decorator(func):
@@ -142,40 +149,14 @@ async def get_current_user_from_ws(
     websocket: WebSocket,
 ) -> Optional[models.User]:
     """
-    從 WebSocket 連線的 cookie 中解析 JWT，並返回使用者物件。
-    如果 token 無效或不存在，則返回 None，代表匿名使用者。
+    從 WebSocket 連線的 access_token cookie 取得使用者；token 無效、過期或類型不符時回傳 None（匿名）。
     使用短暫的 DB session，不長持連線。
     """
     token = websocket.cookies.get("access_token")
     if not token:
         return None
-
-    if token.startswith("Bearer "):
-        token = token.split(" ")[1]
-
-    try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        user_id: str = payload.get("sub")
-        if user_id is None:
+    with SessionLocal() as db:
+        try:
+            return get_current_user_from_token(token, db)
+        except HTTPException:
             return None
-
-        with SessionLocal() as db:
-            user = db.query(models.User).filter(models.User.id == int(user_id)).first()
-            return user
-
-    except (JWTError, ValueError):
-        return None
-
-
-async def verify_user_session(request: Request):
-    """
-    一個依賴項，用於驗證請求是否具有有效的用戶會話（已登錄或匿名）。
-    過渡期也接受簽章上線前的舊 UUID cookie（legacy）：部署前就開著的分頁在重新整理（經 /auth/session 換發）前
-    仍拿著舊 cookie，若直接拒絕，前端的 401 處理會把匿名使用者踢出房間。限流仍只認有簽章的身分。
-    2026-11-30 後移除 legacy 的接受（見 issue #54）。
-    """
-    if resolve_identity(request).kind == "none":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="A session cookie or authentication token is required."
-        )

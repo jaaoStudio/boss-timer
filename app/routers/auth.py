@@ -6,7 +6,7 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit, check_anonymous_id_mint
+from app.dependencies import rate_limit, check_anonymous_id_mint, get_refresh_token_user_key
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
@@ -99,7 +99,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@rate_limit("30/minute")
+@rate_limit("30/minute", personal_key_func=get_refresh_token_user_key)
 async def refresh_token(
         request: Request,
         response: Response,
@@ -231,9 +231,9 @@ async def init_session(
     初始化使用者工作階段。
     未登入時確保有一個伺服器簽發的匿名身分（cookie 為「UUID.簽章」，見 app/utils/anonymous_id.py）：
     - 簽章正確：沿用
-    - 簽章上線前的舊 UUID cookie：換發同一個 UUID 的簽章版本，舊紀錄的記錄者仍對得上（2027-10 後移除，見 issue #54）
-    - 沒有或編造的值：發放新身分
-    換發與新發都計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
+    - 沒有、編造或簽章上線前的舊 cookie：發放新身分。舊 cookie 不換發成同一個 UUID：匿名 UUID 會廣播給
+      房間所有人，伺服器無法確認送來的人就是本人，換發會讓任何人拿到他人身分的合法簽章
+    新發計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
     回應 body 只回傳 UUID（前端存 localStorage 顯示用），cookie 為 httponly。
     """
     identity = resolve_identity(request)
@@ -244,8 +244,7 @@ async def init_session(
         return {"status": "session_ok", "anonymous_user_id": identity.id}
 
     check_anonymous_id_mint(request)
-    legacy = identity.id if identity.kind == "legacy" else None
-    session_id = legacy or str(uuid.uuid4())
+    session_id = str(uuid.uuid4())
     response.set_cookie(
         key=anonymous_id.COOKIE_NAME,
         value=anonymous_id.sign(session_id),
@@ -254,5 +253,4 @@ async def init_session(
         secure=settings.env == "production",
         max_age=365 * 24 * 60 * 60  # 一年
     )
-    status_text = "anonymous_session_migrated" if legacy else "anonymous_session_created"
-    return {"status": status_text, "anonymous_user_id": session_id}
+    return {"status": "anonymous_session_created", "anonymous_user_id": session_id}

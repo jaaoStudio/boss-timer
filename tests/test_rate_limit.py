@@ -63,8 +63,9 @@ def test_client_ip_falls_back_to_connection_source():
 
 
 def test_personal_key_uses_signed_anonymous_cookie_then_real_ip():
-    signed = anonymous_id.sign("abc")
-    assert get_user_identifier(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == "anon:abc"
+    anon = str(uuid.uuid4())
+    signed = anonymous_id.sign(anon)
+    assert get_user_identifier(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == f"anon:{anon}"
     assert get_user_identifier(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
 
 
@@ -104,7 +105,7 @@ def test_many_signed_identities_hit_ip_ceiling():
 
 def test_shared_ip_players_each_get_full_personal_quota():
     # 大量玩家（例如學校）共用一個 IP，每人用滿自己的額度都不會被擋
-    players = [f"student-{i}" for i in range(IP_CEILING_MULTIPLIER)]
+    players = [str(uuid.uuid4()) for _ in range(IP_CEILING_MULTIPLIER)]
     codes = [call("203.0.113.1", p) for p in players for _ in range(PERSONAL_LIMIT)]
     assert set(codes) == {200}
 
@@ -126,5 +127,5 @@ def test_rotating_ipv6_within_same_64_shares_ceiling():
 
 def test_logged_in_user_is_not_blocked_by_exhausted_ip_ceiling():
     exhaust_ip_ceiling("203.0.113.1")
-    token = jwt.encode({"sub": "42"}, settings.secret_key, algorithm=settings.algorithm)
+    token = jwt.encode({"sub": "42", "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
     assert call("203.0.113.1", access_token=token) == 200

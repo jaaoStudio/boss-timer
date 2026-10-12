@@ -130,16 +130,16 @@ async def get_room_state(db, room_id) -> dict:
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 15/min、50/day | 建立新房間 |
+| POST | `/room/` | 無 | 15/min、50/day | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 查詢房間是否存在，同時回傳 Webhook 設定 |
-| PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定（Webhook/預警模式） |
+| PATCH | `/room/{room_id}/settings` | 無 | 30/min | 更新房間設定（Webhook/預警模式） |
 
 ### Boss (`/boss`)
 | Method | Path | 說明 |
 |---|---|---|
 | GET | `/boss/boss-types` | 取得所有 Boss 類型，15/min |
-| POST | `/boss/room/{room_id}/boss-types` | 新增房間自訂 Boss（Session），30/min |
-| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | 刪除房間自訂 Boss（Session），30/min |
+| POST | `/boss/room/{room_id}/boss-types` | 新增房間自訂 Boss，30/min |
+| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | 刪除房間自訂 Boss，30/min |
 | GET | `/boss/room/{room_id}/records` | 歷史紀錄 cursor 分頁（`before_id`/`limit`/`start`/`end`/`boss_type_id`），回傳 `BossRecordHistoryPage`（records + has_more + next_cursor），60/min |
 | DELETE | `/boss/room/{room_id}/records/{record_id}` | 撤銷紀錄 + 撤銷 Celery 預警，15/min |
 | POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 清除指定 Boss 種類頻道總覽（換輪用）；撤銷 Celery 預警、更新 `room.last_cleared_at`、廣播 `boss_type_cleared`；任何人可觸發，10/min |
@@ -160,7 +160,7 @@ async def get_room_state(db, room_id) -> dict:
 | DELETE | `/feedback/{id}` | Admin | 30/min | 硬刪除（CASCADE 刪 votes） |
 
 > 路由註冊在 `main.py`，受 `check_maintenance_mode` dependency 保護。
-> 不依賴 `verify_user_session`——`/feedback/` GET 對匿名開放；其他 endpoint 用自訂 `_require_user` / `get_current_admin_user` 強制登入。
+> `/feedback/` GET 對匿名開放；其他 endpoint 用自訂 `_require_user` / `get_current_admin_user` 強制登入。
 
 ---
 
@@ -239,11 +239,11 @@ except Exception as e:
 |---|---|
 | `user` | `access_token` 能解出使用者 |
 | `anon` | 匿名 cookie 簽章正確 |
-| `legacy` | 簽章上線前的舊 UUIDv4 cookie（過渡期，**不可當成已驗證的身分**） |
-| `none` | 都不是（含編造的值、解不開的 token） |
+| `none` | 都不是（含編造的值、簽章上線前的舊 cookie、過期或類型不是 access 的 token） |
 
-- 限流個人額度只認 `user` / `anon`；`verify_user_session` 拒絕 `none`（過渡期接受 `legacy`，避免部署前開著的分頁寫入時被 401 踢出房間）
-- `/auth/session`：`user` 或帶 `refresh_token`（即將換發的登入者）→ 不發匿名身分；`anon` → 沿用；`legacy` → 換發同一個 UUID；`none` → 發放新身分
-- 換發與新發經 `check_anonymous_id_mint()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429
-- **勿直接讀 `access_token` / `anonymous_user_id` cookie 原值當身分**
-- legacy 過渡處理的移除時程見 issue #54
+- **沒有任何端點要求「必須有身分」**（ADR-0007 更新）：`none` 只是限流改以 IP 計算。原本的 `verify_user_session` 門檻已移除——它擋不了濫用（打一次 `/auth/session` 就有身分），卻會在拿不到身分時讓前端的 401 處理把匿名使用者踢出房間
+- `/auth/session`：`user` 或帶 `refresh_token`（即將換發的登入者）→ 不發匿名身分；`anon` → 沿用；`none` → 發放新身分。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
+- 新發經 `check_anonymous_id_mint()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429（這次沒有身分、以 IP 限流）
+- `/auth/refresh` 的個人額度以 refresh token 裡的使用者計算（`get_refresh_token_user_key`）：呼叫者的 access token 已過期，退回 IP 會讓同 IP 的登入者互相擋到被登出
+- `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 連線中途會切換身分，不快取
+- 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

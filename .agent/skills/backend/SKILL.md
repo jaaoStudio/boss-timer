@@ -254,7 +254,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 - `POST /auth/validate` — 支援 `Authorization: Bearer <token>` Header 或 `access_token` Cookie
 
 ### 匿名使用者 Session
-- `POST /auth/session` — 未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」，舊的無簽章 UUID 會換發成同一個 UUID 的簽章版本，新發 / 換發受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
+- `POST /auth/session` — 未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
 
 ### 安全設定
 - `samesite='lax'`, `secure=True` (生產環境)
@@ -360,18 +360,18 @@ ConnectionManager
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
-| POST | `/room/` | Session | 15/min、50/day | 建立新房間 |
+| POST | `/room/` | 無 | 15/min、50/day | 建立新房間 |
 | GET | `/room/{room_id}/exists` | 無 | 15/min | 檢查房間是否存在 |
-| PATCH | `/room/{room_id}/settings` | Session | 30/min | 更新房間設定 (Webhook URL, 預警模式) |
+| PATCH | `/room/{room_id}/settings` | 無 | 30/min | 更新房間設定 (Webhook URL, 預警模式) |
 
 ### Boss (`/boss`)
 | Method | Path | Auth | 說明 |
 |---|---|---|---|
 | GET | `/boss/boss-types` | 無 | 取得所有 Boss 類型列表，15/min |
-| POST | `/boss/room/{room_id}/boss-types` | Session | 新增房間自訂 Boss，30/min |
-| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | Session | 刪除房間自訂 Boss，30/min |
-| GET | `/boss/room/{room_id}/records` | Session | 歷史紀錄 cursor 分頁（`before_id` / `limit` / `start` / `end` / `boss_type_id`），60/min |
-| DELETE | `/boss/room/{room_id}/records/{record_id}` | Session | 撤銷紀錄 + 撤銷 Celery 預警任務，15/min |
+| POST | `/boss/room/{room_id}/boss-types` | 無 | 新增房間自訂 Boss，30/min |
+| DELETE | `/boss/room/{room_id}/boss-types/{boss_type_id}` | 無 | 刪除房間自訂 Boss，30/min |
+| GET | `/boss/room/{room_id}/records` | 無 | 歷史紀錄 cursor 分頁（`before_id` / `limit` / `start` / `end` / `boss_type_id`），60/min |
+| DELETE | `/boss/room/{room_id}/records/{record_id}` | 無 | 撤銷紀錄 + 撤銷 Celery 預警任務，15/min |
 | POST | `/boss/room/{room_id}/boss-types/{boss_type_id}/clear` | 無（任何人） | 清除指定 Boss 種類頻道總覽、撤銷 Celery 預警、廣播 `boss_type_cleared`，10/min |
 
 ### 系統 (`/system`)
@@ -485,5 +485,5 @@ ConnectionManager
 - ⚠️ Room ID 路徑參數限制長度: `min_length=10, max_length=10`
 - ⚠️ 管理員端點使用 `Depends(get_current_admin_user)` 保護
 - ⚠️ 所有 HTTP API 使用 `rate_limit()` 雙層限流（個人額度 + 真實 IP ×200 天花板，見 ADR-0007 與 backend-api skill），勿直接用 `@limiter.limit`
-- ⚠️ 請求者身分一律經 `app/utils/identity.resolve_identity()` 判斷，勿直接信任 `access_token` / `anonymous_user_id` cookie 原值
+- ⚠️ 限流與匿名身分一律經 `app/utils/identity.resolve_identity()` 判斷；需要完整 User 物件時用 `auth_service.get_current_user_from_token()`。勿自己解析 JWT 或信任 cookie 原值（JWT 一律經 `decode_token_user_id()`，會檢查 access / refresh 類型）
 - ⚠️ Celery Worker 不使用 root 執行 (Docker 中建議加 `--uid` 參數)
