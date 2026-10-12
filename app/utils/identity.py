@@ -32,7 +32,8 @@ def _resolve(cookies: dict[str, str]) -> Identity:
 def resolve_identity(conn: HTTPConnection) -> Identity:
     """
     HTTP 請求的結果存在 request.state，同一個請求的多個限流 key 只解析一次。
-    WebSocket 不快取：由 WS 在握手時解析一次並存在該連線上（app/routers/websocket.py 的 Connection）。
+    WebSocket 握手不用這個：連線存活很久、access token 會在連線期間過期，改用
+    app/routers/websocket.py 的 _resolve_handshake_identity（多了 refresh token 與資料庫確認）。
     """
     if not isinstance(conn, Request):
         return _resolve(conn.cookies)

@@ -105,10 +105,10 @@ def check_dual_limit(limit_value: str, scope: str, keys: tuple[str, str]) -> boo
     與 decorator 的差異：個人額度被擋時不計入天花板（decorator 由 slowapi 依序計數，結果相同）。
     """
     personal_key, ceiling_key = keys
-    return (
-        _hit_all(limit_value, f"{scope}:personal", personal_key)
-        and _hit_all(limit_value, f"{scope}:ceiling", ceiling_key, IP_CEILING_MULTIPLIER)
-    )
+    if not _hit_all(limit_value, f"{scope}:personal", personal_key):
+        return False
+    # 登入者兩個 key 相同，天花板永遠不會先觸發，不必再計數
+    return ceiling_key == personal_key or _hit_all(limit_value, f"{scope}:ceiling", ceiling_key, IP_CEILING_MULTIPLIER)
 
 
 def check_anonymous_id_mint(request: Request) -> None:
@@ -122,10 +122,9 @@ def check_anonymous_id_mint(request: Request) -> None:
 
 
 def scale_limit(limit_value: str, factor: int) -> str:
-    """把 "15/minute;50/day" 的每條上限乘上 factor。"""
+    """把 "15/minute;50/day" 的每條上限乘上 factor（給 slowapi decorator 用的字串版本）。"""
     return ";".join(
-        f"{item.amount * factor} per {item.multiples} {item.GRANULARITY.name}"
-        for item in parse_many(limit_value)
+        f"{item.amount} per {item.multiples} {item.GRANULARITY.name}" for item in _limit_items(limit_value, factor)
     )
 
 

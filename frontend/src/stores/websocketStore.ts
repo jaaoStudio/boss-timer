@@ -76,7 +76,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
         socket.value = null
         // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
         // 之後使用者一有操作，sendMessage 會再嘗試連線
-        if (!isManualDisconnect.value && event.code !== CLOSE_CODE_CONNECTION_LIMITED) {
+        if (event.code === CLOSE_CODE_CONNECTION_LIMITED) {
+          notify('warning', 'roomSelection.errors.connectionLimit')
+        } else if (!isManualDisconnect.value) {
           attemptReconnect()
         }
       }
@@ -117,6 +119,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
    * 或其他分頁登入 / 登出時，既有連線帶的仍是舊 cookie，需要重連才會換成新身分。
    */
   function reconnect() {
+    if (reconnectTimeout) clearTimeout(reconnectTimeout)
+    isManualDisconnect.value = false
+    isMaxReconnectReached.value = false
     const ws = socket.value
     if (ws) {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
@@ -193,8 +198,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     console.error('Received error from server:', msg.message)
     if (msg.code === 'rate_limited') {
       notify('warning', 'globalErrors.rateLimitExceeded')
-    } else if (msg.code === 'connection_limited') {
-      notify('warning', 'roomSelection.errors.connectionLimit')
     } else if (msg.code === 'record_rejected') {
       notify('error', 'bossControlPanel.recordRejected')
     }

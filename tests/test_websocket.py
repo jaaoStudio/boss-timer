@@ -5,12 +5,14 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
+from jose import jwt
 from starlette.websockets import WebSocketDisconnect
 
 from app.dependencies import get_connection_manager
 from app.routers import websocket as ws_router
 from app.schemas.boss import BossRecordCreate
 from app.services.boss_service import BossService
+from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import Identity
 from app.websocket.manager import ConnectionManager
@@ -43,11 +45,17 @@ def recorded_identities(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def connect(anon: str | None = None, ip: str = "203.0.113.1"):
-    headers = {"CF-Connecting-IP": ip}
+def connect(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
     if anon:
-        headers["cookie"] = f"{anonymous_id.COOKIE_NAME}={anonymous_id.sign(anon)}"
+        cookies[anonymous_id.COOKIE_NAME] = anonymous_id.sign(anon)
+    headers = {"CF-Connecting-IP": ip}
+    if cookies:
+        headers["cookie"] = "; ".join(f"{name}={value}" for name, value in cookies.items())
     return client.websocket_connect("/ws/", headers=headers)
+
+
+def access_token(user_id: str = "42") -> str:
+    return jwt.encode({"sub": user_id, "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
 
 
 def join(ws) -> None:
@@ -67,11 +75,11 @@ def record(ws, **recorder_info) -> str:
 
 
 def assert_rejected(anon: str | None = None, ip: str = "203.0.113.1") -> None:
+    # 只以 close code 拒絕、不先送訊息：前端收到訊息會重置重連次數
     with connect(anon, ip) as ws:
-        assert ws.receive_json()["code"] == "connection_limited"
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
-    assert exc.value.code == ws_router.CLOSE_CODE_LIMITED
+    assert exc.value.code == ws_router.CLOSE_CODE_LIMITED and exc.value.reason == "connection_limited"
 
 
 # --- 身分 ---
@@ -82,6 +90,23 @@ def test_forged_anonymous_id_in_payload_is_ignored(recorded_identities):
         join(ws)
         assert record(ws, anonymous_id="victim-uuid", anonymous_name="冒充者") == "ok"
     assert recorded_identities == [Identity("anon", anon)]
+
+
+@pytest.mark.parametrize("cookies, user_exists, refresh_user, expected", [
+    ({"access_token": access_token()}, True, None, Identity("user", "42")),
+    # 背景分頁在 access token 過期後重連：改以 refresh token 認出登入者
+    ({"refresh_token": "valid"}, False, 42, Identity("user", "42")),
+    # 使用者已刪除：access token 仍在效期內也不算（refresh token 已隨使用者刪除）
+    ({"access_token": access_token()}, False, None, Identity("none")),
+    ({"refresh_token": "revoked"}, False, None, Identity("none")),
+])
+def test_handshake_identity(recorded_identities, monkeypatch, cookies, user_exists, refresh_user, expected):
+    monkeypatch.setattr(ws_router, "_user_exists", lambda db, user_id: user_exists)
+    monkeypatch.setattr(ws_router.auth_service, "verify_refresh_token", lambda db, token: refresh_user)
+    with connect(**cookies) as ws:
+        join(ws)
+        assert record(ws) == "ok"
+    assert recorded_identities == [expected]
 
 
 def test_recorder_info_comes_from_server_identity():
@@ -151,6 +176,14 @@ def test_concurrent_connections_per_identity(monkeypatch):
             pass
     with connect(anon):                    # 斷線後名額會釋放
         pass
+
+
+def test_no_identity_connections_do_not_share_count_with_ip_ceiling(monkeypatch):
+    # 沒有身分時個人與天花板的 key 都是 IP，兩者分開計數：匿名者佔用的天花板不會吃掉無身分者的個人上限
+    monkeypatch.setattr(ws_router, "MAX_CONNECTIONS", 1)
+    monkeypatch.setattr(ws_router, "IP_CEILING_MULTIPLIER", 3)
+    with connect(str(uuid.uuid4())), connect():
+        assert_rejected()   # 無身分者的個人上限 1 條已用完
 
 
 def test_concurrent_connections_ip_ceiling(monkeypatch):

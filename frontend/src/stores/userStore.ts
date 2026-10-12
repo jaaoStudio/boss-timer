@@ -149,17 +149,17 @@ export const useUserStore = defineStore('user', {
         // 清理本地和後端的認證狀態
         this.clearAuth();
         await apiService.logout();
+        this.anonymousName = this.getAnonymousName();
 
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
         await apiService.initSession();
-        this.anonymousName = this.getAnonymousName();
-        this.notifyLogout();
-
-        // 身分由握手時的 cookie 決定，重連讓 WebSocket 換成新的匿名身分
-        websocketStore.reconnect();
-
       } catch (error) {
-        console.error('Logout error:', error);
+        console.error('Logout failed:', error);
+      } finally {
+        // 即使取得匿名身分失敗也要通知其他分頁並重連，否則 WebSocket 會停留在登入身分。
+        // 伺服器已撤銷 refresh token，重連後會是匿名（或無身分）
+        this.notifyLogout();
+        websocketStore.reconnect();
       }
     },
 

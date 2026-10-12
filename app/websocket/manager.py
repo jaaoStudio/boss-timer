@@ -26,12 +26,16 @@ class ConnectionManager:
         在同時連線數上限內就計入並回傳 True。檢查與計入在同一步完成、中間沒有 await，
         大量同時握手時不會全部通過檢查。登入者的兩個 key 相同，只受個人上限限制。
         """
+        # 個人與天花板分開計數：沒有身分時兩者都是 IP key，混在一起的話，
+        # 個人上限會被同 IP 所有匿名連線的天花板計數吃掉
         personal_key, ceiling_key = keys
-        if self._connection_counts[personal_key] >= max_personal:
+        personal, ceiling = f"personal:{personal_key}", f"ceiling:{ceiling_key}"
+        if self._connection_counts[personal] >= max_personal:
             return False
-        if ceiling_key != personal_key and self._connection_counts[ceiling_key] >= max_ceiling:
+        check_ceiling = ceiling_key != personal_key
+        if check_ceiling and self._connection_counts[ceiling] >= max_ceiling:
             return False
-        reserved = {personal_key, ceiling_key}
+        reserved = {personal, ceiling} if check_ceiling else {personal}
         self._connection_keys[websocket] = reserved
         self._connection_counts.update(reserved)
         return True
