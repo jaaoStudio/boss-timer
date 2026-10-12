@@ -1,10 +1,11 @@
 # app/dependencies.py
 import ipaddress
+from functools import lru_cache
 
 from fastapi import Depends, status, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from limits import parse, parse_many
+from limits import parse_many
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -67,32 +68,46 @@ def ceiling_limit_key(identity: Identity, conn: HTTPConnection) -> str:
     return f"user:{identity.id}" if identity.kind == "user" else get_ip_rate_limit_key(conn)
 
 
+def limit_keys(identity: Identity, conn: HTTPConnection) -> tuple[str, str]:
+    """(個人額度 key, IP 天花板 key)。"""
+    return personal_limit_key(identity, conn), ceiling_limit_key(identity, conn)
+
+
 def get_ip_ceiling_key(request: Request) -> str:
+    """slowapi 的 key_func：IP 天花板，見 ceiling_limit_key。"""
     return ceiling_limit_key(resolve_identity(request), request)
 
 
 def get_user_identifier(request: Request) -> str:
-    """編造的 cookie 與簽章上線前的舊 cookie 都不算身分，退回 IP。"""
+    """slowapi 的預設 key_func：個人額度，見 personal_limit_key。"""
     return personal_limit_key(resolve_identity(request), request)
 
 limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
 
 
-def _hit_all(limit_value: str, scope: str, key: str) -> bool:
-    """依序計數 limit_value 的每條上限（如 "30/minute;1000/day"），任一條超過就回傳 False。"""
+@lru_cache(maxsize=None)
+def _limit_items(limit_value: str, factor: int = 1) -> tuple:
+    """解析 "30/minute;1000/day" 並把每條上限乘上 factor；設定值固定，只解析一次。"""
+    return tuple(type(item)(item.amount * factor, item.multiples) for item in parse_many(limit_value))
+
+
+def _hit_all(limit_value: str, scope: str, key: str, factor: int = 1) -> bool:
+    """依序計數每條上限，任一條超過就回傳 False（之後的不再計數）。"""
     if not limiter.enabled:
         return True
-    return all(limiter.limiter.hit(item, scope, key) for item in parse_many(limit_value))
+    return all(limiter.limiter.hit(item, scope, key) for item in _limit_items(limit_value, factor))
 
 
-def check_dual_limit(limit_value: str, scope: str, identity: Identity, conn: HTTPConnection) -> bool:
+def check_dual_limit(limit_value: str, scope: str, keys: tuple[str, str]) -> bool:
     """
-    與 rate_limit() 相同的雙層限流，給無法用 decorator 的地方（WebSocket 訊息、握手）使用：
-    個人額度 limit_value，IP 天花板為其 IP_CEILING_MULTIPLIER 倍。個人額度被擋時不計入天花板。
+    給無法用 rate_limit() decorator 的地方（WebSocket 訊息、握手）使用的雙層限流：
+    個人額度 limit_value，IP 天花板為其 IP_CEILING_MULTIPLIER 倍；keys 為 limit_keys() 的結果。
+    與 decorator 的差異：個人額度被擋時不計入天花板（decorator 由 slowapi 依序計數，結果相同）。
     """
+    personal_key, ceiling_key = keys
     return (
-        _hit_all(limit_value, f"{scope}:personal", personal_limit_key(identity, conn))
-        and _hit_all(scale_limit(limit_value, IP_CEILING_MULTIPLIER), f"{scope}:ceiling", ceiling_limit_key(identity, conn))
+        _hit_all(limit_value, f"{scope}:personal", personal_key)
+        and _hit_all(limit_value, f"{scope}:ceiling", ceiling_key, IP_CEILING_MULTIPLIER)
     )
 
 
@@ -101,11 +116,9 @@ def check_anonymous_id_mint(request: Request) -> None:
     發放新匿名身分前呼叫：以真實 IP 計數，超過 ANONYMOUS_ID_MINT_LIMIT 就回 429。
     不用 rate_limit()：只有真的發放時才計數，已有身分的請求不算。
     """
-    if not limiter.enabled:
-        return
-    item = parse(ANONYMOUS_ID_MINT_LIMIT)
-    if not limiter.limiter.hit(item, "anonymous_id_mint", get_ip_rate_limit_key(request)):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Rate limit exceeded: {item}")
+    if not _hit_all(ANONYMOUS_ID_MINT_LIMIT, "anonymous_id_mint", get_ip_rate_limit_key(request)):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail=f"Rate limit exceeded: {ANONYMOUS_ID_MINT_LIMIT}")
 
 
 def scale_limit(limit_value: str, factor: int) -> str:

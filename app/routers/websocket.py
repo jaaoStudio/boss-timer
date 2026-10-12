@@ -2,21 +2,15 @@
 import asyncio
 import json
 import logging
+from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from sqlalchemy.orm import Session
 
 from app.database.database import SessionLocal
-from app.services import room_service, boss_service, auth_service
-from app.dependencies import (
-    IP_CEILING_MULTIPLIER,
-    ceiling_limit_key,
-    check_dual_limit,
-    get_connection_manager,
-    personal_limit_key,
-)
-from app.utils import anonymous_id
+from app.services import room_service, boss_service
+from app.dependencies import IP_CEILING_MULTIPLIER, check_dual_limit, get_connection_manager, limit_keys
 from app.utils.identity import Identity, resolve_identity
 from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
@@ -41,10 +35,17 @@ HEARTBEAT_TIMEOUT = 90  # seconds
 async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
     return {"count": manager.get_total_connections()}
 
-Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, Identity], Awaitable[None]]
+# 連線的身分與限流 key 在握手時決定，整條連線固定不變（登入 / 登出時前端會重新連線）
+@dataclass(frozen=True)
+class Connection:
+    identity: Identity
+    limit_keys: tuple[str, str]
 
 
-async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, identity: Identity) -> None:
+Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, Connection], Awaitable[None]]
+
+
+async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     if not room_service.get_room_by_id(db, room_id):
         await websocket.send_text(json.dumps({"type": "error", "code": "room_not_found", "message": "Room not found"}))
         return
@@ -55,44 +56,25 @@ async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Option
     await manager.broadcast_user_count(room_id)
 
 
-async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, identity: Identity) -> None:
+async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     manager.unsubscribe_from_room(websocket)
     await manager.broadcast_user_count(room_id)
 
 
-async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, identity: Identity) -> None:
+async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     current_room = manager.socket_to_room.get(websocket)
     if not current_room or current_room != room_id:
         await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": "You are not in this room"}))
         return
-    if not check_dual_limit(RECORD_BOSS_LIMIT, "ws_record_boss", identity, websocket):
+    if not check_dual_limit(RECORD_BOSS_LIMIT, "ws_record_boss", conn.limit_keys):
         await websocket.send_text(json.dumps({"type": "error", "code": "rate_limited", "message": "Rate limit exceeded. Please slow down."}))
         return
     try:
         record_create = BossRecordCreate(**payload)
-        await boss_service.BossService.record_boss_from_websocket(db, record_create, identity, manager)
+        await boss_service.BossService.record_boss_from_websocket(db, record_create, conn.identity, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
         await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": str(e)}))
-
-
-async def _handle_authenticate(websocket: WebSocket, message: dict, manager: ConnectionManager) -> None:
-    token = message.get("token")
-    if not token:
-        return
-    try:
-        with SessionLocal() as db:
-            new_user = auth_service.get_current_user_from_token(token, db)
-    except HTTPException as e:
-        logging.warning(f"WebSocket authentication failed: {e.detail}")
-        return
-    manager.set_identity(websocket, Identity("user", str(new_user.id)))
-    logging.info(f"WebSocket re-authenticated for user_id: {new_user.id}")
-
-
-async def _handle_deauthenticate(websocket: WebSocket, manager: ConnectionManager) -> None:
-    manager.reset_identity(websocket)
-    logging.info("WebSocket de-authenticated.")
 
 
 _HANDLERS: dict[str, Handler] = {
@@ -102,7 +84,7 @@ _HANDLERS: dict[str, Handler] = {
 }
 
 
-async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager) -> None:
+async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager, conn: Connection) -> None:
     msg_type = message.get("type")
     if not msg_type:
         logging.warning("Received message without type")
@@ -119,9 +101,7 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         logging.warning(f"Received message type '{msg_type}' without room_id")
         return
 
-    # 身分以 manager 為準（登入 / 登出會在連線中途切換）
-    identity = manager.socket_identity.get(websocket, Identity("none"))
-    await handler(websocket, payload, room_id, db, manager, identity)
+    await handler(websocket, payload, room_id, db, manager, conn)
 
 
 async def _reject_connection(websocket: WebSocket) -> None:
@@ -137,17 +117,18 @@ async def websocket_endpoint(
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
     identity = resolve_identity(websocket)
-    personal_key = personal_limit_key(identity, websocket)
-    ceiling_key = ceiling_limit_key(identity, websocket)
-    if not check_dual_limit(HANDSHAKE_LIMIT, "ws_handshake", identity, websocket) or not manager.has_capacity(
-        personal_key, ceiling_key, MAX_CONNECTIONS, MAX_CONNECTIONS * IP_CEILING_MULTIPLIER
+    conn = Connection(identity, limit_keys(identity, websocket))
+    if not check_dual_limit(HANDSHAKE_LIMIT, "ws_handshake", conn.limit_keys) or not manager.try_reserve(
+        websocket, conn.limit_keys, MAX_CONNECTIONS, MAX_CONNECTIONS * IP_CEILING_MULTIPLIER
     ):
         await _reject_connection(websocket)
         return
 
-    anon = anonymous_id.verify(websocket.cookies.get(anonymous_id.COOKIE_NAME))
-    fallback_identity = Identity("anon", anon) if anon else Identity("none")
-    await manager.connect(websocket, identity, fallback_identity, {personal_key, ceiling_key})
+    try:
+        await manager.connect(websocket)
+    except Exception:
+        manager.disconnect(websocket)   # 釋放 try_reserve 計入的連線數
+        raise
 
     try:
         while True:
@@ -171,16 +152,13 @@ async def websocket_endpoint(
                 await websocket.send_text(json.dumps({"type": "pong"}))
                 continue
 
-            if message_type == "authenticate":
-                await _handle_authenticate(websocket, message, manager)
-                continue
-
-            if message_type == "deauthenticate":
-                await _handle_deauthenticate(websocket, manager)
+            if message_type in ("authenticate", "deauthenticate"):
+                # 已不再使用：身分改由握手時的 cookie 決定，前端登入 / 登出時重新連線。
+                # 部署切換期間仍開著的舊版前端可能送出，直接忽略
                 continue
 
             with SessionLocal() as db:
-                await handle_message(websocket, message, db, manager)
+                await handle_message(websocket, message, db, manager, conn)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")

@@ -32,7 +32,7 @@ def _resolve(cookies: dict[str, str]) -> Identity:
 def resolve_identity(conn: HTTPConnection) -> Identity:
     """
     HTTP 請求的結果存在 request.state，同一個請求的多個限流 key 只解析一次。
-    WebSocket 不快取：連線中途會以 authenticate / deauthenticate 切換身分，由 WS 自己管理目前身分。
+    WebSocket 不快取：由 WS 在握手時解析一次並存在該連線上（app/routers/websocket.py 的 Connection）。
     """
     if not isinstance(conn, Request):
         return _resolve(conn.cookies)

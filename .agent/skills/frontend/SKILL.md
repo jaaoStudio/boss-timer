@@ -131,7 +131,6 @@ frontend/
 | `user` | `User \| null` | 登入使用者資訊 |
 | `isLoggedIn` | `boolean` | 是否已登入 |
 | `isLoading` | `boolean` | 正在初始化認證 |
-| `anonymousId` | `string \| null` | 匿名使用者 ID (後端分配) |
 | `anonymousName` | `string \| null` | 匿名使用者暱稱 (localStorage) |
 
 **核心 Actions**:
@@ -233,9 +232,8 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **核心功能**:
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
-- **`sendIdentityChange()`**: 登入時送 `authenticate`（帶 token）通知 WS。連線建立中（CONNECTING）時握手已帶舊 cookie，會放棄這次握手並立刻重連
-- **`reconnect()`**: 以目前的 cookie 重新建立連線。登出時先 `initSession()` 取得新匿名 cookie 再重連；其他分頁收到 `LOGIN` / `LOGOUT` 廣播時也重連，讓 WS 換成新身分
-- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)；伺服器以 close code **4429**（連線限制）關閉時**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線
+- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
+- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)。**收到伺服器第一則訊息才重置次數**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」，在 `onopen` 重置會無限重連。伺服器以 close code **4429**（連線限制）關閉時**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線
 - **心跳**: 每 30 秒發送 `ping`
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 

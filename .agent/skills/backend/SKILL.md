@@ -267,7 +267,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 ### 連線建立
 - Endpoint: `ws://<host>/api/ws/`
-- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（登入 `access_token` → 簽章的匿名 cookie → 無），存在 `ConnectionManager.socket_identity`；前端送來的任何身分欄位都不採信
+- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（登入 `access_token` → 簽章的匿名 cookie → 無），連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
 - 使用全域 Singleton `ConnectionManager` 管理所有連線
 
 ### 訊息格式 (JSON)
@@ -281,8 +281,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
 | `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
-| `authenticate` | `{ "token": "<jwt>" }` | 連線期間切換為登入身分（token 經 `get_current_user_from_token` 驗證） |
-| `deauthenticate` | — | 連線期間退回握手時的匿名身分（沒有則為無身分）；前端登出改為取得新匿名 cookie 後重連 |
+| `authenticate` / `deauthenticate` | — | **已移除**：身分在握手時固定，登入 / 登出改為重連。部署切換期間舊版前端仍可能送出，伺服器直接忽略 |
 
 #### Server → Client
 
@@ -317,8 +316,8 @@ ConnectionManager
 ├── active_connections: Set[WebSocket]        # 所有連線
 ├── room_subscriptions: Dict[str, Set[WS]]   # room_id → 訂閱的 WS
 ├── socket_to_room: Dict[WS, str]            # WS → 目前所在 room_id
-├── socket_identity: Dict[WS, Identity]      # WS → 目前身分（authenticate / deauthenticate 會切換）
-└── _connection_counts: Counter              # 同時連線數（個人 key、IP 天花板 key）
+├── _connection_keys: Dict[WS, Set[str]]     # WS → 握手時計入的連線數 key
+└── _connection_counts: Counter              # 同時連線數（個人 key、IP 天花板 key）；try_reserve 在 await 前一次完成檢查與計入
 ```
 
 **⚠️ Dead connection 清除**: `broadcast_to_room` / `broadcast_to_all` 廣播時若 `send_text` 拋出例外，會立刻呼叫 `disconnect()` 移除死連線，防止殭屍連線堆積佔用記憶體。

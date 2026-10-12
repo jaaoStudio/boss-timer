@@ -1,4 +1,5 @@
 """WebSocket 伺服器端身分、回報與連線限流的測試（見 docs/adr/0007、issue #37）。"""
+import asyncio
 import uuid
 from types import SimpleNamespace
 
@@ -23,7 +24,7 @@ client = TestClient(app)
 
 
 @pytest.fixture(autouse=True)
-def fake_services(monkeypatch):
+def recorded_identities(monkeypatch):
     """不連資料庫：房間一律存在；回報只記下伺服器端身分，並廣播 ok 讓測試知道已處理。"""
     manager = ConnectionManager()
     app.dependency_overrides[get_connection_manager] = lambda: manager
@@ -75,12 +76,12 @@ def assert_rejected(anon: str | None = None, ip: str = "203.0.113.1") -> None:
 
 # --- 身分 ---
 
-def test_forged_anonymous_id_in_payload_is_ignored(fake_services):
+def test_forged_anonymous_id_in_payload_is_ignored(recorded_identities):
     anon = str(uuid.uuid4())
     with connect(anon) as ws:
         join(ws)
         assert record(ws, anonymous_id="victim-uuid", anonymous_name="冒充者") == "ok"
-    assert fake_services == [Identity("anon", anon)]
+    assert recorded_identities == [Identity("anon", anon)]
 
 
 def test_recorder_info_comes_from_server_identity():
@@ -90,7 +91,6 @@ def test_recorder_info_comes_from_server_identity():
     def create(identity, **recorder_info):
         payload = BossRecordCreate(room_id=ROOM, channel=1, boss_type_id=1, status="killed",
                                    recorder_info=recorder_info or None)
-        import asyncio
         return asyncio.run(BossService._create_boss_record(db, payload, times, identity))
 
     anon = str(uuid.uuid4())
@@ -103,8 +103,8 @@ def test_recorder_info_comes_from_server_identity():
     assert user.recorder_id == 42 and user.recorder_info is None
 
 
-def test_authenticate_and_deauthenticate_switch_identity(fake_services, monkeypatch):
-    monkeypatch.setattr(ws_router.auth_service, "get_current_user_from_token", lambda token, db: SimpleNamespace(id=42))
+def test_identity_is_fixed_at_handshake(recorded_identities):
+    # 登入 / 登出時前端重新連線；舊版前端仍可能送 authenticate / deauthenticate，伺服器忽略
     anon = str(uuid.uuid4())
     with connect(anon) as ws:
         join(ws)
@@ -112,7 +112,7 @@ def test_authenticate_and_deauthenticate_switch_identity(fake_services, monkeypa
         assert record(ws) == "ok"
         ws.send_json({"type": "deauthenticate"})
         assert record(ws) == "ok"
-    assert fake_services == [Identity("user", "42"), Identity("anon", anon)]
+    assert recorded_identities == [Identity("anon", anon)] * 2
 
 
 # --- 回報限流 ---

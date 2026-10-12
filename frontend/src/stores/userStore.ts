@@ -16,7 +16,6 @@ interface UserState {
   user: User | null;
   isLoggedIn: boolean;
   isLoading?: boolean;
-  anonymousId: string | null;
   anonymousName: string | null;
   _channel?: BroadcastChannel;
   _initialized: boolean;
@@ -28,7 +27,6 @@ export const useUserStore = defineStore('user', {
     user: null,
     isLoggedIn: false,
     isLoading: false,
-    anonymousId: null,
     anonymousName: null,
     _channel: undefined,
     _initialized: false,
@@ -46,15 +44,16 @@ export const useUserStore = defineStore('user', {
       if (typeof window !== 'undefined' && window.BroadcastChannel && !this._channel) {
         this._channel = new BroadcastChannel('user-auth');
         this._channel.onmessage = (event) => {
-          // 其他分頁登入 / 登出：cookie 已由該分頁更新，重連 WebSocket 才會以新的 cookie 決定身分
           if (event.data.type === 'LOGOUT') {
             this.clearAuth();
-            useWebSocketStore().reconnect();
           } else if (event.data.type === 'LOGIN') {
             this.user = event.data.user;
             this.isLoggedIn = true;
-            useWebSocketStore().reconnect();
+          } else {
+            return;
           }
+          // cookie 已由該分頁更新；WebSocket 的身分由握手時的 cookie 決定，重連才會換成新身分
+          useWebSocketStore().reconnect();
         };
       }
     },
@@ -95,12 +94,8 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        const session = await apiService.initSession();
-
-        if (session.anonymous_user_id) {
-          this.anonymousId = session.anonymous_user_id;
-          localStorage.setItem('anonymous_id', session.anonymous_user_id);
-        }
+        // 確保有伺服器簽發的匿名身分 cookie（已登入時不發放）
+        await apiService.initSession();
 
         let res = await apiService.validateToken();
 
@@ -156,11 +151,7 @@ export const useUserStore = defineStore('user', {
         await apiService.logout();
 
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
-        const session = await apiService.initSession();
-        if (session.anonymous_user_id) {
-          this.anonymousId = session.anonymous_user_id;
-          localStorage.setItem('anonymous_id', session.anonymous_user_id);
-        }
+        await apiService.initSession();
         this.anonymousName = this.getAnonymousName();
         this.notifyLogout();
 
@@ -175,10 +166,10 @@ export const useUserStore = defineStore('user', {
     async loginWithGoogle(payload: string | { credential?: string; code?: string }) {
       const websocketStore = useWebSocketStore();
       try {
+        // 換帳號：不需廣播 LOGOUT，其他分頁收到下方的 LOGIN 就會更新並重連
         if (this.isLoggedIn) {
           this.clearAuth();
           await apiService.logout();
-          this.notifyLogout();
         }
 
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
@@ -187,10 +178,8 @@ export const useUserStore = defineStore('user', {
         this.isLoggedIn = true;
         localStorage.setItem('user_info', JSON.stringify(response.user));
 
-        websocketStore.sendIdentityChange({
-          type: 'authenticate',
-          token: response.access_token
-        });
+        // 登入回應已設好 access_token cookie；WebSocket 身分由握手時的 cookie 決定，重連即換成登入身分
+        websocketStore.reconnect();
 
         this.notifyLogin();
 
