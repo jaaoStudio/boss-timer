@@ -153,7 +153,7 @@ frontend/
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session`、`/auth/validate` 會各被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
 
 3. **被限流（429）不可登出**
-   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 與 `tryRefreshToken()` 遇到 429 會往外丟（其他錯誤才視為未登入 / 換發失敗），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。
+   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 遇到 429 會往外丟（其他錯誤才視為未登入），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。例外：`tryRefreshToken()` 被限流時視為換發失敗、不恢復——此時 validate 已回 `valid:false`（access token 過期），若恢復成登入狀態，畫面顯示已登入、WebSocket 卻以過期 cookie 連成匿名。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API

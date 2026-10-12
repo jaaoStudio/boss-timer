@@ -6,10 +6,11 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit
+from app.dependencies import rate_limit, allow_anonymous_id_mint
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
+from app.utils import anonymous_id
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -229,27 +230,33 @@ async def init_session(
 ):
     """
     初始化使用者工作階段。
-    如果使用者未登入（沒有 access_token）且沒有匿名ID，則創建一個新的匿名ID。
-    永遠返回當前有效的匿名ID（如果存在）。
+    未登入時確保有一個伺服器簽發的匿名身分（cookie 為「UUID.簽章」，見 app/utils/anonymous_id.py）：
+    - 簽章正確：沿用
+    - 簽章上線前的舊 UUID cookie：換發同一個 UUID 的簽章版本，舊紀錄的記錄者仍對得上
+    - 沒有或編造的值：發放新身分
+    換發與新發都計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
+    回應 body 只回傳 UUID（前端存 localStorage 顯示用），cookie 為 httponly。
     """
-    session_id = anonymous_user_id
-
     if access_token:
         # 如果使用者已登入，我們不需要匿名ID
         return {"status": "authenticated", "anonymous_user_id": None}
 
-    if not session_id:
-        # 如果沒有匿名ID，創建一個新的
-        session_id = str(uuid.uuid4())
-        response.set_cookie(
-            key="anonymous_user_id",
-            value=session_id,
-            httponly=False,  # 允許前端JS讀取
-            samesite='lax',
-            secure=settings.env == "production",
-            max_age=365 * 24 * 60 * 60  # 一年
-        )
-        return {"status": "anonymous_session_created", "anonymous_user_id": session_id}
-    
-    # 如果已有匿名ID，直接返回
-    return {"status": "session_ok", "anonymous_user_id": session_id}
+    session_id = anonymous_id.verify(anonymous_user_id)
+    if session_id:
+        return {"status": "session_ok", "anonymous_user_id": session_id}
+
+    if not allow_anonymous_id_mint(request):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many new sessions from this network")
+
+    legacy = anonymous_id.legacy_id(anonymous_user_id)
+    session_id = legacy or str(uuid.uuid4())
+    response.set_cookie(
+        key=anonymous_id.COOKIE_NAME,
+        value=anonymous_id.sign(session_id),
+        httponly=True,
+        samesite='lax',
+        secure=settings.env == "production",
+        max_age=365 * 24 * 60 * 60  # 一年
+    )
+    status_text = "anonymous_session_migrated" if legacy else "anonymous_session_created"
+    return {"status": status_text, "anonymous_user_id": session_id}

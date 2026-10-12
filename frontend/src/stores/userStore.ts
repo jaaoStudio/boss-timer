@@ -139,9 +139,9 @@ export const useUserStore = defineStore('user', {
       try {
         await apiService.refresh_token();
         return true;
-      } catch (error) {
-        // 被限流不代表 refresh token 失效，往外丟讓 initializeAuth 保留登入狀態
-        if (isAxiosError(error) && error.response?.status === 429) throw error;
+      } catch {
+        // 包含被限流（429）：此時 validate 已回 valid:false（access token 過期），
+        // 若恢復成登入狀態，畫面顯示已登入、WebSocket 卻以過期的 cookie 連成匿名，因此視為換發失敗
         return false;
       }
     },
