@@ -1,5 +1,4 @@
 # app/routers/websocket.py
-import asyncio
 import json
 import logging
 from dataclasses import dataclass
@@ -30,9 +29,10 @@ MAX_CONNECTIONS = 10
 # 超過連線限制時以此 close code 關閉，前端據此顯示提示
 CLOSE_CODE_LIMITED = 4429
 
-# --- Server-side heartbeat ---
-# 客戶端每 30 秒送一次 ping，90 秒內沒有任何訊息視為靜默斷線
-HEARTBEAT_TIMEOUT = 90  # seconds
+# 死連線偵測交給 uvicorn 協定層的 WebSocket ping（預設每 20 秒，20 秒內沒回 pong 就關閉，
+# --ws-ping-interval / --ws-ping-timeout）。瀏覽器的網路層會自動回應，不需執行 JS。
+# 不再用「N 秒沒收到前端 ping 就關閉」的應用層逾時：背景分頁被節流（ping 間隔拉長到 60～90 秒）
+# 或被凍結（JS 完全停止）時，連線其實還活著，應用層逾時只會把它們踢掉、造成反覆重連（#43）。
 
 
 @router.get("/connections/count")
@@ -164,19 +164,7 @@ async def websocket_endpoint(
 
     try:
         while True:
-            try:
-                data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=HEARTBEAT_TIMEOUT
-                )
-            except asyncio.TimeoutError:
-                logging.info("WebSocket heartbeat timeout, closing dead connection.")
-                try:
-                    await websocket.close()
-                except Exception:
-                    pass
-                break
-
+            data = await websocket.receive_text()
             message = json.loads(data)
             message_type = message.get("type")
 

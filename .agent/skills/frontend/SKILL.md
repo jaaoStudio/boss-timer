@@ -234,7 +234,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
 - **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
 - **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)。**收到伺服器第一則訊息才重置次數**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」，在 `onopen` 重置會無限重連。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
-- **心跳**: 每 30 秒發送 `ping`
+- **心跳**: 每 30 秒發送 `ping`（只維持流量，伺服器不以它判斷連線生死；背景分頁被節流時間隔會拉長到 60 秒以上也無妨，見 #43）
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:
