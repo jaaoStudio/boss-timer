@@ -232,8 +232,10 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 
 **核心功能**:
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示
-- **`sendIdentityChange()`**: 登入 / 登出通知 WS 身分用。連線建立中（CONNECTING）時握手已帶舊 cookie，會放棄這次握手並立刻重連
-- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)
+- **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
+- **`sendIdentityChange()`**: 登入時送 `authenticate`（帶 token）通知 WS。連線建立中（CONNECTING）時握手已帶舊 cookie，會放棄這次握手並立刻重連
+- **`reconnect()`**: 以目前的 cookie 重新建立連線。登出時先 `initSession()` 取得新匿名 cookie 再重連；其他分頁收到 `LOGIN` / `LOGOUT` 廣播時也重連，讓 WS 換成新身分
+- **自動重連**: 最多 5 次，延遲遞增 (`2000ms * (attempts + 1)`)；伺服器以 close code **4429**（連線限制）關閉時**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線
 - **心跳**: 每 30 秒發送 `ping`
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
@@ -251,7 +253,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 | `boss_type_deleted` | → `bossStore.removeCustomBossType()` + `recordHistoryStore.removeBossType()`；被其他成員刪掉且正被選取時跳提示 |
 | `room_settings_updated` | → `roomStore.setRoomSettings()`（`SettingsPreferences` 只套用有變動的欄位） |
 | `user_count_update` | → `roomStore.setUserCount()` |
-| `error` | 依 `code`：`rate_limited` → 警告提示；`record_rejected` → 「回報未被記錄」錯誤提示；其他僅 `console.error` |
+| `error` | 依 `code`：`rate_limited` → 警告提示；`connection_limited` → 「連線數已達上限」警告提示；`record_rejected` → 「回報未被記錄」錯誤提示；其他僅 `console.error` |
 
 ### `appInfoStore` — 應用全域
 **風格**: Options API

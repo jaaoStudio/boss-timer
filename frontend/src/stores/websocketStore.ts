@@ -15,6 +15,9 @@ interface WSMessage {
   [key: string]: unknown
 }
 
+// 伺服器因握手頻率或同時連線數超過上限而關閉連線（app/routers/websocket.py 的 CLOSE_CODE_LIMITED）
+const CLOSE_CODE_CONNECTION_LIMITED = 4429
+
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
@@ -65,11 +68,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
         handleMessage(message)
       }
 
-      ws.onclose = () => {
+      ws.onclose = (event: CloseEvent) => {
         console.log('WebSocket disconnected.')
         isConnected.value = false
         socket.value = null
-        if (!isManualDisconnect.value) {
+        // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
+        // 之後使用者一有操作，sendMessage 會再嘗試連線
+        if (!isManualDisconnect.value && event.code !== CLOSE_CODE_CONNECTION_LIMITED) {
           attemptReconnect()
         }
       }
@@ -103,6 +108,22 @@ export const useWebSocketStore = defineStore('websocket', () => {
       connect()
     }
     return false
+  }
+
+  /**
+   * 以目前的 cookie 重新建立連線。身分由握手時的 cookie 決定，登出後拿到新的匿名 cookie、
+   * 或其他分頁登入 / 登出時，既有連線帶的仍是舊 cookie，需要重連才會換成新身分。
+   */
+  function reconnect() {
+    const ws = socket.value
+    if (ws) {
+      ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
+      ws.close()
+      socket.value = null
+      isConnected.value = false
+    }
+    reconnectAttempts.value = 0
+    connect()
   }
 
   /**
@@ -185,6 +206,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
     console.error('Received error from server:', msg.message)
     if (msg.code === 'rate_limited') {
       notify('warning', 'globalErrors.rateLimitExceeded')
+    } else if (msg.code === 'connection_limited') {
+      notify('warning', 'roomSelection.errors.connectionLimit')
     } else if (msg.code === 'record_rejected') {
       notify('error', 'bossControlPanel.recordRejected')
     }
@@ -241,5 +264,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     disconnect,
     sendMessage,
     sendIdentityChange,
+    reconnect,
   }
 })

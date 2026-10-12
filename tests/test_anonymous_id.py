@@ -122,13 +122,30 @@ def test_forged_or_legacy_cookie_gets_a_fresh_identity(cookie):
 
 
 def test_logged_in_user_with_expired_access_token_is_not_minted(monkeypatch):
-    # 只剩 refresh token 的登入者即將換發 token，不發匿名身分、也不計入發放上限
+    # 只剩有效 refresh token 的登入者即將換發 token，不發匿名身分、也不計入發放上限
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
+    monkeypatch.setattr(auth.auth_service, "verify_refresh_token", lambda db, t: 42 if t == "valid" else None)
     for _ in range(3):
-        res = init_session(refresh_token="opaque")
+        res = init_session(refresh_token="valid")
         assert res.json() == {"status": "authenticated", "anonymous_user_id": None}
         assert issued_cookie(res) is None
     assert init_session().status_code == 200
+
+
+def test_revoked_or_invalid_refresh_token_still_gets_anonymous_identity(monkeypatch):
+    # 被撤銷（例如在其他裝置登入）或無效的 refresh token 不能讓人一直拿不到匿名身分
+    monkeypatch.setattr(auth.auth_service, "verify_refresh_token", lambda db, t: None)
+    res = init_session(refresh_token="revoked")
+    assert res.json()["status"] == "anonymous_session_created"
+    assert anonymous_id.verify(issued_cookie(res)) == res.json()["anonymous_user_id"]
+
+
+def test_rejected_refresh_token_cookie_is_deleted(monkeypatch):
+    monkeypatch.setattr(auth.auth_service, "verify_refresh_token", lambda db, t: None)
+    set_cookies(client, refresh_token="revoked")
+    res = client.post("/auth/refresh", headers={"CF-Connecting-IP": "203.0.113.1"})
+    assert res.status_code == 401
+    assert 'refresh_token=""' in res.headers["set-cookie"] and "max-age=0" in res.headers["set-cookie"].lower()
 
 
 def test_mint_limit_per_ip_does_not_affect_existing_identities(monkeypatch):

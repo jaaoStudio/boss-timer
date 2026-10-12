@@ -125,89 +125,63 @@ def create_refresh_token(data: dict, expires_delta: Optional[timedelta] = None) 
 
 def save_refresh_token(db: Session, user_id: int, refresh_token: str):
     """
-    將 refresh token 儲存到資料庫。
+    將 refresh token 儲存到資料庫（每位使用者只保留一個有效的 refresh token）。
     """
-    # 解析 token 獲取 jti 和過期時間
-    try:
-        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
-        jti = payload.get("jti")
-        exp = payload.get("exp")
-
-        # 先刪除該用戶的舊 refresh token
-        db.query(models.RefreshToken).filter(
-            models.RefreshToken.user_id == user_id
-        ).delete()
-
-        # 創建新的 refresh token 記錄
-        db_refresh_token = models.RefreshToken(
-            user_id=user_id,
-            jti=jti,
-            token=refresh_token,
-            expires_at=datetime.fromtimestamp(exp, timezone.utc),
-            created_at=datetime.now(timezone.utc)
-        )
-        db.add(db_refresh_token)
-        db.commit()
-
-    except JWTError:
+    payload = decode_token(refresh_token, "refresh")
+    if payload is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to save refresh token"
         )
 
+    # 先刪除該用戶的舊 refresh token
+    db.query(models.RefreshToken).filter(
+        models.RefreshToken.user_id == user_id
+    ).delete()
+
+    db.add(models.RefreshToken(
+        user_id=user_id,
+        jti=payload.get("jti"),
+        token=refresh_token,
+        expires_at=datetime.fromtimestamp(payload["exp"], timezone.utc),
+        created_at=datetime.now(timezone.utc)
+    ))
+    db.commit()
+
 
 def verify_refresh_token(db: Session, refresh_token: str) -> Optional[int]:
     """
-    驗證 refresh token 並返回用戶 ID。
+    驗證 refresh token（含資料庫中的撤銷狀態）並返回用戶 ID。
     """
-    try:
-        # 先驗證 JWT 格式和簽名
-        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
-
-        # 檢查 token 類型
-        if payload.get("type") != "refresh":
-            return None
-
-        user_id = int(payload.get("sub"))
-        jti = payload.get("jti")
-
-        # 檢查資料庫中是否存在該 refresh token
-        db_token = db.query(models.RefreshToken).filter(
-            models.RefreshToken.user_id == user_id,
-            models.RefreshToken.jti == jti,
-            models.RefreshToken.expires_at > datetime.now(timezone.utc)
-        ).first()
-
-        if db_token:
-            return user_id
-        else:
-            return None
-
-    except JWTError:
+    payload = decode_token(refresh_token, "refresh")
+    if payload is None:
         return None
+    user_id = int(payload["sub"])
+    db_token = db.query(models.RefreshToken).filter(
+        models.RefreshToken.user_id == user_id,
+        models.RefreshToken.jti == payload.get("jti"),
+        models.RefreshToken.expires_at > datetime.now(timezone.utc)
+    ).first()
+    return user_id if db_token else None
 
 
 def revoke_refresh_token(db: Session, refresh_token: str):
     """
-    撤銷 refresh token。
+    撤銷 refresh token。無效的 token 直接忽略。
     """
-    try:
-        payload = jwt.decode(refresh_token, settings.secret_key, algorithms=[settings.algorithm])
-        jti = payload.get("jti")
-
-        db.query(models.RefreshToken).filter(
-            models.RefreshToken.jti == jti
-        ).delete()
-        db.commit()
-
-    except JWTError:
-        pass  # 忽略無效的 token
+    payload = decode_token(refresh_token, "refresh")
+    if payload is None:
+        return
+    db.query(models.RefreshToken).filter(
+        models.RefreshToken.jti == payload.get("jti")
+    ).delete()
+    db.commit()
 
 
-def decode_token_user_id(token: Optional[str], token_type: str = "access") -> Optional[str]:
+def decode_token(token: Optional[str], token_type: str) -> Optional[dict]:
     """
-    解析 JWT 並回傳其中的使用者 ID；簽章、到期或類型（access / refresh）不符時回傳 None。
-    所有解析 JWT 取得使用者的地方都經這裡，避免各自實作而漏掉類型檢查（refresh token 冒充 access token）。
+    解析並驗證 JWT，回傳 payload；簽章、到期、類型（access / refresh）不符或 sub 不是使用者 ID 時回傳 None。
+    所有解析 JWT 的地方都經這裡，避免各自實作而漏掉類型檢查（refresh token 冒充 access token）。
     只驗證 token 本身，不查資料庫（refresh token 的撤銷狀態見 verify_refresh_token）。
     """
     if not token:
@@ -218,10 +192,15 @@ def decode_token_user_id(token: Optional[str], token_type: str = "access") -> Op
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError:
         return None
-    user_id = payload.get("sub")
-    if payload.get("type") != token_type or not user_id:
+    if payload.get("type") != token_type or not str(payload.get("sub", "")).isdigit():
         return None
-    return str(user_id)
+    return payload
+
+
+def decode_token_user_id(token: Optional[str], token_type: str = "access") -> Optional[str]:
+    """解析 JWT 並回傳其中的使用者 ID（字串），驗證規則見 decode_token。"""
+    payload = decode_token(token, token_type)
+    return str(payload["sub"]) if payload else None
 
 
 def get_current_user_from_token(token: str, db: Session) -> models.User:

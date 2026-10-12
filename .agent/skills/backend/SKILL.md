@@ -267,7 +267,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 ### 連線建立
 - Endpoint: `ws://<host>/api/ws/`
-- 連線時自動從 Cookie 讀取 `access_token` 解析使用者身份 (可選，也支援匿名)
+- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（登入 `access_token` → 簽章的匿名 cookie → 無），存在 `ConnectionManager.socket_identity`；前端送來的任何身分欄位都不採信
 - 使用全域 Singleton `ConnectionManager` 管理所有連線
 
 ### 訊息格式 (JSON)
@@ -280,9 +280,9 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | `ping` | — | 心跳 (每 30 秒) |
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
-| `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態 |
-| `authenticate` | `{ "token": "<jwt>" }` | 連線期間動態切換為已登入身份 |
-| `deauthenticate` | — | 連線期間切換為匿名身份 |
+| `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
+| `authenticate` | `{ "token": "<jwt>" }` | 連線期間切換為登入身分（token 經 `get_current_user_from_token` 驗證） |
+| `deauthenticate` | — | 連線期間退回握手時的匿名身分（沒有則為無身分）；前端登出改為取得新匿名 cookie 後重連 |
 
 #### Server → Client
 
@@ -298,11 +298,18 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | `boss_type_cleared` | 某 Boss 種類頻道總覽被清除（`{ "boss_type_id": N, "cleared_at": "..." }`） |
 | `user_count_update` | 房間內目前連線人數 (`{ "count": N }`) |
 | `maintenance_status_update` | 維護模式狀態變更 |
-| `error` | 錯誤訊息（`{ "code": "...", "message": "..." }`；`code`：`room_not_found` / `record_rejected` / `rate_limited`） |
+| `error` | 錯誤訊息（`{ "code": "...", "message": "..." }`；`code`：`room_not_found` / `record_rejected` / `rate_limited` / `connection_limited`） |
 
 ### Rate Limiting (WebSocket)
-- `record_boss` 訊息: 每連線每 60 秒最多 30 次
-- 超過限制回傳 error 訊息
+與 HTTP 相同的雙層限流（`check_dual_limit`，個人額度以伺服器身分計算、重連不會歸零；IP 天花板為個人額度 × `IP_CEILING_MULTIPLIER`，登入者以自己的身分計算，見 ADR-0007）：
+
+| 限制 | 個人 | IP 天花板 | 超過時 |
+|---|---|---|---|
+| `record_boss` | `RECORD_BOSS_LIMIT` 30/分鐘、1000/天 | × 200 | 回 `error` `rate_limited` |
+| 握手頻率 | `HANDSHAKE_LIMIT` 120/小時 | × 200 | 接受後送 `error` `connection_limited`，以 close code **4429** 關閉 |
+| 同時連線數 | `MAX_CONNECTIONS` 10 | × 200 | 同上 |
+
+前端收到 4429 不自動重連（限制以分鐘 / 小時計，馬上重試只會再被擋），使用者下次操作時才會再連線。
 
 ### ConnectionManager 架構
 ```
@@ -310,7 +317,8 @@ ConnectionManager
 ├── active_connections: Set[WebSocket]        # 所有連線
 ├── room_subscriptions: Dict[str, Set[WS]]   # room_id → 訂閱的 WS
 ├── socket_to_room: Dict[WS, str]            # WS → 目前所在 room_id
-└── socket_to_user: Dict[WS, int]            # WS → user_id
+├── socket_identity: Dict[WS, Identity]      # WS → 目前身分（authenticate / deauthenticate 會切換）
+└── _connection_counts: Counter              # 同時連線數（個人 key、IP 天花板 key）
 ```
 
 **⚠️ Dead connection 清除**: `broadcast_to_room` / `broadcast_to_all` 廣播時若 `send_text` 拋出例外，會立刻呼叫 `disconnect()` 移除死連線，防止殭屍連線堆積佔用記憶體。

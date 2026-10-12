@@ -140,7 +140,7 @@ const websocketStore = useWebSocketStore()
 
 const { roomId } = storeToRefs(roomStore)
 const { bossTypes, selectedChannel, selectedBossTypeId } = storeToRefs(bossStore)
-const { isLoggedIn, anonymousId, anonymousName } = storeToRefs(userStore)
+const { isLoggedIn, anonymousName } = storeToRefs(userStore)
 
 const props = defineProps<{
   colSpan?: 1 | 2 | 3 | 4
@@ -220,8 +220,9 @@ const recordBoss = async () => {
 
   loading.value = true
   try {
+    // 記錄者身分由伺服器依 cookie 決定，只送暱稱
     const recorderInfo = (!isLoggedIn.value && anonymousName.value)
-      ? { anonymous_id: anonymousId.value, anonymous_name: anonymousName.value }
+      ? { anonymous_name: anonymousName.value }
       : null
 
     const payload = {

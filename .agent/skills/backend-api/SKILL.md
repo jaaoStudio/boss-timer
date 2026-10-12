@@ -234,7 +234,7 @@ except Exception as e:
 ### 匿名使用者
 `POST /auth/session` 發放 httponly 的 `anonymous_user_id` cookie，值為「UUID.簽章」（`app/utils/anonymous_id.py`，以 `SECRET_KEY` 做 HMAC-SHA256）；回應 body 只回傳 UUID。
 
-**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(request)`**（HTTP 與 WebSocket 皆可用，同一連線只解析一次並存在 `state`），回傳 `Identity(kind, id)`：
+**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(conn)`**（HTTP 與 WebSocket 皆可用；**只在 HTTP 請求上快取**於 `request.state`，WebSocket 連線中途會切換身分，由 `ConnectionManager.socket_identity` 管理），回傳 `Identity(kind, id)`：
 | kind | 條件 |
 |---|---|
 | `user` | `access_token` 能解出使用者 |
