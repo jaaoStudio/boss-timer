@@ -1,7 +1,7 @@
 """WebSocket 伺服器端身分、回報與連線限流的測試（見 docs/adr/0007、issue #37）。"""
 import asyncio
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from types import SimpleNamespace
 
 import pytest
@@ -16,6 +16,7 @@ from app.services.boss_service import BossService
 from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import Identity
+from app.websocket import manager as manager_module
 from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_TIMEOUT_SECONDS, ConnectionManager
 from tests.helpers import make_limited_app
 
@@ -226,15 +227,64 @@ def test_hello_announces_heartbeat_parameters():
 
 def test_heartbeat_reaches_every_connection():
     manager = app.dependency_overrides[get_connection_manager]()
+    broadcast = manager.broadcast_to_all
 
     async def one_beat():
-        task = asyncio.create_task(manager.run_heartbeat(interval=0))
-        await asyncio.sleep(0.05)
-        task.cancel()
+        beat = asyncio.Event()
 
-    with connect(str(uuid.uuid4())) as ws:
-        ws.portal.call(one_beat)   # 在伺服器的 event loop 上執行
-        assert ws.receive_json() == {"type": "heartbeat"}
+        async def broadcast_once(message):
+            await broadcast(message)
+            beat.set()
+
+        manager.broadcast_to_all = broadcast_once
+        task = asyncio.create_task(manager.run_heartbeat(interval=0))
+        await beat.wait()
+        task.cancel()   # 心跳迴圈下一次 sleep 時取消，只送一輪
+        with suppress(asyncio.CancelledError):
+            await task
+
+    with connect(str(uuid.uuid4())) as first, connect(str(uuid.uuid4())) as second:
+        first.portal.call(one_beat)   # 在伺服器的 event loop 上執行
+        for ws in (first, second):
+            assert ws.receive_json() == {"type": "heartbeat"}
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json() == {"type": "pong"}   # 只有一輪心跳
+
+
+class FakeSocket:
+    def __init__(self, send=None):
+        self.sent: list[str] = []
+        self._send = send
+
+    async def send_text(self, text: str) -> None:
+        if self._send:
+            await self._send()
+        self.sent.append(text)
+
+
+def test_stuck_connection_does_not_hold_up_broadcast(monkeypatch):
+    monkeypatch.setattr(manager_module, "SEND_TIMEOUT_SECONDS", 0.05)
+    manager = ConnectionManager()
+    stuck, healthy = FakeSocket(send=asyncio.Event().wait), FakeSocket()
+    manager.active_connections.update({stuck, healthy})
+
+    asyncio.run(asyncio.wait_for(manager.broadcast_to_all({"type": "heartbeat"}), 1))
+
+    assert healthy.sent == ['{"type": "heartbeat"}']
+
+
+def test_failed_broadcast_leaves_cleanup_to_the_endpoint():
+    """廣播送不出去時不在廣播裡 disconnect，否則 endpoint 的 finally 找不到房間、不會更新房間人數。"""
+    async def gone():
+        raise WebSocketDisconnect(code=1006)
+
+    manager = ConnectionManager()
+    dead = FakeSocket(send=gone)
+    manager.subscribe_to_room(dead, ROOM)
+
+    asyncio.run(manager.broadcast_to_room(ROOM, {"type": "ok"}))
+
+    assert manager.socket_to_room[dead] == ROOM
 
 
 def test_ping_from_old_frontend_is_answered_with_pong():

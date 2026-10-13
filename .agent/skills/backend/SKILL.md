@@ -322,7 +322,7 @@ ConnectionManager
 └── _connection_counts: Counter              # 同時連線數，個人（personal:）與天花板（ceiling:）分開計；try_reserve 在 await 前一次完成檢查與計入
 ```
 
-**⚠️ Dead connection 清除**: `broadcast_to_room` / `broadcast_to_all` 廣播時若 `send_text` 拋出例外，會立刻呼叫 `disconnect()` 移除死連線，防止殭屍連線堆積佔用記憶體。
+**⚠️ 廣播失敗不在廣播裡清除連線**: `broadcast_to_room` / `broadcast_to_all` 同時送給所有連線，每條最多等 `SEND_TIMEOUT_SECONDS`（5 秒，一條卡住不拖住其他人的心跳）；送不出去只記錄，**勿在廣播裡呼叫 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。已斷的連線 `receive` 會結束，卡住的由協定層 ping 逾時關閉（ADR-0008）。`connect()` 送完 `hello` 才加入 `active_connections`，心跳不會搶在 `hello` 前面。
 
 ---
 

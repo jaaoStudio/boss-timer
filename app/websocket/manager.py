@@ -15,6 +15,8 @@ HELLO_MESSAGE = json.dumps({
     "ping_interval": HEARTBEAT_INTERVAL_SECONDS,
     "ping_timeout": HEARTBEAT_TIMEOUT_SECONDS,
 })
+# 廣播時每條連線的送出上限：一條連線卡住（對方不讀、TCP 緩衝滿）時不拖住其他連線，否則心跳延遲會讓所有人同時逾時重連
+SEND_TIMEOUT_SECONDS = 5
 
 class ConnectionManager:
     def __init__(self):
@@ -52,9 +54,10 @@ class ConnectionManager:
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections.add(websocket)
-        # 第一則訊息：用戶端收到才啟動心跳逾時判斷（舊版後端不送，用戶端就不判斷）
+        # 第一則訊息：用戶端收到才啟動心跳逾時判斷（舊版後端不送，用戶端就不判斷）。
+        # 送完才加入 active_connections，心跳才不會搶在 hello 前面
         await websocket.send_text(HELLO_MESSAGE)
+        self.active_connections.add(websocket)
         logging.info(f"New connection accepted. Total connections: {self.get_total_connections()}")
 
     def disconnect(self, websocket: WebSocket):
@@ -96,28 +99,28 @@ class ConnectionManager:
     async def broadcast_to_room(self, room_id: str, message: dict):
         if room_id not in self.room_subscriptions:
             return
-        message_str = json.dumps(message, default=str)
-        connections = list(self.room_subscriptions[room_id])
-        tasks = [conn.send_text(message_str) for conn in connections]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        dead = [conn for conn, result in zip(connections, results) if isinstance(result, Exception)]
-        for conn in dead:
-            logging.warning(f"Dead connection detected in room {room_id}, removing.")
-            self.disconnect(conn)
+        await self._send_all(list(self.room_subscriptions[room_id]), json.dumps(message, default=str))
 
     async def broadcast_to_all(self, message: dict):
         """Broadcasts a message to all connected WebSocket clients."""
         if not self.active_connections:
             return
+        await self._send_all(list(self.active_connections), json.dumps(message, default=str))
 
-        message_str = json.dumps(message, default=str)
-        connections = list(self.active_connections)
-        tasks = [conn.send_text(message_str) for conn in connections]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        dead = [conn for conn, result in zip(connections, results) if isinstance(result, Exception)]
-        for conn in dead:
-            logging.warning(f"Dead connection detected during broadcast_to_all, removing.")
-            self.disconnect(conn)
+    @staticmethod
+    async def _send_all(connections: list[WebSocket], message_str: str):
+        """
+        同時送給多條連線，每條最多等 SEND_TIMEOUT_SECONDS。送不出去只記錄、不在這裡 disconnect：
+        清理一律交給該連線 endpoint 的 finally（它會一併廣播房間人數）；連線已斷時 receive 會結束，
+        卡住的連線由協定層 ping 逾時關閉。
+        """
+        results = await asyncio.gather(
+            *(asyncio.wait_for(conn.send_text(message_str), SEND_TIMEOUT_SECONDS) for conn in connections),
+            return_exceptions=True,
+        )
+        failed = sum(isinstance(result, BaseException) for result in results)
+        if failed:
+            logging.warning(f"Broadcast failed for {failed} of {len(connections)} connection(s).")
 
     def get_room_user_count(self, room_id: str) -> int:
         return len(self.room_subscriptions.get(room_id, set()))

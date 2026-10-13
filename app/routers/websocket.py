@@ -152,12 +152,8 @@ async def websocket_endpoint(
         return
 
     try:
+        # 在同一個 try 內：送 hello 時對方已斷線也走下方的 WebSocketDisconnect，並由 finally 釋放 try_reserve 計入的連線數
         await manager.connect(websocket)
-    except Exception:
-        manager.disconnect(websocket)   # 釋放 try_reserve 計入的連線數
-        raise
-
-    try:
         while True:
             # 不設接收逾時：死連線由協定層 ping 偵測，勿以「多久沒收到前端訊息」判斷生死（ADR-0008、#43）
             data = await websocket.receive_text()
