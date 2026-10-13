@@ -319,10 +319,11 @@ ConnectionManager
 ├── room_subscriptions: Dict[str, Set[WS]]   # room_id → 訂閱的 WS
 ├── socket_to_room: Dict[WS, str]            # WS → 目前所在 room_id
 ├── _connection_keys: Dict[WS, Set[str]]     # WS → 握手時計入的連線數 key
+├── _outboxes / _writers                     # 每條連線的送出佇列與寫出 task（ADR-0008）
 └── _connection_counts: Counter              # 同時連線數，個人（personal:）與天花板（ceiling:）分開計；try_reserve 在 await 前一次完成檢查與計入
 ```
 
-**⚠️ 廣播失敗不在廣播裡清除連線**: `broadcast_to_room` / `broadcast_to_all` 同時送給所有連線，每條最多等 `SEND_TIMEOUT_SECONDS`（5 秒，一條卡住不拖住其他人的心跳）；送不出去只記錄，**勿在廣播裡呼叫 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。已斷的連線 `receive` 會結束，卡住的由協定層 ping 逾時關閉（ADR-0008）。`connect()` 送完 `hello` 才加入 `active_connections`，心跳不會搶在 `hello` 前面。
+**⚠️ 送訊息一律經送出佇列**（照 engine.io 的 writeBuffer，ADR-0008）: 送給單一連線用 `manager.send(websocket, message)`，廣播用 `broadcast_to_room` / `broadcast_to_all`，**勿直接 `websocket.send_text`**（會繞過佇列、打亂順序，`hello` 也不再保證是第一則）。廣播只放進佇列、不等送出，一條收不下的連線不會拖住呼叫端。沒有送出逾時；送出失敗時寫出 task 關閉該連線，**勿在 manager 裡 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。收不下的連線由協定層 ping 逾時關閉。
 
 ---
 
@@ -490,7 +491,7 @@ ConnectionManager
 ### 錯誤處理
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼
 - Service 層使用 `logging.error()` 記錄內部錯誤
-- WebSocket 錯誤直接透過 `websocket.send_text(json.dumps({"type": "error", ...}))` 回傳
+- WebSocket 錯誤透過 `manager.send(websocket, {"type": "error", ...})` 回傳（經送出佇列，勿直接 `send_text`）
 - Celery 任務錯誤透過 `self.retry()` 自動重試
 
 ### 安全守則

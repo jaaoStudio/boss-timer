@@ -46,12 +46,12 @@ Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, 
 
 async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     if not room_service.get_room_by_id(db, room_id):
-        await websocket.send_text(json.dumps({"type": "error", "code": "room_not_found", "message": "Room not found"}))
+        manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
         return
     room_service.update_room_last_active(db, room_id)
     manager.subscribe_to_room(websocket, room_id)
     initial_state = room_service.get_room_state(db, room_id)
-    await websocket.send_text(json.dumps(initial_state, default=str))
+    manager.send(websocket, initial_state)
     await manager.broadcast_user_count(room_id)
 
 
@@ -63,17 +63,17 @@ async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optio
 async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     current_room = manager.socket_to_room.get(websocket)
     if not current_room or current_room != room_id:
-        await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": "You are not in this room"}))
+        manager.send(websocket, {"type": "error", "code": "record_rejected", "message": "You are not in this room"})
         return
     if not check_dual_limit(RECORD_BOSS_LIMIT, "ws_record_boss", conn.limit_keys):
-        await websocket.send_text(json.dumps({"type": "error", "code": "rate_limited", "message": "Rate limit exceeded. Please slow down."}))
+        manager.send(websocket, {"type": "error", "code": "rate_limited", "message": "Rate limit exceeded. Please slow down."})
         return
     try:
         record_create = BossRecordCreate(**payload)
         await boss_service.BossService.record_boss_from_websocket(db, record_create, conn.identity, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
-        await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": str(e)}))
+        manager.send(websocket, {"type": "error", "code": "record_rejected", "message": str(e)})
 
 
 _HANDLERS: dict[str, Handler] = {
@@ -152,8 +152,14 @@ async def websocket_endpoint(
         return
 
     try:
-        # 在同一個 try 內：送 hello 時對方已斷線也走下方的 WebSocketDisconnect，並由 finally 釋放 try_reserve 計入的連線數
         await manager.connect(websocket)
+    except Exception as e:
+        # 握手途中對方離開（accept 失敗），不是伺服器錯誤；釋放 try_reserve 計入的連線數
+        logging.info(f"WebSocket handshake aborted: {e!r}")
+        manager.disconnect(websocket)
+        return
+
+    try:
         while True:
             # 不設接收逾時：死連線由協定層 ping 偵測，勿以「多久沒收到前端訊息」判斷生死（ADR-0008、#43）
             data = await websocket.receive_text()
@@ -162,7 +168,7 @@ async def websocket_endpoint(
 
             if message_type == "ping":
                 # 新版前端不再送 ping（改由伺服器心跳，ADR-0008）；部署切換期間的舊版前端仍會送，照舊回 pong
-                await websocket.send_text(json.dumps({"type": "pong"}))
+                manager.send(websocket, {"type": "pong"})
                 continue
 
             if message_type in ("authenticate", "deauthenticate"):
