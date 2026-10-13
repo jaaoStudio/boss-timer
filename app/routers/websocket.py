@@ -165,7 +165,7 @@ async def websocket_endpoint(
             message_type = message.get("type")
 
             if message_type == "ping":
-                # 前端看門狗的探測：回 pong 讓它確認連線仍通（ADR-0008）
+                # 前端的探測（看門狗、送出訊息後）：回 pong 讓它確認連線仍通（ADR-0008）
                 await websocket.send_text(json.dumps({"type": "pong"}))
                 continue
 

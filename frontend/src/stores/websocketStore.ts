@@ -40,8 +40,7 @@ function cancel(timer: Timer): null {
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
-  const isManualDisconnect = ref(false)
-  // 連線中斷、正在自動重連（畫面據此顯示提示）；收到伺服器訊息才算恢復
+  // 連線中斷、正在自動重連（畫面據此顯示提示）；連線建立或被連線限制擋下時清除
   const isReconnecting = ref(false)
   let reconnectAttempts = 0
   let reconnectTimeout: Timer = null
@@ -66,6 +65,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
 
     reconnectTimeout = cancel(reconnectTimeout)
+    connectTimeout = cancel(connectTimeout)
 
     try {
       const ws = apiService.createWebSocket()
@@ -75,11 +75,14 @@ export const useWebSocketStore = defineStore('websocket', () => {
         if (ws.readyState === WebSocket.CONNECTING) ws.close()   // 觸發 onclose → 退避重連
       }, CONNECT_TIMEOUT_MS)
 
+      // 每個事件都先確認 ws 仍是目前的連線：被取代的舊連線遲到的事件不可動到新連線的狀態
       ws.onopen = () => {
+        if (socket.value !== ws) return
         console.log('WebSocket connected.')
         connectTimeout = cancel(connectTimeout)
         isConnected.value = true
-        isManualDisconnect.value = false
+        // 在這裡清除而非等第一則訊息：不在房間時連上也不會收到任何訊息
+        isReconnecting.value = false
         lastMessageAt = Date.now()
         watchdog.resume()
         // 連線時重建伺服器端狀態：身分由 cookie 決定，房間以 roomStore.roomId 重新加入
@@ -93,16 +96,17 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
 
       ws.onmessage = (event: MessageEvent) => {
+        if (socket.value !== ws) return
         lastMessageAt = Date.now()
-        // 收到伺服器訊息才算連線成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」且不送訊息，
+        // 收到伺服器訊息才重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」且不送訊息，
         // 若在 onopen 就重置，每次都會被重置而一直以最短間隔重連
         reconnectAttempts = 0
-        isReconnecting.value = false
         const message: WSMessage = JSON.parse(event.data)
         handleMessage(message)
       }
 
       ws.onclose = (event: CloseEvent) => {
+        if (socket.value !== ws) return
         console.log('WebSocket disconnected.')
         connectTimeout = cancel(connectTimeout)
         probeTimeout = cancel(probeTimeout)
@@ -114,7 +118,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         if (event.code === CLOSE_CODE_CONNECTION_LIMITED) {
           isReconnecting.value = false
           notify('warning', 'roomSelection.errors.connectionLimit')
-        } else if (!isManualDisconnect.value) {
+        } else {
           attemptReconnect()
         }
       }
@@ -124,15 +128,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
       }
     } catch (error) {
       console.error('Failed to create WebSocket:', error)
-    }
-  }
-
-  function disconnect() {
-    reconnectTimeout = cancel(reconnectTimeout)
-    isReconnecting.value = false
-    if (socket.value) {
-      isManualDisconnect.value = true
-      socket.value.close()
+      attemptReconnect()
     }
   }
 
@@ -144,6 +140,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function sendMessage(message: WSMessage): boolean {
     if (socket.value && socket.value.readyState === WebSocket.OPEN) {
       socket.value.send(JSON.stringify(message))
+      // 半死的連線（休眠喚醒、切換網路）上 send 不會報錯，送出後馬上探測，10 秒內就能發現並重連，
+      // 不必等看門狗的 45 秒閒置門檻
+      if (document.visibilityState === 'visible') probe()
       return true
     }
     if (!socket.value || socket.value.readyState === WebSocket.CLOSED) {
@@ -157,10 +156,16 @@ export const useWebSocketStore = defineStore('websocket', () => {
    * 或其他分頁登入 / 登出時，既有連線帶的仍是舊 cookie，需要重連才會換成新身分。
    */
   function reconnect() {
+    dropSocket()
+    reconnectAttempts = 0
+    connect()
+  }
+
+  /** 關閉並拋棄目前的連線與它的計時器，不觸發 onclose 的自動重連 */
+  function dropSocket() {
     connectTimeout = cancel(connectTimeout)
     probeTimeout = cancel(probeTimeout)
     watchdog.pause()
-    isManualDisconnect.value = false
     const ws = socket.value
     if (ws) {
       ws.onopen = ws.onmessage = ws.onclose = ws.onerror = null
@@ -168,8 +173,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
       socket.value = null
       isConnected.value = false
     }
-    reconnectAttempts = 0
-    connect()
   }
 
   function attemptReconnect() {
@@ -185,7 +188,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
 
   /**
    * 送 ping 探測連線是否仍通，PROBE_TIMEOUT_MS 內沒收到任何伺服器訊息就重連。
-   * 先探測再重連：凍結的分頁恢復時 lastMessageAt 雖然很舊，連線可能仍然正常
+   * 先探測再重連：凍結的分頁恢復時 lastMessageAt 雖然很舊，連線可能仍然正常。
+   * 重連走退避且不重置次數：伺服器卡住時所有可見分頁會同時逾時，不可一起以最短間隔重連
    */
   function probe() {
     const ws = socket.value
@@ -196,8 +200,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
       probeTimeout = null
       if (socket.value === ws && lastMessageAt < sentAt) {
         console.warn('WebSocket probe timed out, reconnecting.')
-        isReconnecting.value = true
-        reconnect()
+        dropSocket()
+        attemptReconnect()
       }
     }, PROBE_TIMEOUT_MS)
   }
@@ -221,10 +225,10 @@ export const useWebSocketStore = defineStore('websocket', () => {
       probeTimeout = cancel(probeTimeout)
     }
   })
-  // 網路恢復：正在等待重連就馬上重連（不重置次數，失敗時仍照退避）；連線中就探測
+  // 網路恢復：正在等待重連就馬上重連（不重置次數，失敗時仍照退避）；連線中且分頁可見就探測
   useEventListener(window, 'online', () => {
     if (reconnectTimeout) connect()
-    else probe()
+    else if (document.visibilityState === 'visible') probe()
   })
 
   // Each handler name declares which stores it touches.
@@ -325,7 +329,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     isConnected,
     isReconnecting,
     connect,
-    disconnect,
     sendMessage,
     reconnect,
   }

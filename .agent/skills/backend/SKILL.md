@@ -277,7 +277,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | payload | 說明 |
 |---|---|---|
-| `ping` | — | 前端看門狗的探測，伺服器回 `pong`，**不以它判斷連線生死**。死連線由 uvicorn 協定層 WebSocket ping 偵測，設定只在 `app/Dockerfile` 的 `UVICORN_WS*`（`websockets` 實作、間隔 20 秒、逾時 60 秒）。設計與禁忌見 ADR-0008 |
+| `ping` | — | 前端的探測（看門狗、送出訊息後），伺服器回 `pong`，**不以它判斷連線生死**。死連線由 uvicorn 協定層 WebSocket ping 偵測，設定只在 `app/Dockerfile` 的 `UVICORN_WS*`（`websockets` 實作、間隔 20 秒、逾時 60 秒）。設計與禁忌見 ADR-0008 |
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
 | `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
