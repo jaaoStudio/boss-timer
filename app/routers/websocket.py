@@ -105,6 +105,17 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
     await handler(websocket, payload, room_id, db, manager, conn)
 
 
+def _parse_message(data: str) -> Optional[dict]:
+    """解析用戶端訊息；不是 JSON 物件或 payload 不是物件時回傳 None。"""
+    try:
+        message = json.loads(data)
+    except ValueError:
+        return None
+    if not isinstance(message, dict) or not isinstance(message.get("payload", {}), dict):
+        return None
+    return message
+
+
 async def _reject_connection(websocket: WebSocket) -> None:
     """
     超過握手頻率或同時連線數：接受後立即以明確的 close code 關閉，前端據此顯示提示。
@@ -163,13 +174,20 @@ async def websocket_endpoint(
     except Exception:
         logging.error("WebSocket handshake failed", exc_info=True)
         manager.disconnect(websocket)
+        with suppress(Exception):   # uvicorn 在 app 返回時不會關閉傳輸，不關的話前端以為還連著
+            await websocket.close(code=1011)
         return
 
+    close_code: Optional[int] = None
     try:
         while True:
             # 不設接收逾時：死連線由協定層 ping 偵測，勿以「多久沒收到前端訊息」判斷生死（ADR-0008、#43）
-            data = await websocket.receive_text()
-            message = json.loads(data)
+            message = _parse_message(await websocket.receive_text())
+            if message is None:
+                # 照 engine.io：只有封包解析失敗才關閉連線
+                logging.info("Malformed WebSocket message, closing.")
+                close_code = 1007
+                break
             message_type = message.get("type")
 
             if message_type == "ping":
@@ -182,8 +200,13 @@ async def websocket_endpoint(
                 # 直接忽略（不進 handle_message，避免開 DB session）
                 continue
 
-            with SessionLocal() as db:
-                await handle_message(websocket, message, db, manager, conn)
+            try:
+                with SessionLocal() as db:
+                    await handle_message(websocket, message, db, manager, conn)
+            except Exception:
+                # 照 Socket.IO：單則訊息處理出錯不關閉連線。關閉的話前端重連後 hello 會重置退避，
+                # 每次都送 join_room、每次都出錯（例如資料庫故障），變成每秒重連一次
+                logging.error(f"Error handling WebSocket message '{message_type}'", exc_info=True)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
@@ -193,10 +216,7 @@ async def websocket_endpoint(
             logging.info(f"WebSocket closed after send failure: {e!r}")
         else:
             logging.error(f"WebSocket error: {e}", exc_info=True)
-            # 出錯就關閉連線（照 engine.io）。uvicorn 在 app 正常返回時不會關閉傳輸，不關的話前端以為還連著，
-            # 送出的回報無聲遺失，直到心跳逾時
-            with suppress(Exception):
-                await websocket.close(code=1011)
+            close_code = 1011
     finally:
         if websocket in manager.socket_to_room:
             room_id = manager.socket_to_room[websocket]
@@ -204,3 +224,8 @@ async def websocket_endpoint(
             await manager.broadcast_user_count(room_id)
         else:
             manager.disconnect(websocket)
+        if close_code is not None:
+            # 先清理再關閉：關閉握手可能要等 10 秒以上，期間不該還算在房間與人數裡。
+            # uvicorn 在 app 返回時不會關閉傳輸，不關的話前端以為還連著，回報無聲遺失
+            with suppress(Exception):
+                await websocket.close(code=close_code)

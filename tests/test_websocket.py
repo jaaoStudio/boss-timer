@@ -329,8 +329,9 @@ def test_stalled_send_closes_connection(monkeypatch):
 
         await asyncio.wait_for(until(lambda: stalled.closed), 1)
 
-        assert stalled not in manager._outboxes   # 不再累積：之後的訊息直接丟棄
+        assert stalled not in manager._outboxes
         manager.send(stalled, {"type": "ok"})
+        assert stalled not in manager._outboxes   # 不再累積：之後的訊息直接丟棄
         manager.disconnect(stalled)
 
     asyncio.run(scenario())
@@ -338,16 +339,16 @@ def test_stalled_send_closes_connection(monkeypatch):
 
 def test_slow_but_progressing_connection_is_not_closed(monkeypatch):
     """逾時只算單一則訊息：每則都在時限內送出的慢連線，總時間超過時限也不會被關閉。"""
-    monkeypatch.setattr(manager_module, "SEND_STALL_SECONDS", 0.05)
+    monkeypatch.setattr(manager_module, "SEND_STALL_SECONDS", 0.5)
 
     async def scenario():
         manager = ConnectionManager()
-        slow = FakeSocket(send=lambda: asyncio.sleep(0.02))
+        slow = FakeSocket(send=lambda: asyncio.sleep(0.15))
         await manager.connect(slow)
         for _ in range(4):
             manager.send(slow, {"type": "ok"})
 
-        await asyncio.wait_for(until(lambda: len(slow.sent) == 5), 1)   # 共約 0.1 秒，超過單則時限
+        await asyncio.wait_for(until(lambda: len(slow.sent) == 5), 5)   # 共約 0.75 秒，超過單則時限
 
         assert not slow.closed
         manager.disconnect(slow)
@@ -355,13 +356,26 @@ def test_slow_but_progressing_connection_is_not_closed(monkeypatch):
     asyncio.run(scenario())
 
 
-def test_endpoint_error_closes_the_connection():
-    """處理訊息出錯時關閉連線（照 engine.io），不留下前端以為還連著的殭屍連線。"""
+@pytest.mark.parametrize("raw", ["not json", "[]", '{"type": "join_room", "payload": null}'])
+def test_malformed_message_closes_the_connection(raw):
+    """照 engine.io：封包解析失敗才關閉連線，不留下前端以為還連著的殭屍連線。"""
     with connect(str(uuid.uuid4())) as ws:
-        ws.send_text("not json")
+        ws.send_text(raw)
         with pytest.raises(WebSocketDisconnect) as closed:
             ws.receive_json()
-        assert closed.value.code == 1011
+        assert closed.value.code == 1007
+
+
+def test_handler_error_keeps_the_connection(monkeypatch):
+    """照 Socket.IO：單則訊息處理出錯不關閉連線，否則資料庫故障時前端會每秒重連一次。"""
+    def db_down(db, room_id):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(ws_router.room_service, "get_room_by_id", db_down)
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
 
 
 def test_ping_from_old_frontend_is_answered_with_pong():

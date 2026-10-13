@@ -323,7 +323,7 @@ ConnectionManager
 └── _connection_counts: Counter              # 同時連線數，個人（personal:）與天花板（ceiling:）分開計；try_reserve 在 await 前一次完成檢查與計入
 ```
 
-**⚠️ 送訊息一律經送出佇列**（照 engine.io 的 writeBuffer，ADR-0008）: 送給單一連線用 `manager.send(websocket, message)`，廣播用 `broadcast_to_room` / `broadcast_to_all`，**勿直接 `websocket.send_text`**（會繞過佇列、打亂順序，`hello` 也不再保證是第一則）。廣播只放進佇列、不等送出，一條收不下的連線不會拖住呼叫端。送出失敗，或同一則訊息從開始送出算起超過 `SEND_STALL_SECONDS`（45 秒，= 心跳間隔 + 逾時）還送不出去（實際約在對方停止接收後 45～90 秒），寫出 task 就關閉該連線並移除其佇列，**勿在 manager 裡 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。**勿以為協定層 ping 會關閉收不下的連線**：ping 要先寫進同一個塞滿的緩衝才開始計時，這種情況永遠不會逾時，所以才有 `SEND_STALL_SECONDS`。
+**⚠️ 送訊息一律經送出佇列**（照 engine.io 的 writeBuffer，ADR-0008）: 送給單一連線用 `manager.send(websocket, message)`，廣播用 `broadcast_to_room` / `broadcast_to_all`，**勿直接 `websocket.send_text`**（會繞過佇列、打亂順序，`hello` 也不再保證是第一則）。廣播只放進佇列、不等送出，一條收不下的連線不會拖住呼叫端。送出失敗，或同一則訊息從開始送出算起超過 `SEND_STALL_SECONDS`（45 秒，= 心跳間隔 + 逾時）還送不出去（對方停止接收後約 90 秒內一定關閉：緩衝沒塞滿時由協定層 ping，塞滿時由這個計時），寫出 task 就關閉該連線並移除其佇列，**勿在 manager 裡 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。**勿以為協定層 ping 會關閉收不下的連線**：ping 要先寫進同一個塞滿的緩衝才開始計時，這種情況永遠不會逾時，所以才有 `SEND_STALL_SECONDS`。
 
 ---
 
@@ -492,6 +492,7 @@ ConnectionManager
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼
 - Service 層使用 `logging.error()` 記錄內部錯誤
 - WebSocket 錯誤透過 `manager.send(websocket, {"type": "error", ...})` 回傳（經送出佇列，勿直接 `send_text`）
+- **只有無法解析的訊息才關閉連線**（照 engine.io，close code 1007）；`handle_message` 拋例外只記錄、連線照常（照 Socket.IO）。**勿改成出錯就關閉**：前端重連後 `hello` 會重置退避，資料庫故障時會變成每秒重連、耗盡握手額度後被 4429 擋下
 - Celery 任務錯誤透過 `self.retry()` 自動重試
 
 ### 安全守則
