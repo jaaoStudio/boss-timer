@@ -329,9 +329,39 @@ def test_stalled_send_closes_connection(monkeypatch):
 
         await asyncio.wait_for(until(lambda: stalled.closed), 1)
 
+        assert stalled not in manager._outboxes   # 不再累積：之後的訊息直接丟棄
+        manager.send(stalled, {"type": "ok"})
         manager.disconnect(stalled)
 
     asyncio.run(scenario())
+
+
+def test_slow_but_progressing_connection_is_not_closed(monkeypatch):
+    """逾時只算單一則訊息：每則都在時限內送出的慢連線，總時間超過時限也不會被關閉。"""
+    monkeypatch.setattr(manager_module, "SEND_STALL_SECONDS", 0.05)
+
+    async def scenario():
+        manager = ConnectionManager()
+        slow = FakeSocket(send=lambda: asyncio.sleep(0.02))
+        await manager.connect(slow)
+        for _ in range(4):
+            manager.send(slow, {"type": "ok"})
+
+        await asyncio.wait_for(until(lambda: len(slow.sent) == 5), 1)   # 共約 0.1 秒，超過單則時限
+
+        assert not slow.closed
+        manager.disconnect(slow)
+
+    asyncio.run(scenario())
+
+
+def test_endpoint_error_closes_the_connection():
+    """處理訊息出錯時關閉連線（照 engine.io），不留下前端以為還連著的殭屍連線。"""
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_text("not json")
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 1011
 
 
 def test_ping_from_old_frontend_is_answered_with_pong():

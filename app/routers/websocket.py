@@ -1,6 +1,7 @@
 # app/routers/websocket.py
 import json
 import logging
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
@@ -187,11 +188,15 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
     except Exception as e:
-        if websocket.application_state == WebSocketState.DISCONNECTED:
+        if isinstance(e, RuntimeError) and websocket.application_state == WebSocketState.DISCONNECTED:
             # 送出失敗時寫出 task 已關閉連線，之後的 receive 會拋 RuntimeError，屬一般斷線
             logging.info(f"WebSocket closed after send failure: {e!r}")
         else:
             logging.error(f"WebSocket error: {e}", exc_info=True)
+            # 出錯就關閉連線（照 engine.io）。uvicorn 在 app 正常返回時不會關閉傳輸，不關的話前端以為還連著，
+            # 送出的回報無聲遺失，直到心跳逾時
+            with suppress(Exception):
+                await websocket.close(code=1011)
     finally:
         if websocket in manager.socket_to_room:
             room_id = manager.socket_to_room[websocket]

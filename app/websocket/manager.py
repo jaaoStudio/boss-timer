@@ -16,9 +16,11 @@ HELLO_MESSAGE = {
     "ping_interval": HEARTBEAT_INTERVAL_SECONDS,
     "ping_timeout": HEARTBEAT_TIMEOUT_SECONDS,
 }
-# 同一則訊息送了這麼久還送不出去，就關閉連線。對應 engine.io 的 pingTimeout：對方不收時 ping 也送不到、
+# 同一則訊息從開始送出算起這麼久還送不出去，就關閉連線。對應 engine.io 的 pingTimeout：對方不收時 ping 也送不到、
 # 收不到 pong，時間一到就關閉。協定層 ping 要先寫進同一個塞滿的緩衝才開始計時，這種情況永遠不會逾時。
-# 只看伺服器送不送得出去，不看用戶端有沒有回應（凍結的背景分頁瀏覽器仍會收下，不會被誤踢，#43）
+# 計時從某則訊息卡住才開始（緩衝可能在佇列空著時就滿了），加上關閉握手，實際關閉約在對方停止接收後 45～90 秒。
+# 只看伺服器送不送得出去，不看用戶端有沒有回應：凍結的背景分頁瀏覽器仍會先收下，極少被關閉（#43）；
+# 活躍房間的分頁凍結數小時、緩衝塞滿時仍可能關閉，engine.io 在這種情況會更早關閉，我們接受
 SEND_STALL_SECONDS = HEARTBEAT_INTERVAL_SECONDS + HEARTBEAT_TIMEOUT_SECONDS
 
 class ConnectionManager:
@@ -159,7 +161,7 @@ class ConnectionManager:
     async def run_heartbeat(self, interval: float = HEARTBEAT_INTERVAL_SECONDS):
         """
         定時對所有連線送 heartbeat（一個全域 loop），讓用戶端能偵測無聲中斷。
-        伺服器端的死連線偵測靠 uvicorn 協定層 ping，勿以用戶端有沒有回應判斷生死（#43）。
+        伺服器端的死連線偵測靠 uvicorn 協定層 ping 與 SEND_STALL_SECONDS，勿以用戶端有沒有回應判斷生死（#43）。
         """
         while True:
             await asyncio.sleep(interval)
