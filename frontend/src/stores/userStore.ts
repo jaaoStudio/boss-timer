@@ -12,6 +12,8 @@ export interface User {
   is_admin: boolean;
 }
 
+type RefreshResult = 'refreshed' | 'rejected' | 'unavailable';
+
 interface UserState {
   user: User | null;
   isLoggedIn: boolean;
@@ -95,12 +97,12 @@ export const useUserStore = defineStore('user', {
 
         let res = await apiService.validateToken();
 
-
+        let refresh: RefreshResult | undefined;
         if (!res.valid && localStorage.getItem('user_info')) {
-          const refreshed = await this.tryRefreshToken();
-          if (refreshed) {
+          refresh = await this.tryRefreshToken();
+          if (refresh === 'refreshed') {
             res = await apiService.validateToken();
-          } else {
+          } else if (refresh === 'rejected') {
             await this.discardStaleLogin();
           }
         }
@@ -109,6 +111,9 @@ export const useUserStore = defineStore('user', {
           this.user = res.user ?? null;
           this.isLoggedIn = true;
           localStorage.setItem('user_info', JSON.stringify(res.user));
+        } else if (refresh === 'unavailable' && this.restoreUserFromStorage()) {
+          // 換發暫時失敗（網路錯誤、5xx，例如部署切換 slot）：refresh token 仍有效，保留登入狀態。
+          // WebSocket 握手也會以 refresh cookie 認出登入者，兩邊一致；之後的 API 401 由 interceptor 再換發
         } else {
           this.clearAuth();
           this.anonymousName = this.getAnonymousName();
@@ -128,22 +133,25 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    // 嘗試用 refresh token 換新的 access token。
-    // 成功回傳 true；任何失敗（無 refresh cookie / 已過期 / 被限流）回傳 false，
-    // 由 axios interceptor 處理後續導向與提示。被限流也不恢復登入狀態：此時 validate 已回 valid:false，
-    // 恢復的話畫面顯示已登入、WebSocket 卻以過期的 cookie 連成匿名。
-    async tryRefreshToken(): Promise<boolean> {
+    // 嘗試用 refresh token 換新的 access token：
+    // - 'rejected'：refresh token 無效（401），或被限流（429）——後端以 refresh token 裡的使用者計算額度，
+    //   被限流代表前端多半陷入 refresh 迴圈，視為換發失敗並登出，迴圈才會停下
+    // - 'unavailable'：網路錯誤、5xx 等暫時失敗，refresh token 仍有效，不可登出（會撤銷 30 天的登入）
+    async tryRefreshToken(): Promise<RefreshResult> {
       try {
         await apiService.refresh_token();
-        return true;
-      } catch {
-        return false;
+        return 'refreshed';
+      } catch (error) {
+        const status = isAxiosError(error) ? error.response?.status : undefined;
+        return status === 401 || status === 429 ? 'rejected' : 'unavailable';
       }
     },
 
     // 換發失敗、改以匿名使用前，盡力清掉舊的登入 cookie：refresh cookie 還在時 /auth/session 不發匿名身分，
     // WebSocket 握手也會以它判斷為登入者，與畫面上的匿名狀態不一致
     async discardStaleLogin() {
+      // 先清本地登入狀態：之後的 initSession 被限流時，_runInitializeAuth 的 catch 才不會以 user_info 恢復成登入
+      this.clearAuth();
       try {
         await apiService.logout();
       } catch (error) {
