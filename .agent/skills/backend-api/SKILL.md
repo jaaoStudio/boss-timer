@@ -192,7 +192,7 @@ async def create_room(request: Request, ...):   # 必須有 request 參數
 
 - **Router 層**: 使用 `HTTPException` 回傳適當 HTTP 狀態碼
 - **Service 層**: 使用 `logging.error()` 記錄內部錯誤
-- **WebSocket 錯誤**: 透過 `websocket.send_text(json.dumps({"type": "error", ...}))` 回傳
+- **WebSocket 錯誤**: 透過 `manager.send(websocket, {"type": "error", ...})` 回傳（經送出佇列，勿直接 `websocket.send_text`）
 
 ```python
 # Router 層範例

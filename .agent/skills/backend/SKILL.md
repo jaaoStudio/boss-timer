@@ -277,7 +277,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | payload | 說明 |
 |---|---|---|
-| `ping` | — | 心跳 (每 30 秒) |
+| `ping` | — | **舊版前端**的應用層 ping，伺服器回 `pong`（新版前端不送，改由伺服器心跳；部署切換期間仍需相容），**不以它判斷連線生死**。死連線由 uvicorn 協定層 WebSocket ping 偵測，設定只在 `app/Dockerfile` 的 `UVICORN_WS*`（`websockets` 實作、間隔 20 秒、逾時 60 秒）。設計與禁忌見 ADR-0008 |
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
 | `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
@@ -287,7 +287,9 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | 說明 |
 |---|---|
-| `pong` | 心跳回應 |
+| `hello` | 連線接受後的第一則訊息：`{ "ping_interval": 25, "ping_timeout": 20 }`（`app/websocket/manager.py` 的 `HEARTBEAT_*`），前端據此啟動心跳逾時（照 engine.io 的 open 封包，ADR-0008）。被連線限制拒絕時不送 |
+| `heartbeat` | lifespan 的 `run_heartbeat()` 每 25 秒送給所有連線，讓前端偵測無聲中斷 |
+| `pong` | 回應舊版前端的 `ping` |
 | `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at + room_settings)；重連時用來重建所有房間狀態 |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
 | `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "...", "replacement": BossRecordResponse \| null }`) |
@@ -305,7 +307,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | 限制 | 個人 | IP 天花板 | 超過時 |
 |---|---|---|---|
 | `record_boss` | `RECORD_BOSS_LIMIT` 30/分鐘、1000/天 | × 200 | 回 `error` `rate_limited` |
-| 握手頻率 | `HANDSHAKE_LIMIT` 170/10 分鐘（約 1000/小時，撞到上限最多 10 分鐘恢復；所有分頁共用，#43 修好後可收緊） | × 200 | 接受後立即以 close code **4429**（reason `connection_limited`）關閉，不另送訊息 |
+| 握手頻率 | `HANDSHAKE_LIMIT` 170/10 分鐘（約 1000/小時，撞到上限最多 10 分鐘恢復；所有分頁共用；#43 已修，部署後觀察重連頻率再收緊） | × 200 | 接受後立即以 close code **4429**（reason `connection_limited`）關閉，不另送訊息 |
 | 同時連線數 | `MAX_CONNECTIONS` 10 | × 200 | 同上 |
 
 前端收到 4429 不自動重連（限制以分鐘 / 小時計，馬上重試只會再被擋），使用者下次操作時才會再連線。
@@ -317,10 +319,11 @@ ConnectionManager
 ├── room_subscriptions: Dict[str, Set[WS]]   # room_id → 訂閱的 WS
 ├── socket_to_room: Dict[WS, str]            # WS → 目前所在 room_id
 ├── _connection_keys: Dict[WS, Set[str]]     # WS → 握手時計入的連線數 key
+├── _outboxes: Dict[WS, (Queue, Task)]      # 每條連線的送出佇列與寫出 task（ADR-0008）
 └── _connection_counts: Counter              # 同時連線數，個人（personal:）與天花板（ceiling:）分開計；try_reserve 在 await 前一次完成檢查與計入
 ```
 
-**⚠️ Dead connection 清除**: `broadcast_to_room` / `broadcast_to_all` 廣播時若 `send_text` 拋出例外，會立刻呼叫 `disconnect()` 移除死連線，防止殭屍連線堆積佔用記憶體。
+**⚠️ 送訊息一律經送出佇列**（照 engine.io 的 writeBuffer，ADR-0008）: 送給單一連線用 `manager.send(websocket, message)`，廣播用 `broadcast_to_room` / `broadcast_to_all`，**勿直接 `websocket.send_text`**（會繞過佇列、打亂順序，`hello` 也不再保證是第一則）。廣播只放進佇列、不等送出，一條收不下的連線不會拖住呼叫端。送出失敗，或同一則訊息從開始送出算起超過 `SEND_STALL_SECONDS`（45 秒，= 心跳間隔 + 逾時）還送不出去（對方停止接收後約 90 秒內一定關閉：緩衝沒塞滿時由協定層 ping，塞滿時由這個計時），寫出 task 就關閉該連線並移除其佇列，**勿在 manager 裡 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。**勿以為協定層 ping 會關閉收不下的連線**：ping 要先寫進同一個塞滿的緩衝才開始計時，這種情況永遠不會逾時，所以才有 `SEND_STALL_SECONDS`。
 
 ---
 
@@ -421,6 +424,11 @@ ConnectionManager
 - **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`
 - **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
 
+### run_heartbeat (asyncio)
+- **頻率**: 每 25 秒（`HEARTBEAT_INTERVAL_SECONDS`）
+- **邏輯**: `ConnectionManager.run_heartbeat()` 對所有 WebSocket 連線送 `{"type": "heartbeat"}`，前端據此偵測無聲中斷（ADR-0008）
+- **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
+
 ### send_discord_webhook (Celery)
 - **Queue**: `discord_queue` (由 `celery_worker_discord` 獨佔處理)
 - **Rate Limit**: `2/s` (Task 層) + `concurrency=1` (Worker 層) 雙重限速
@@ -478,12 +486,17 @@ ConnectionManager
 - 廣播: 使用 `manager.broadcast_to_room()` 或 `manager.broadcast_to_all()`
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
 - **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 在每個需要 DB 的 message handler 內短暫取用，用完即還給 pool
-- **`ping` 訊息**在進入 `SessionLocal` 之前直接 `continue`，不觸碰 DB
+- **`ping` 訊息**在進入 `SessionLocal` 之前回 `pong` 並 `continue`，不觸碰 DB
 
 ### 錯誤處理
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼
 - Service 層使用 `logging.error()` 記錄內部錯誤
-- WebSocket 錯誤直接透過 `websocket.send_text(json.dumps({"type": "error", ...}))` 回傳
+- WebSocket 錯誤透過 `manager.send(websocket, {"type": "error", ...})` 回傳（經送出佇列，勿直接 `send_text`）
+- **連線何時關閉**（ADR-0008）：
+  - 無法解析（二進位 frame、非 JSON 物件、`type` 非字串、`payload` 非物件）→ 以 **1007** 關閉，記 info（照 engine.io）
+  - `handle_message` 拋例外 → 只記錄、**連線保留**（照 Socket.IO）。**勿改成出錯就關閉**：前端重連後 `hello` 會重置退避，資料庫故障時會變成每秒重連、耗盡握手額度後被 4429 擋下
+  - endpoint 其他非預期錯誤（含握手）→ 先清理（移出房間、更新人數）再以 **1011** 關閉。**勿刪這個關閉**：uvicorn 在 app 返回時不會關閉傳輸，前端會以為還連著、回報無聲遺失
+- `join_room` 取得 `room_state` 成功後才訂閱房間，出錯時不留在房間裡
 - Celery 任務錯誤透過 `self.retry()` 自動重試
 
 ### 安全守則

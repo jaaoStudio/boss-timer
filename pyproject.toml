@@ -18,6 +18,7 @@ dependencies = [
     "slowapi>=0.1.9",
     "sqlalchemy>=2.0.41",
     "uvicorn[standard]>=0.35.0",
+    "websockets>=15.0.1,<16",
 ]
 
 [dependency-groups]

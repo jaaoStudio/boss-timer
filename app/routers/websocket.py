@@ -1,7 +1,7 @@
 # app/routers/websocket.py
-import asyncio
 import json
 import logging
+from contextlib import suppress
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
@@ -21,18 +21,14 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # 限流（見 docs/adr/0007）：個人額度以伺服器端身分計算（重連不會歸零），IP 天花板為其 IP_CEILING_MULTIPLIER 倍
 RECORD_BOSS_LIMIT = "30/minute;1000/day"
-# 握手頻率：以身分計，所有分頁共用；背景分頁目前每小時會重連數十次（#43），多開幾個分頁就會累加。
-# 約每小時 1000 次；用 10 分鐘的時間窗，撞到上限後最多 10 分鐘就恢復（固定時間窗，1 小時的窗最壞要等近 1 小時）。
-# #43 修好後可收緊
+# 握手頻率：以身分計，所有分頁共用。約每小時 1000 次；用 10 分鐘的時間窗，撞到上限後最多 10 分鐘就恢復
+# （固定時間窗，1 小時的窗最壞要等近 1 小時）。原本為背景分頁反覆重連（#43）而放寬，#43 已修，
+# 部署後觀察正式環境的重連頻率再收緊
 HANDSHAKE_LIMIT = "170/10 minutes"
 # 同時連線數（多開分頁、手機加電腦）
 MAX_CONNECTIONS = 10
 # 超過連線限制時以此 close code 關閉，前端據此顯示提示
 CLOSE_CODE_LIMITED = 4429
-
-# --- Server-side heartbeat ---
-# 客戶端每 30 秒送一次 ping，90 秒內沒有任何訊息視為靜默斷線
-HEARTBEAT_TIMEOUT = 90  # seconds
 
 
 @router.get("/connections/count")
@@ -51,12 +47,13 @@ Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, 
 
 async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     if not room_service.get_room_by_id(db, room_id):
-        await websocket.send_text(json.dumps({"type": "error", "code": "room_not_found", "message": "Room not found"}))
+        manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
         return
     room_service.update_room_last_active(db, room_id)
-    manager.subscribe_to_room(websocket, room_id)
+    # 取得初始狀態成功後才訂閱：出錯時（例如資料庫故障）連線保留，但不留在房間裡卻沒有初始狀態
     initial_state = room_service.get_room_state(db, room_id)
-    await websocket.send_text(json.dumps(initial_state, default=str))
+    manager.subscribe_to_room(websocket, room_id)
+    manager.send(websocket, initial_state)
     await manager.broadcast_user_count(room_id)
 
 
@@ -68,17 +65,17 @@ async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optio
 async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
     current_room = manager.socket_to_room.get(websocket)
     if not current_room or current_room != room_id:
-        await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": "You are not in this room"}))
+        manager.send(websocket, {"type": "error", "code": "record_rejected", "message": "You are not in this room"})
         return
     if not check_dual_limit(RECORD_BOSS_LIMIT, "ws_record_boss", conn.limit_keys):
-        await websocket.send_text(json.dumps({"type": "error", "code": "rate_limited", "message": "Rate limit exceeded. Please slow down."}))
+        manager.send(websocket, {"type": "error", "code": "rate_limited", "message": "Rate limit exceeded. Please slow down."})
         return
     try:
         record_create = BossRecordCreate(**payload)
         await boss_service.BossService.record_boss_from_websocket(db, record_create, conn.identity, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
-        await websocket.send_text(json.dumps({"type": "error", "code": "record_rejected", "message": str(e)}))
+        manager.send(websocket, {"type": "error", "code": "record_rejected", "message": str(e)})
 
 
 _HANDLERS: dict[str, Handler] = {
@@ -101,16 +98,42 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
 
     payload = message.get("payload", {})
     room_id = payload.get("room_id")
-    if not room_id:
-        logging.warning(f"Received message type '{msg_type}' without room_id")
+    if not room_id or not isinstance(room_id, str):
+        logging.warning(f"Received message type '{msg_type}' without a valid room_id")
         return
 
     await handler(websocket, payload, room_id, db, manager, conn)
 
 
+async def _receive_message(websocket: WebSocket) -> Optional[dict]:
+    """
+    收下一則用戶端訊息並解析。無法解析時回傳 None：二進位 frame、不是 JSON 物件、
+    type 不是字串（socket.io-parser 同樣把非字串事件名當成解析失敗）、payload 不是物件。
+    用 receive() 而非 receive_text()：後者遇到二進位 frame、或寫出 task 已關閉連線時會拋例外，
+    receive() 照常回傳對方的斷線訊息
+    """
+    raw = await websocket.receive()
+    if raw["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(raw.get("code", 1000), raw.get("reason"))
+    data = raw.get("text")
+    if data is None:
+        return None
+    try:
+        message = json.loads(data)
+    except (ValueError, RecursionError):   # 極深的巢狀 JSON 拋 RecursionError
+        return None
+    if (
+        not isinstance(message, dict)
+        or not isinstance(message.get("type"), str)
+        or not isinstance(message.get("payload", {}), dict)
+    ):
+        return None
+    return message
+
+
 async def _reject_connection(websocket: WebSocket) -> None:
     """
-    超過握手頻率或同時連線數：接受後立即以明確的 close code 關閉，前端據此顯示提示並停止自動重連。
+    超過握手頻率或同時連線數：接受後立即以明確的 close code 關閉，前端據此顯示提示。
     不另送錯誤訊息：前端收到伺服器訊息就會重置重連次數，被拒絕時不該重置。
     """
     await websocket.accept()
@@ -158,48 +181,60 @@ async def websocket_endpoint(
 
     try:
         await manager.connect(websocket)
-    except Exception:
+    except (WebSocketDisconnect, OSError) as e:
+        # 握手途中對方離開（accept 失敗），不是伺服器錯誤
+        logging.info(f"WebSocket handshake aborted: {e!r}")
         manager.disconnect(websocket)   # 釋放 try_reserve 計入的連線數
-        raise
+        return
+    except Exception:
+        logging.error("WebSocket handshake failed", exc_info=True)
+        manager.disconnect(websocket)
+        with suppress(Exception):   # uvicorn 在 app 返回時不會關閉傳輸，不關的話前端以為還連著
+            await websocket.close(code=1011)
+        return
 
+    close_code: Optional[int] = None
     try:
         while True:
-            try:
-                data = await asyncio.wait_for(
-                    websocket.receive_text(),
-                    timeout=HEARTBEAT_TIMEOUT
-                )
-            except asyncio.TimeoutError:
-                logging.info("WebSocket heartbeat timeout, closing dead connection.")
-                try:
-                    await websocket.close()
-                except Exception:
-                    pass
+            # 不設接收逾時：死連線由協定層 ping 偵測，勿以「多久沒收到前端訊息」判斷生死（ADR-0008、#43）
+            message = await _receive_message(websocket)
+            if message is None:
+                # 照 engine.io：只有封包解析失敗才關閉連線
+                logging.info("Malformed WebSocket message, closing.")
+                close_code = 1007
                 break
-
-            message = json.loads(data)
             message_type = message.get("type")
 
             if message_type == "ping":
-                await websocket.send_text(json.dumps({"type": "pong"}))
+                # 新版前端不再送 ping（改由伺服器心跳，ADR-0008）；部署切換期間的舊版前端仍會送，照舊回 pong
+                manager.send(websocket, {"type": "pong"})
                 continue
 
             if message_type in ("authenticate", "deauthenticate"):
-                # 已不再使用：身分改由握手時的 cookie 決定，前端登入 / 登出時重新連線。
-                # 部署切換期間仍開著的舊版前端可能送出，直接忽略
+                # 已不再使用：身分改由握手時的 cookie 決定。部署切換期間仍開著的舊版前端可能送出，
+                # 直接忽略（不進 handle_message，避免每則都記一筆 Unknown message type 警告）
                 continue
 
-            with SessionLocal() as db:
-                await handle_message(websocket, message, db, manager, conn)
+            try:
+                with SessionLocal() as db:
+                    await handle_message(websocket, message, db, manager, conn)
+            except Exception:
+                # 照 Socket.IO：單則訊息處理出錯不關閉連線。關閉的話前端重連後 hello 會重置退避，
+                # 每次都送 join_room、每次都出錯（例如資料庫故障），變成每秒重連一次
+                logging.error(f"Error handling WebSocket message '{message_type}'", exc_info=True)
 
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
     except Exception as e:
         logging.error(f"WebSocket error: {e}", exc_info=True)
+        close_code = 1011
     finally:
-        if websocket in manager.socket_to_room:
-            room_id = manager.socket_to_room[websocket]
-            manager.disconnect(websocket)
+        room_id = manager.socket_to_room.get(websocket)
+        manager.disconnect(websocket)
+        if room_id:
             await manager.broadcast_user_count(room_id)
-        else:
-            manager.disconnect(websocket)
+        if close_code is not None:
+            # 先清理再關閉：關閉握手可能要等 10 秒以上，期間不該還算在房間與人數裡。
+            # uvicorn 在 app 返回時不會關閉傳輸，不關的話前端以為還連著，回報無聲遺失
+            with suppress(Exception):
+                await websocket.close(code=close_code)

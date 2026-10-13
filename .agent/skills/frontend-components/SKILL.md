@@ -61,6 +61,7 @@ frontend/src/
 │   │
 │   └── ui/                       ← 通用 UI 元件
 │       ├── AdBanner.vue
+│       ├── ConnectionBanner.vue    ← WebSocket 重連中提示（websocketStore.isReconnecting，超過 2 秒才顯示）
 │       ├── CountdownTimer.vue
 │       ├── GoogleLoginButton.vue
 │       ├── MaintenanceBanner.vue

@@ -1,6 +1,8 @@
 """WebSocket 伺服器端身分、回報與連線限流的測試（見 docs/adr/0007、issue #37）。"""
 import asyncio
+import json
 import uuid
+from contextlib import contextmanager, suppress
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +17,8 @@ from app.services.boss_service import BossService
 from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import Identity
-from app.websocket.manager import ConnectionManager
+from app.websocket import manager as manager_module
+from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_TIMEOUT_SECONDS, HELLO_MESSAGE, ConnectionManager
 from tests.helpers import make_limited_app
 
 ROOM = "ROOMABCDEF"
@@ -41,17 +44,28 @@ def recorded_identities(monkeypatch):
         await manager.broadcast_to_room(record.room_id, {"type": "ok"})
 
     monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss_from_websocket", staticmethod(fake_record))
-    yield recorded
+    # 在 with client 內，所有連線共用同一個 portal（同一個 event loop），與正式環境相同；
+    # 否則每條連線各自一個 loop，廣播跨 loop 放進送出佇列不是 thread-safe
+    with client:
+        yield recorded
     app.dependency_overrides.clear()
 
 
-def connect(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
+def open_socket(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
     if anon:
         cookies[anonymous_id.COOKIE_NAME] = anonymous_id.sign(anon)
     headers = {"CF-Connecting-IP": ip}
     if cookies:
         headers["cookie"] = "; ".join(f"{name}={value}" for name, value in cookies.items())
     return client.websocket_connect("/ws/", headers=headers)
+
+
+@contextmanager
+def connect(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
+    """建立被接受的連線，並讀掉伺服器的第一則訊息 hello。"""
+    with open_socket(anon, ip, **cookies) as ws:
+        assert ws.receive_json()["type"] == "hello"
+        yield ws
 
 
 def access_token(user_id: str = "42") -> str:
@@ -76,7 +90,7 @@ def record(ws, **recorder_info) -> str:
 
 def assert_rejected(anon: str | None = None, ip: str = "203.0.113.1") -> None:
     # 只以 close code 拒絕、不先送訊息：前端收到訊息會重置重連次數
-    with connect(anon, ip) as ws:
+    with open_socket(anon, ip) as ws:
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
     assert exc.value.code == ws_router.CLOSE_CODE_LIMITED and exc.value.reason == "connection_limited"
@@ -202,3 +216,195 @@ def test_handshake_rate_limit(monkeypatch):
         with connect(anon):
             pass
     assert_rejected(anon)
+
+
+# --- 伺服器心跳（ADR-0008）---
+
+def test_hello_announces_heartbeat_parameters():
+    with open_socket(str(uuid.uuid4())) as ws:
+        assert ws.receive_json() == {
+            "type": "hello",
+            "ping_interval": HEARTBEAT_INTERVAL_SECONDS,
+            "ping_timeout": HEARTBEAT_TIMEOUT_SECONDS,
+        }
+
+
+def test_heartbeat_reaches_every_connection():
+    manager = app.dependency_overrides[get_connection_manager]()
+    broadcast = manager.broadcast_to_all
+
+    async def one_beat():
+        beat = asyncio.Event()
+
+        async def broadcast_once(message):
+            await broadcast(message)
+            beat.set()
+
+        manager.broadcast_to_all = broadcast_once
+        task = asyncio.create_task(manager.run_heartbeat(interval=0))
+        await beat.wait()
+        task.cancel()   # 心跳迴圈下一次 sleep 時取消，只送一輪
+        with suppress(asyncio.CancelledError):
+            await task
+
+    with connect(str(uuid.uuid4())) as first, connect(str(uuid.uuid4())) as second:
+        client.portal.call(one_beat)   # 在伺服器的 event loop 上執行
+        for ws in (first, second):
+            assert ws.receive_json() == {"type": "heartbeat"}
+            ws.send_json({"type": "ping"})
+            assert ws.receive_json() == {"type": "pong"}   # 只有一輪心跳
+
+
+class FakeSocket:
+    def __init__(self, send=None):
+        self.sent: list[dict] = []
+        self.closed = False
+        self._send = send
+
+    async def accept(self) -> None:
+        pass
+
+    async def send_text(self, text: str) -> None:
+        if self._send:
+            await self._send()
+        self.sent.append(json.loads(text))
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+async def until(condition) -> None:
+    while not condition():
+        await asyncio.sleep(0)
+
+
+def test_stuck_connection_does_not_hold_up_others():
+    """送出佇列（ADR-0008）：廣播不等送出，一條收不下的連線不影響其他連線。"""
+    async def scenario():
+        manager = ConnectionManager()
+        stuck, healthy = FakeSocket(send=asyncio.Event().wait), FakeSocket()
+        for ws in (stuck, healthy):
+            await manager.connect(ws)
+
+        await asyncio.wait_for(manager.broadcast_to_all({"type": "heartbeat"}), 1)
+        await asyncio.wait_for(until(lambda: len(healthy.sent) == 2), 1)
+
+        assert healthy.sent == [HELLO_MESSAGE, {"type": "heartbeat"}]
+        assert stuck.sent == []
+        for ws in (stuck, healthy):
+            manager.disconnect(ws)
+
+    asyncio.run(scenario())
+
+
+def test_send_failure_closes_connection_and_leaves_cleanup_to_the_endpoint():
+    """送不出去就關閉連線，但不在 manager 裡清除，否則 endpoint 的 finally 找不到房間、不會更新房間人數。"""
+    async def gone():
+        raise WebSocketDisconnect(code=1006)
+
+    async def scenario():
+        manager = ConnectionManager()
+        dead = FakeSocket(send=gone)
+        await manager.connect(dead)
+        manager.subscribe_to_room(dead, ROOM)
+
+        await asyncio.wait_for(until(lambda: dead.closed), 1)
+
+        assert manager.socket_to_room[dead] == ROOM
+        manager.send(dead, {"type": "ok"})   # 寫出 task 已結束：直接丟棄、不拋例外
+        assert dead.sent == []
+        manager.disconnect(dead)
+
+    asyncio.run(scenario())
+
+
+def test_stalled_send_closes_connection(monkeypatch):
+    """同一則訊息送太久送不出去就關閉（對應 engine.io 的 pingTimeout），佇列不會無限累積。"""
+    monkeypatch.setattr(manager_module, "SEND_STALL_SECONDS", 0.05)
+
+    async def scenario():
+        manager = ConnectionManager()
+        stalled = FakeSocket(send=asyncio.Event().wait)
+        await manager.connect(stalled)
+
+        await asyncio.wait_for(until(lambda: stalled.closed), 1)
+
+        assert stalled not in manager._outboxes
+        manager.send(stalled, {"type": "ok"})
+        assert stalled not in manager._outboxes   # 不再累積：之後的訊息直接丟棄
+        manager.disconnect(stalled)
+
+    asyncio.run(scenario())
+
+
+def test_slow_but_progressing_connection_is_not_closed(monkeypatch):
+    """逾時只算單一則訊息：每則都在時限內送出的慢連線，總時間超過時限也不會被關閉。"""
+    monkeypatch.setattr(manager_module, "SEND_STALL_SECONDS", 0.5)
+
+    async def scenario():
+        manager = ConnectionManager()
+        slow = FakeSocket(send=lambda: asyncio.sleep(0.15))
+        await manager.connect(slow)
+        for _ in range(4):
+            manager.send(slow, {"type": "ok"})
+
+        await asyncio.wait_for(until(lambda: len(slow.sent) == 5), 5)   # 共約 0.75 秒，超過單則時限
+
+        assert not slow.closed
+        manager.disconnect(slow)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("raw", [
+    "not json", "[]", '{"type": "join_room", "payload": null}', '{"type": [], "payload": {}}', "[" * 100_000,
+])
+def test_malformed_message_closes_the_connection(raw):
+    """照 engine.io：封包解析失敗才關閉連線，不留下前端以為還連著的殭屍連線。"""
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_text(raw)
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 1007
+
+
+def test_binary_frame_closes_the_connection():
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_bytes(b"\x00")
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 1007
+
+
+def test_unexpected_error_closes_the_connection(monkeypatch):
+    """非預期錯誤結束 endpoint 時關閉連線（1011）：uvicorn 不會自己關閉，前端會以為還連著。"""
+    async def broken(websocket):
+        await websocket.receive_text()
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr(ws_router, "_receive_message", broken)
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_json({"type": "ping"})
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 1011
+
+
+def test_handler_error_keeps_the_connection(monkeypatch):
+    """照 Socket.IO：單則訊息處理出錯不關閉連線，否則資料庫故障時前端會每秒重連一次。"""
+    def db_down(db, room_id):
+        raise RuntimeError("database unavailable")
+
+    monkeypatch.setattr(ws_router.room_service, "get_room_state", db_down)
+    manager = app.dependency_overrides[get_connection_manager]()
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
+        assert manager.get_room_user_count(ROOM) == 0   # 沒有初始狀態就不留在房間裡
+
+
+def test_ping_from_old_frontend_is_answered_with_pong():
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_json({"type": "ping"})
+        assert ws.receive_json() == {"type": "pong"}
