@@ -135,8 +135,8 @@ frontend/
 
 **核心 Actions**:
 - `initializeAuth()` — 初始化: 建立 Session → 驗證 Token → 連線 WebSocket（細節見下方「初始化流程守則」）
-- `loginWithGoogle(payload)` — Google 登入 + 通知 WebSocket 更新身份
-- `logout()` — 清除本地狀態 + API 登出 + 通知 WebSocket 切換匿名
+- `loginWithGoogle(payload)` — Google 登入 + 通知 WebSocket 更新身份；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
+- `logout()` — 先打 `/auth/logout`，**成功才**清除本地狀態 → `initSession()` → 廣播 `LOGOUT` → 重連（`initSession` 失敗仍廣播並重連）。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
 - `updatePreferences(preferences)` — 更新使用者偏好設定
 
 **跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 在多個瀏覽器頁籤間同步登入/登出狀態。
@@ -152,7 +152,7 @@ frontend/
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session`、`/auth/validate` 會各被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
 
 3. **被限流（429）不可登出**
-   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 遇到 429 會往外丟（其他錯誤才視為未登入），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。例外：`tryRefreshToken()` 被限流時視為換發失敗並登出——後端 `/auth/refresh` 以 refresh token 裡的使用者計算額度，被限流代表同一個登入者一分鐘 refresh 超過 30 次（多半是前端陷入 refresh 迴圈），登出會刪掉 `user_info` 讓迴圈停下；若改為恢復登入狀態，畫面顯示已登入、WebSocket 卻以過期 cookie 連成匿名。
+   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 遇到 429 會往外丟（其他錯誤才視為未登入），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。例外：`tryRefreshToken()` 被限流時視為換發失敗並登出——後端 `/auth/refresh` 以 refresh token 裡的使用者計算額度，被限流代表同一個登入者一分鐘 refresh 超過 30 次（多半是前端陷入 refresh 迴圈），登出會刪掉 `user_info` 讓迴圈停下；若改為恢復登入狀態，畫面顯示已登入、WebSocket 卻以過期 cookie 連成匿名。換發失敗（含被限流）改以匿名使用時，`discardStaleLogin()` 先盡力呼叫 `/auth/logout` 清掉舊的登入 cookie（失敗只留 log），再 `initSession()` 取得匿名身分，之後才連線：refresh cookie 還在時 `/auth/session` 不發匿名身分，WebSocket 握手也會以它判斷為登入者。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
@@ -238,7 +238,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
   - **心跳逾時**：伺服器連線後先送 `hello`（`ping_interval` / `ping_timeout`），之後每 25 秒送 `heartbeat`。收到 `hello` 才啟動逾時，每次心跳重新計時，超過兩者相加（45 秒）沒收到就關閉並退避重連。**不分前景背景、不探測、前端不送 `ping`**：背景節流的是計時器，心跳照常送達，逾時只會晚觸發、不會誤判。連到不送 `hello` 的舊後端時不啟動逾時
   - **自動重連**：`min(30s, 1s × 2^次數) × (1 ± 0.5)`，**不放棄**。**收到伺服器第一則訊息才重置次數、清除 `isReconnecting`**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」且不送訊息，在 `onopen` 重置會一直以最短間隔重連。心跳逾時等主動判定斷線時走退避、不重置次數。握手卡在 CONNECTING 超過 20 秒（`CONNECT_TIMEOUT_MS`）就放棄；`createWebSocket()` 丟例外時同樣交給退避；`offline` 事件立刻關閉進入退避，`online` 不特別處理
   - 每個 socket 事件都先檢查 `socket.value === ws`，`connect()` 開新連線前先 `dropSocket()` 清掉仍在 CLOSING 的舊連線：被取代的舊連線遲到的 `onclose` 不可動到新連線（會變成兩條活連線）
-  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
+  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時照一般斷線退避重連（多半是休眠喚醒時舊連線的名額還沒釋放；被拒絕時伺服器不送訊息，次數不會重置，間隔自然拉長，**不另加特例**），連續被擋只在第一次顯示「連線數已達上限」提示，收到伺服器訊息後重新計算。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:

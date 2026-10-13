@@ -225,9 +225,14 @@ const handleLoginError = () => {
   showMessage.error(t('roomSelection.toasts.googleSignInFailed'));
 };
 
-const handleLogout = () => {
-  userStore.logout();
-  showMessage.info(t('roomSelection.toasts.logoutSuccess'));
+const handleLogout = async () => {
+  try {
+    await userStore.logout();
+    showMessage.info(t('roomSelection.toasts.logoutSuccess'));
+  } catch (error) {
+    console.error("Logout error:", error);
+    showMessage.error(t('roomSelection.errors.logoutFailed'));
+  }
 };
 
 // --- Room Handlers ---

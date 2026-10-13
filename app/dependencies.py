@@ -92,7 +92,10 @@ def _limit_items(limit_value: str, factor: int = 1) -> tuple:
 
 
 def _hit_all(limit_value: str, scope: str, key: str, factor: int = 1) -> bool:
-    """依序計數每條上限，任一條超過就回傳 False（之後的不再計數）。"""
+    """
+    依序計數每條上限，任一條超過就回傳 False（之後的不再計數）。
+    被後面的時間窗擋下時，前面的時間窗已經計數（與 slowapi 行為一致）。
+    """
     if not limiter.enabled:
         return True
     return all(limiter.limiter.hit(item, scope, key) for item in _limit_items(limit_value, factor))

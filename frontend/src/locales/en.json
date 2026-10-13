@@ -23,7 +23,8 @@
       "createFailed": "Failed to create room. Please try again.",
       "nicknameRequiredCreate": "Please enter a nickname or log in to create a room.",
       "nicknameRequiredJoin": "Please enter a nickname or log in to join a room.",
-      "connectionLimit": "Connection limit reached. Please try again later."
+      "connectionLimit": "Connection limit reached. Reconnecting automatically; if this persists, close some other tabs.",
+      "logoutFailed": "Logout failed. Please try again later."
     },
     "toasts": {
       "loginSuccess": "Login successful!",

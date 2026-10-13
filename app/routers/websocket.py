@@ -6,14 +6,13 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from starlette.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
-from app.database import models
 from app.database.database import SessionLocal
-from app.services import auth_service, room_service, boss_service
+from app.services import room_service, boss_service
 from app.dependencies import IP_CEILING_MULTIPLIER, check_dual_limit, get_connection_manager, limit_keys
-from app.utils import anonymous_id
-from app.utils.identity import Identity
+from app.utils.identity import Identity, resolve_identity
 from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
 
@@ -140,39 +139,16 @@ async def _reject_connection(websocket: WebSocket) -> None:
     await websocket.close(code=CLOSE_CODE_LIMITED, reason="connection_limited")
 
 
-def _user_exists(db: Session, user_id: str) -> bool:
-    return db.get(models.User, int(user_id)) is not None
-
-
-def _resolve_handshake_identity(websocket: WebSocket) -> Identity:
-    """
-    WebSocket 握手時的身分。連線會存活很久，背景分頁也會在 access token（30 分鐘，cookie 同時到期）
-    過期後自動重連，若只看 access token，登入者重連後會變成匿名、回報沒有記錄者。因此：
-    1. access token 有效且使用者仍存在 → 登入者
-    2. 否則 refresh token 有效（資料庫確認未撤銷；使用者刪除時一併刪除）→ 登入者
-    3. 否則伺服器簽發的匿名身分 → 4. 無
-    """
-    cookies = websocket.cookies
-    access_user = auth_service.decode_token_user_id(cookies.get("access_token"))
-    refresh_token = cookies.get("refresh_token")
-    if access_user or refresh_token:
-        with SessionLocal() as db:
-            if access_user and _user_exists(db, access_user):
-                return Identity("user", access_user)
-            if refreshed_user := auth_service.verify_refresh_token(db, refresh_token):
-                return Identity("user", str(refreshed_user))
-    if anon := anonymous_id.verify(cookies.get(anonymous_id.COOKIE_NAME)):
-        return Identity("anon", anon)
-    return Identity("none")
-
-
 @router.websocket("/")
 async def websocket_endpoint(
     websocket: WebSocket,
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    identity = _resolve_handshake_identity(websocket)
+    # 有登入 cookie 時會查資料庫，放到 threadpool，不卡住其他連線
+    identity = await run_in_threadpool(resolve_identity, websocket)
     conn = Connection(identity, limit_keys(identity, websocket))
+    # 先檢查握手頻率、再檢查同時連線數，勿對調：對調的話被連線數擋下的嘗試不會計入握手頻率，
+    # 開著超過上限分頁的人可以不受頻率限制地一直重試
     if not check_dual_limit(HANDSHAKE_LIMIT, "ws_handshake", conn.limit_keys) or not manager.try_reserve(
         websocket, conn.limit_keys, MAX_CONNECTIONS, MAX_CONNECTIONS * IP_CEILING_MULTIPLIER
     ):

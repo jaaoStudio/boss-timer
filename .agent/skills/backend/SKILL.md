@@ -267,7 +267,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 ### 連線建立
 - Endpoint: `ws://<host>/api/ws/`
-- **身分由伺服器在握手時以 `_resolve_handshake_identity()` 決定**：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
+- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，以 `run_in_threadpool` 呼叫；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
 - 使用全域 Singleton `ConnectionManager` 管理所有連線
 
 ### 訊息格式 (JSON)
@@ -310,7 +310,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 | 握手頻率 | `HANDSHAKE_LIMIT` 170/10 分鐘（約 1000/小時，撞到上限最多 10 分鐘恢復；所有分頁共用；#43 已修，部署後觀察重連頻率再收緊） | × 200 | 接受後立即以 close code **4429**（reason `connection_limited`）關閉，不另送訊息 |
 | 同時連線數 | `MAX_CONNECTIONS` 10 | × 200 | 同上 |
 
-前端收到 4429 不自動重連（限制以分鐘 / 小時計，馬上重試只會再被擋），使用者下次操作時才會再連線。
+前端收到 4429 照一般斷線退避重連（多半是休眠喚醒時舊連線的名額還沒釋放，約 90 秒內恢復；ADR-0008），連續被擋只提示一次。先檢查握手頻率、再檢查同時連線數，**勿對調**：對調的話被連線數擋下的嘗試不計入握手頻率，可以不受限制地一直重試。
 
 ### ConnectionManager 架構
 ```
