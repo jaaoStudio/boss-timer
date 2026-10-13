@@ -71,13 +71,9 @@ export const useUserStore = defineStore('user', {
     },
 
     async initializeAuth() {
-      const websocketStore = useWebSocketStore();
-
-      // 只在第一次進行 API 初始化，後續路由切換僅確保 WS 連線
-      if (this._initialized) {
-        websocketStore.connect();
-        return;
-      }
+      // 只在第一次初始化並建立 WebSocket 連線（_runInitializeAuth 的 finally）。之後路由切換不再呼叫 connect()：
+      // 斷線一律交給 websocketStore 的退避重連（同 Socket.IO 只連一次），換頁時呼叫會繞過退避
+      if (this._initialized) return;
 
       // App.vue onMounted 與 router beforeEach 會在首次載入時「同時」呼叫此方法，
       // 而 _initialized 要等 await 全部跑完才在 finally 翻成 true，

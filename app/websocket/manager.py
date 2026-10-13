@@ -6,6 +6,16 @@ from typing import Dict, Set
 from fastapi import WebSocket
 from collections import Counter, defaultdict
 
+# 伺服器心跳（ADR-0008，照 Socket.IO / engine.io v4）：每 HEARTBEAT_INTERVAL_SECONDS 對所有連線送 heartbeat，
+# 用戶端超過「間隔 + HEARTBEAT_TIMEOUT_SECONDS」沒收到就視為斷線。兩個數字在連線時以 hello 告訴用戶端
+HEARTBEAT_INTERVAL_SECONDS = 25
+HEARTBEAT_TIMEOUT_SECONDS = 20
+HELLO_MESSAGE = json.dumps({
+    "type": "hello",
+    "ping_interval": HEARTBEAT_INTERVAL_SECONDS,
+    "ping_timeout": HEARTBEAT_TIMEOUT_SECONDS,
+})
+
 class ConnectionManager:
     def __init__(self):
         # A set of all active connections
@@ -43,6 +53,8 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         self.active_connections.add(websocket)
+        # 第一則訊息：用戶端收到才啟動心跳逾時判斷（舊版後端不送，用戶端就不判斷）
+        await websocket.send_text(HELLO_MESSAGE)
         logging.info(f"New connection accepted. Total connections: {self.get_total_connections()}")
 
     def disconnect(self, websocket: WebSocket):
@@ -114,3 +126,15 @@ class ConnectionManager:
         count = self.get_room_user_count(room_id)
         await self.broadcast_to_room(room_id, {"type": "user_count_update", "count": count})
         logging.info(f"Broadcasted user count ({count}) for room {room_id}.")
+
+    async def run_heartbeat(self, interval: float = HEARTBEAT_INTERVAL_SECONDS):
+        """
+        定時對所有連線送 heartbeat（一個全域 loop，不必每條連線一個 task），讓用戶端能偵測無聲中斷。
+        伺服器端的死連線偵測靠 uvicorn 協定層 ping，勿以用戶端有沒有回應判斷生死（#43）。
+        """
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self.broadcast_to_all({"type": "heartbeat"})
+            except Exception as e:
+                logging.error(f"Heartbeat broadcast failed: {e}")

@@ -1,6 +1,7 @@
 """WebSocket 伺服器端身分、回報與連線限流的測試（見 docs/adr/0007、issue #37）。"""
 import asyncio
 import uuid
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -15,7 +16,7 @@ from app.services.boss_service import BossService
 from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import Identity
-from app.websocket.manager import ConnectionManager
+from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_TIMEOUT_SECONDS, ConnectionManager
 from tests.helpers import make_limited_app
 
 ROOM = "ROOMABCDEF"
@@ -45,13 +46,21 @@ def recorded_identities(monkeypatch):
     app.dependency_overrides.clear()
 
 
-def connect(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
+def open_socket(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
     if anon:
         cookies[anonymous_id.COOKIE_NAME] = anonymous_id.sign(anon)
     headers = {"CF-Connecting-IP": ip}
     if cookies:
         headers["cookie"] = "; ".join(f"{name}={value}" for name, value in cookies.items())
     return client.websocket_connect("/ws/", headers=headers)
+
+
+@contextmanager
+def connect(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
+    """建立被接受的連線，並讀掉伺服器的第一則訊息 hello。"""
+    with open_socket(anon, ip, **cookies) as ws:
+        assert ws.receive_json()["type"] == "hello"
+        yield ws
 
 
 def access_token(user_id: str = "42") -> str:
@@ -76,7 +85,7 @@ def record(ws, **recorder_info) -> str:
 
 def assert_rejected(anon: str | None = None, ip: str = "203.0.113.1") -> None:
     # 只以 close code 拒絕、不先送訊息：前端收到訊息會重置重連次數
-    with connect(anon, ip) as ws:
+    with open_socket(anon, ip) as ws:
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
     assert exc.value.code == ws_router.CLOSE_CODE_LIMITED and exc.value.reason == "connection_limited"
@@ -204,9 +213,31 @@ def test_handshake_rate_limit(monkeypatch):
     assert_rejected(anon)
 
 
-# --- 用戶端斷線偵測（ADR-0008）---
+# --- 伺服器心跳（ADR-0008）---
 
-def test_ping_is_answered_with_pong():
+def test_hello_announces_heartbeat_parameters():
+    with open_socket(str(uuid.uuid4())) as ws:
+        assert ws.receive_json() == {
+            "type": "hello",
+            "ping_interval": HEARTBEAT_INTERVAL_SECONDS,
+            "ping_timeout": HEARTBEAT_TIMEOUT_SECONDS,
+        }
+
+
+def test_heartbeat_reaches_every_connection():
+    manager = app.dependency_overrides[get_connection_manager]()
+
+    async def one_beat():
+        task = asyncio.create_task(manager.run_heartbeat(interval=0))
+        await asyncio.sleep(0.05)
+        task.cancel()
+
+    with connect(str(uuid.uuid4())) as ws:
+        ws.portal.call(one_beat)   # 在伺服器的 event loop 上執行
+        assert ws.receive_json() == {"type": "heartbeat"}
+
+
+def test_ping_from_old_frontend_is_answered_with_pong():
     with connect(str(uuid.uuid4())) as ws:
         ws.send_json({"type": "ping"})
         assert ws.receive_json() == {"type": "pong"}

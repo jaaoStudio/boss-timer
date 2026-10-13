@@ -230,18 +230,23 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **風格**: Setup (Composition API)
 
 **核心功能**:
-- **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示。分頁可見時送出後立即探測（見下方「斷線偵測」）：半死的連線上 `send` 不會報錯，回報可能無聲遺失，探測讓它 10 秒內就被發現並重連（完整的回執是之後的工作）
+- **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示。心跳已過期但計時器還沒觸發（剛從休眠喚醒）時不送出、直接重連並回傳 `false`
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
 - **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
-- **自動重連**: 指數退避加抖動、**不放棄**：`min(30s, 1s × 2^次數) + 0～1s`。**收到伺服器第一則訊息才重置次數**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」且不送訊息，在 `onopen` 重置會一直以最短間隔重連。握手卡在 CONNECTING 超過 10 秒（`CONNECT_TIMEOUT_MS`）就放棄、交給退避。`online` 事件時若正在等待重連就立即重連（不重置次數）；切換分頁不會繞過退避。`createWebSocket()` 丟例外時同樣交給退避。重連中 `isReconnecting` 為 true（`onopen` 時清除：不在房間時連上不會收到任何訊息），`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。每個 socket 事件都先檢查 `socket.value === ws`：被取代的舊連線遲到的 `onclose` 不可清掉新連線的計時器或再排一次重連（會變成兩條活連線）。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
-- **斷線偵測（ADR-0008）**: 伺服器端靠協定層 WebSocket ping（瀏覽器網路層自動回應，背景分頁被節流 / 凍結也不受影響，見 #43）。前端靠**看門狗**（`useIntervalFn`，只在連線中執行）：**只在分頁可見時**檢查，超過 45 秒（`IDLE_PROBE_MS`）沒收到任何伺服器訊息就送 `ping` 探測，10 秒內仍無回應就拋棄連線、**走退避重連且不重置次數**（伺服器卡住時所有可見分頁會同時逾時，不可一起以最短間隔重連）；分頁回到前景時立即檢查，切到背景時放棄進行中的探測（背景的計時器會延後，可能誤判）；`online` 事件只在分頁可見時探測。先探測再重連：凍結的分頁恢復時連線可能仍正常。**勿在背景分頁送 `ping` 或判斷斷線**
+- **連線模型照 Socket.IO（engine.io v4，ADR-0008）**，勿自創機制或加特例：
+  - **只連一次**：`initializeAuth()` 第一次完成時連線，之後換頁不呼叫 `connect()`（會繞過退避），斷線一律交給自動重連
+  - **心跳逾時**：伺服器連線後先送 `hello`（`ping_interval` / `ping_timeout`），之後每 25 秒送 `heartbeat`。收到 `hello` 才啟動逾時，每次心跳重新計時，超過兩者相加（45 秒）沒收到就關閉並退避重連。**不分前景背景、不探測、前端不送 `ping`**：背景節流的是計時器，心跳照常送達，逾時只會晚觸發、不會誤判。連到不送 `hello` 的舊後端時不啟動逾時
+  - **自動重連**：`min(30s, 1s × 2^次數) × (1 ± 0.5)`，**不放棄**。**收到伺服器第一則訊息才重置次數、清除 `isReconnecting`**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」且不送訊息，在 `onopen` 重置會一直以最短間隔重連。心跳逾時等主動判定斷線時走退避、不重置次數。握手卡在 CONNECTING 超過 20 秒（`CONNECT_TIMEOUT_MS`）就放棄；`createWebSocket()` 丟例外時同樣交給退避；`offline` 事件立刻關閉進入退避，`online` 不特別處理
+  - 每個 socket 事件都先檢查 `socket.value === ws`，`connect()` 開新連線前先 `dropSocket()` 清掉仍在 CLOSING 的舊連線：被取代的舊連線遲到的 `onclose` 不可動到新連線（會變成兩條活連線）
+  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時顯示「連線數已達上限」提示且**不自動重連**，等使用者下次操作再由 `sendMessage()` 連線。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:
 
 | 訊息 type | 處理方式 |
 |---|---|
-| `pong` | 探測的回應，只更新最後收到訊息時間 |
+| `hello` | 依 `ping_interval` + `ping_timeout` 啟動心跳逾時 |
+| `heartbeat` | 重新計時心跳逾時 |
 | `maintenance_status_update` | → `appInfoStore.setMaintenanceInfo()` |
 | `room_state` | → `bossStore.setBossTypes()` + `roomStore.setRoomSettings()` + `setClearedAt()` + `setBossRecords()` + `roomStore.setUserCount()` |
 | `boss_update` | → `bossStore.updateBossRecord()` + `recordHistoryStore.upsertRecord()` |

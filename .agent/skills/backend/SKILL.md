@@ -277,7 +277,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | payload | 說明 |
 |---|---|---|
-| `ping` | — | 前端的探測（看門狗、送出訊息後），伺服器回 `pong`，**不以它判斷連線生死**。死連線由 uvicorn 協定層 WebSocket ping 偵測，設定只在 `app/Dockerfile` 的 `UVICORN_WS*`（`websockets` 實作、間隔 20 秒、逾時 60 秒）。設計與禁忌見 ADR-0008 |
+| `ping` | — | **舊版前端**的應用層 ping，伺服器回 `pong`（新版前端不送，改由伺服器心跳；部署切換期間仍需相容），**不以它判斷連線生死**。死連線由 uvicorn 協定層 WebSocket ping 偵測，設定只在 `app/Dockerfile` 的 `UVICORN_WS*`（`websockets` 實作、間隔 20 秒、逾時 60 秒）。設計與禁忌見 ADR-0008 |
 | `join_room` | `{ "room_id": "ABCD123456" }` | 加入房間，取得初始狀態 |
 | `leave_room` | `{ "room_id": "..." }` | 離開房間 |
 | `record_boss` | `BossRecordCreate` 完整欄位 | 回報 Boss 狀態。記錄者由伺服器身分決定：登入者寫 `recorder_id`；匿名者的 `anonymous_id` 取自簽章 cookie，**payload 的 `recorder_info.anonymous_id` 一律忽略**，只採用 `anonymous_name` |
@@ -287,7 +287,9 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 | type | 說明 |
 |---|---|
-| `pong` | 回應前端的 `ping` |
+| `hello` | 連線接受後的第一則訊息：`{ "ping_interval": 25, "ping_timeout": 20 }`（`app/websocket/manager.py` 的 `HEARTBEAT_*`），前端據此啟動心跳逾時（照 engine.io 的 open 封包，ADR-0008）。被連線限制拒絕時不送 |
+| `heartbeat` | lifespan 的 `run_heartbeat()` 每 25 秒送給所有連線，讓前端偵測無聲中斷 |
+| `pong` | 回應舊版前端的 `ping` |
 | `room_state` | 加入房間時的完整初始狀態 (boss_records + boss_types + last_cleared_at + room_settings)；重連時用來重建所有房間狀態 |
 | `boss_update` | 單筆 Boss 記錄更新 (BossRecordResponse) |
 | `record_deleted` | 紀錄被撤銷 (`{ "record_id": N, "room_id": "...", "replacement": BossRecordResponse \| null }`) |
@@ -419,6 +421,11 @@ ConnectionManager
 ### cleanup_inactive_rooms (asyncio)
 - **頻率**: 每 1 小時
 - **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`
+- **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
+
+### run_heartbeat (asyncio)
+- **頻率**: 每 25 秒（`HEARTBEAT_INTERVAL_SECONDS`）
+- **邏輯**: `ConnectionManager.run_heartbeat()` 對所有 WebSocket 連線送 `{"type": "heartbeat"}`，前端據此偵測無聲中斷（ADR-0008）
 - **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
 
 ### send_discord_webhook (Celery)

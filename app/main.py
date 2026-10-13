@@ -58,8 +58,10 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     cleanup_task = asyncio.create_task(cleanup_inactive_rooms())
+    heartbeat_task = asyncio.create_task(get_connection_manager().run_heartbeat())
     yield
     cleanup_task.cancel()
+    heartbeat_task.cancel()
 
 app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifespan)
 
