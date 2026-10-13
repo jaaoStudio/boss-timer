@@ -72,7 +72,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
       const ws = apiService.createWebSocket()
       socket.value = ws
       connectTimeout = setTimeout(() => {
-        connectTimeout = null
         if (ws.readyState === WebSocket.CONNECTING) ws.close()   // 觸發 onclose → 退避重連
       }, CONNECT_TIMEOUT_MS)
 
@@ -190,7 +189,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     const delay = base * (1 + BACKOFF_RANDOMIZATION * (2 * Math.random() - 1))
     reconnectTimeout = cancel(reconnectTimeout)
     reconnectTimeout = setTimeout(() => {
-      reconnectTimeout = null
       reconnectAttempts++
       connect()
     }, delay)
@@ -205,7 +203,6 @@ export const useWebSocketStore = defineStore('websocket', () => {
     heartbeatTimeout = cancel(heartbeatTimeout)
     heartbeatDeadline = Date.now() + heartbeatTimeoutMs
     heartbeatTimeout = setTimeout(() => {
-      heartbeatTimeout = null
       closeAndReconnect('WebSocket heartbeat timed out, reconnecting.')
     }, heartbeatTimeoutMs)
   }

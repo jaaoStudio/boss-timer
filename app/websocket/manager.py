@@ -37,8 +37,7 @@ class ConnectionManager:
         self._connection_counts: Counter = Counter()
         # 送出佇列（照 engine.io 的 writeBuffer，ADR-0008）：每條連線一個佇列與一個寫出 task，
         # 送訊息只放進佇列、不等對方收，一條卡住的連線不會拖住廣播的呼叫端與其他連線
-        self._outboxes: Dict[WebSocket, asyncio.Queue[str]] = {}
-        self._writers: Dict[WebSocket, asyncio.Task] = {}
+        self._outboxes: Dict[WebSocket, tuple[asyncio.Queue[str], asyncio.Task]] = {}
 
     def get_total_connections(self) -> int:
         return len(self.active_connections)
@@ -65,8 +64,7 @@ class ConnectionManager:
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         outbox: asyncio.Queue[str] = asyncio.Queue()
-        self._outboxes[websocket] = outbox
-        self._writers[websocket] = asyncio.create_task(self._write(websocket, outbox))
+        self._outboxes[websocket] = (outbox, asyncio.create_task(self._write(websocket, outbox)))
         self.active_connections.add(websocket)
         # 第一則訊息：用戶端收到才啟動心跳逾時判斷（舊版後端不送，用戶端就不判斷）
         self.send(websocket, HELLO_MESSAGE)
@@ -77,8 +75,8 @@ class ConnectionManager:
         self._enqueue(websocket, json.dumps(message, default=str))
 
     def _enqueue(self, websocket: WebSocket, text: str):
-        if (outbox := self._outboxes.get(websocket)) is not None:
-            outbox.put_nowait(text)
+        if (entry := self._outboxes.get(websocket)) is not None:
+            entry[0].put_nowait(text)
 
     async def _write(self, websocket: WebSocket, outbox: asyncio.Queue[str]):
         """
@@ -99,22 +97,14 @@ class ConnectionManager:
 
     def disconnect(self, websocket: WebSocket):
         self.active_connections.discard(websocket)
-        self._outboxes.pop(websocket, None)
-        if (writer := self._writers.pop(websocket, None)) is not None:
-            writer.cancel()   # 尚未送出的訊息隨連線丟棄
+        if (entry := self._outboxes.pop(websocket, None)) is not None:
+            entry[1].cancel()   # 停掉寫出 task，尚未送出的訊息隨連線丟棄
         for key in self._connection_keys.pop(websocket, ()):
             self._connection_counts[key] -= 1
             if self._connection_counts[key] <= 0:
                 del self._connection_counts[key]
         logging.info(f"Connection closed. Total connections: {self.get_total_connections()}")
-        # Also remove from any room subscriptions
-        if websocket in self.socket_to_room:
-            room_id = self.socket_to_room[websocket]
-            self.room_subscriptions[room_id].discard(websocket)
-            if not self.room_subscriptions[room_id]:
-                del self.room_subscriptions[room_id]
-            del self.socket_to_room[websocket]
-            logging.info(f"Connection removed from room {room_id}")
+        self.unsubscribe_from_room(websocket)
 
     def subscribe_to_room(self, websocket: WebSocket, room_id: str):
         # Unsubscribe from any previous room first
@@ -145,8 +135,6 @@ class ConnectionManager:
         self._enqueue_all(self.active_connections, message)
 
     def _enqueue_all(self, connections, message: dict):
-        if not connections:
-            return
         message_str = json.dumps(message, default=str)
         for conn in connections:
             self._enqueue(conn, message_str)

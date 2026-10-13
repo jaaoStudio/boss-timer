@@ -6,7 +6,6 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from starlette.websockets import WebSocketState
 from sqlalchemy.orm import Session
 
 from app.database import models
@@ -110,10 +109,14 @@ async def _receive_message(websocket: WebSocket) -> Optional[dict]:
     """
     收下一則用戶端訊息並解析。無法解析時回傳 None：二進位 frame、不是 JSON 物件、
     type 不是字串（socket.io-parser 同樣把非字串事件名當成解析失敗）、payload 不是物件。
+    用 receive() 而非 receive_text()：後者遇到二進位 frame、或寫出 task 已關閉連線時會拋例外，
+    receive() 照常回傳對方的斷線訊息
     """
-    try:
-        data = await websocket.receive_text()
-    except KeyError:   # 二進位 frame：Starlette 的 receive_text 取 message["text"]
+    raw = await websocket.receive()
+    if raw["type"] == "websocket.disconnect":
+        raise WebSocketDisconnect(raw.get("code", 1000), raw.get("reason"))
+    data = raw.get("text")
+    if data is None:
         return None
     try:
         message = json.loads(data)
@@ -209,7 +212,7 @@ async def websocket_endpoint(
 
             if message_type in ("authenticate", "deauthenticate"):
                 # 已不再使用：身分改由握手時的 cookie 決定。部署切換期間仍開著的舊版前端可能送出，
-                # 直接忽略（不進 handle_message，避免開 DB session）
+                # 直接忽略（不進 handle_message，避免每則都記一筆 Unknown message type 警告）
                 continue
 
             try:
@@ -223,12 +226,8 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
     except Exception as e:
-        if isinstance(e, RuntimeError) and websocket.application_state == WebSocketState.DISCONNECTED:
-            # 送出失敗時寫出 task 已關閉連線，之後的 receive 會拋 RuntimeError，屬一般斷線
-            logging.info(f"WebSocket closed after send failure: {e!r}")
-        else:
-            logging.error(f"WebSocket error: {e}", exc_info=True)
-            close_code = 1011
+        logging.error(f"WebSocket error: {e}", exc_info=True)
+        close_code = 1011
     finally:
         room_id = manager.socket_to_room.get(websocket)
         manager.disconnect(websocket)

@@ -19,12 +19,12 @@ def dockerfile_env() -> dict[str, str]:
     return dict(re.findall(r"\b(UVICORN_WS\w*)=(\S+)", content))
 
 
-def test_heartbeat_is_below_cloudflare_idle_limit():
-    assert 0 < HEARTBEAT_INTERVAL_SECONDS < 100   # Cloudflare 的 WebSocket 閒置上限為 100 秒
+CLOUDFLARE_IDLE_LIMIT_SECONDS = 100   # Cloudflare 的 WebSocket 閒置上限
 
 
-def test_ping_interval_is_below_cloudflare_idle_limit():
-    assert 0 < int(dockerfile_env()["UVICORN_WS_PING_INTERVAL"]) < 100   # Cloudflare 的 WebSocket 閒置上限為 100 秒
+def test_heartbeat_and_ping_are_below_cloudflare_idle_limit():
+    assert 0 < HEARTBEAT_INTERVAL_SECONDS < CLOUDFLARE_IDLE_LIMIT_SECONDS
+    assert 0 < int(dockerfile_env()["UVICORN_WS_PING_INTERVAL"]) < CLOUDFLARE_IDLE_LIMIT_SECONDS
 
 
 def test_dockerfile_settings_produce_a_pinging_protocol():

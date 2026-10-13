@@ -319,7 +319,7 @@ ConnectionManager
 ├── room_subscriptions: Dict[str, Set[WS]]   # room_id → 訂閱的 WS
 ├── socket_to_room: Dict[WS, str]            # WS → 目前所在 room_id
 ├── _connection_keys: Dict[WS, Set[str]]     # WS → 握手時計入的連線數 key
-├── _outboxes / _writers                     # 每條連線的送出佇列與寫出 task（ADR-0008）
+├── _outboxes: Dict[WS, (Queue, Task)]      # 每條連線的送出佇列與寫出 task（ADR-0008）
 └── _connection_counts: Counter              # 同時連線數，個人（personal:）與天花板（ceiling:）分開計；try_reserve 在 await 前一次完成檢查與計入
 ```
 
