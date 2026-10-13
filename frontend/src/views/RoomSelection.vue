@@ -225,19 +225,13 @@ const handleLoginError = () => {
   showMessage.error(t('roomSelection.toasts.googleSignInFailed'));
 };
 
-// 登出進行中忽略再次點擊：連點會並行跑兩次完整流程（兩次發匿名身分、兩次廣播與重連）
-let loggingOut = false;
 const handleLogout = async () => {
-  if (loggingOut) return;
-  loggingOut = true;
   try {
     await userStore.logout();
     showMessage.info(t('roomSelection.toasts.logoutSuccess'));
   } catch (error) {
     console.error("Logout error:", error);
     showMessage.error(t('roomSelection.errors.logoutFailed'));
-  } finally {
-    loggingOut = false;
   }
 };
 
