@@ -1,5 +1,6 @@
 import { defineStore, storeToRefs } from 'pinia'
 import { ref } from 'vue'
+import { useEventListener, useIntervalFn } from '@vueuse/core'
 import apiService from '@/services/apiService'
 import { useAppInfoStore } from './appInfo'
 import { useBossStore } from './bossStore'
@@ -17,23 +18,36 @@ interface WSMessage {
 
 // 伺服器因握手頻率或同時連線數超過上限而關閉連線（app/routers/websocket.py 的 CLOSE_CODE_LIMITED）
 const CLOSE_CODE_CONNECTION_LIMITED = 4429
-// 看門狗（ADR-0008）：伺服器每 25 秒送 heartbeat（app/websocket/manager.py 的 HEARTBEAT_INTERVAL_SECONDS），
-// 超過 IDLE_PROBE_MS 沒收到任何訊息就送 ping 探測，PROBE_TIMEOUT_MS 內仍沒有回應就視為無聲中斷、重連
+// 看門狗（ADR-0008）：分頁可見時，超過 IDLE_PROBE_MS 沒收到任何伺服器訊息就送 ping 探測，
+// PROBE_TIMEOUT_MS 內仍沒有回應就視為無聲中斷（休眠喚醒、切換網路）而重連
 const IDLE_PROBE_MS = 45000
 const PROBE_TIMEOUT_MS = 10000
 const WATCHDOG_TICK_MS = 5000
+// 連線卡在 CONNECTING（例如切換網路時握手送往舊路由）不會自己結束，逾時就放棄、交給退避重連
+const CONNECT_TIMEOUT_MS = 10000
 // 重連延遲：min(上限, 1 秒 × 2^次數) + 0～1 秒抖動，不放棄
 const BASE_BACKOFF_MS = 1000
 const MAX_BACKOFF_MS = 30000
+
+type Timer = ReturnType<typeof setTimeout> | null
+
+/** 清除計時器並回傳 null，用法：timer = cancel(timer) */
+function cancel(timer: Timer): null {
+  if (timer) clearTimeout(timer)
+  return null
+}
 
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
   const isManualDisconnect = ref(false)
+  // 連線中斷、正在自動重連（畫面據此顯示提示）；收到伺服器訊息才算恢復
+  const isReconnecting = ref(false)
   let reconnectAttempts = 0
-  let reconnectTimeout: ReturnType<typeof setTimeout> | null = null
+  let reconnectTimeout: Timer = null
+  let connectTimeout: Timer = null
+  let probeTimeout: Timer = null
   let lastMessageAt = 0
-  let probeTimeout: ReturnType<typeof setTimeout> | null = null
 
   const appInfoStore = useAppInfoStore()
   const bossStore = useBossStore()
@@ -51,20 +65,23 @@ export const useWebSocketStore = defineStore('websocket', () => {
       return
     }
 
-    if (reconnectTimeout) {
-      clearTimeout(reconnectTimeout)
-      reconnectTimeout = null
-    }
+    reconnectTimeout = cancel(reconnectTimeout)
 
     try {
       const ws = apiService.createWebSocket()
       socket.value = ws
+      connectTimeout = setTimeout(() => {
+        connectTimeout = null
+        if (ws.readyState === WebSocket.CONNECTING) ws.close()   // 觸發 onclose → 退避重連
+      }, CONNECT_TIMEOUT_MS)
 
       ws.onopen = () => {
         console.log('WebSocket connected.')
+        connectTimeout = cancel(connectTimeout)
         isConnected.value = true
         isManualDisconnect.value = false
         lastMessageAt = Date.now()
+        watchdog.resume()
         // 連線時重建伺服器端狀態：身分由 cookie 決定，房間以 roomStore.roomId 重新加入
         const currentRoomId = roomStore.roomId
         if (currentRoomId) {
@@ -80,18 +97,22 @@ export const useWebSocketStore = defineStore('websocket', () => {
         // 收到伺服器訊息才算連線成功、重置重連次數：伺服器拒絕連線時是「接受後立刻關閉」且不送訊息，
         // 若在 onopen 就重置，每次都會被重置而一直以最短間隔重連
         reconnectAttempts = 0
+        isReconnecting.value = false
         const message: WSMessage = JSON.parse(event.data)
         handleMessage(message)
       }
 
       ws.onclose = (event: CloseEvent) => {
         console.log('WebSocket disconnected.')
-        clearProbe()
+        connectTimeout = cancel(connectTimeout)
+        probeTimeout = cancel(probeTimeout)
+        watchdog.pause()
         isConnected.value = false
         socket.value = null
         // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
         // 之後使用者一有操作，sendMessage 會再嘗試連線
         if (event.code === CLOSE_CODE_CONNECTION_LIMITED) {
+          isReconnecting.value = false
           notify('warning', 'roomSelection.errors.connectionLimit')
         } else if (!isManualDisconnect.value) {
           attemptReconnect()
@@ -107,6 +128,8 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   function disconnect() {
+    reconnectTimeout = cancel(reconnectTimeout)
+    isReconnecting.value = false
     if (socket.value) {
       isManualDisconnect.value = true
       socket.value.close()
@@ -134,7 +157,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
    * 或其他分頁登入 / 登出時，既有連線帶的仍是舊 cookie，需要重連才會換成新身分。
    */
   function reconnect() {
-    clearProbe()
+    connectTimeout = cancel(connectTimeout)
+    probeTimeout = cancel(probeTimeout)
+    watchdog.pause()
     isManualDisconnect.value = false
     const ws = socket.value
     if (ws) {
@@ -147,11 +172,15 @@ export const useWebSocketStore = defineStore('websocket', () => {
     connect()
   }
 
-  function clearProbe() {
-    if (probeTimeout) {
-      clearTimeout(probeTimeout)
-      probeTimeout = null
-    }
+  function attemptReconnect() {
+    isReconnecting.value = true
+    const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** reconnectAttempts) + Math.random() * 1000
+    reconnectTimeout = cancel(reconnectTimeout)
+    reconnectTimeout = setTimeout(() => {
+      reconnectTimeout = null
+      reconnectAttempts++
+      connect()
+    }, delay)
   }
 
   /**
@@ -167,30 +196,36 @@ export const useWebSocketStore = defineStore('websocket', () => {
       probeTimeout = null
       if (socket.value === ws && lastMessageAt < sentAt) {
         console.warn('WebSocket probe timed out, reconnecting.')
+        isReconnecting.value = true
         reconnect()
       }
     }, PROBE_TIMEOUT_MS)
   }
 
-  /** 分頁回到前景或網路恢復時：連線中就立即探測；正在等待重連就不再等，馬上重連 */
-  function checkConnection() {
-    if (socket.value) {
-      probe()
-    } else if (reconnectTimeout) {
-      connect()
-    }
-  }
-
-  // 看門狗只在分頁可見時檢查：背景分頁的計時器會被節流、凍結，此時的「很久沒收到訊息」不代表斷線
-  setInterval(() => {
+  /** 只在分頁可見時判斷：背景分頁的計時器會被節流、凍結，此時的「很久沒收到訊息」不代表斷線 */
+  function probeIfIdle() {
     if (document.visibilityState === 'visible' && Date.now() - lastMessageAt > IDLE_PROBE_MS) {
       probe()
     }
-  }, WATCHDOG_TICK_MS)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkConnection()
+  }
+
+  // 連線中才執行（onopen 啟動、onclose / reconnect 暫停）；以 VueUse 建立，store 卸載時自動清除
+  const watchdog = useIntervalFn(probeIfIdle, WATCHDOG_TICK_MS, { immediate: false })
+
+  useEventListener(document, 'visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      // 回到前景立即檢查：凍結的分頁恢復時最可能已經斷線
+      probeIfIdle()
+    } else {
+      // 切到背景就放棄進行中的探測：背景的計時器與網路事件會被延後，逾時可能先於 pong 執行而誤判
+      probeTimeout = cancel(probeTimeout)
+    }
   })
-  window.addEventListener('online', checkConnection)
+  // 網路恢復：正在等待重連就馬上重連（不重置次數，失敗時仍照退避）；連線中就探測
+  useEventListener(window, 'online', () => {
+    if (reconnectTimeout) connect()
+    else probe()
+  })
 
   // Each handler name declares which stores it touches.
   // Handlers that update multiple stores make it explicit rather than hiding it in a case block.
@@ -263,8 +298,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   }
 
   const MESSAGE_HANDLERS: Record<string, (msg: WSMessage) => void> = {
-    // 只用來更新 lastMessageAt（看門狗），不需處理
-    heartbeat: () => {},
+    // 看門狗探測的回應，只用來更新 lastMessageAt
     pong: () => {},
     room_state: onRoomState,
     boss_update: onBossUpdate,
@@ -287,18 +321,9 @@ export const useWebSocketStore = defineStore('websocket', () => {
     }
   }
 
-  function attemptReconnect() {
-    if (reconnectTimeout) clearTimeout(reconnectTimeout)
-    const delay = Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** reconnectAttempts) + Math.random() * 1000
-    reconnectTimeout = setTimeout(() => {
-      reconnectTimeout = null
-      reconnectAttempts++
-      connect()
-    }, delay)
-  }
-
   return {
     isConnected,
+    isReconnecting,
     connect,
     disconnect,
     sendMessage,

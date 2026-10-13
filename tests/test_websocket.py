@@ -210,18 +210,3 @@ def test_ping_is_answered_with_pong():
     with connect(str(uuid.uuid4())) as ws:
         ws.send_json({"type": "ping"})
         assert ws.receive_json() == {"type": "pong"}
-
-
-def test_heartbeat_reaches_every_connection(recorded_identities):
-    manager = app.dependency_overrides[get_connection_manager]()
-
-    async def one_beat():
-        task = asyncio.create_task(manager.run_heartbeat(interval=0))
-        await asyncio.sleep(0.05)
-        task.cancel()
-
-    with connect(str(uuid.uuid4())) as ws:
-        ws.send_json({"type": "ping"})
-        assert ws.receive_json()["type"] == "pong"   # 確認連線已加入 manager
-        ws.portal.call(one_beat)   # 在伺服器的 event loop 上執行
-        assert ws.receive_json() == {"type": "heartbeat"}

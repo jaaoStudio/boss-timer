@@ -29,10 +29,6 @@ MAX_CONNECTIONS = 10
 # 超過連線限制時以此 close code 關閉，前端據此顯示提示
 CLOSE_CODE_LIMITED = 4429
 
-# 死連線偵測交給 uvicorn 協定層的 WebSocket ping（設定見 app/Dockerfile 的 UVICORN_WS*）；
-# 用戶端偵測斷線靠 ConnectionManager.run_heartbeat 的定時 heartbeat（ADR-0008）。
-# 勿再加「N 秒沒收到前端訊息就關閉」的應用層逾時：背景分頁被節流或凍結時連線仍活著，會被誤踢而反覆重連（#43）
-
 
 @router.get("/connections/count")
 async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
@@ -163,12 +159,13 @@ async def websocket_endpoint(
 
     try:
         while True:
+            # 不設接收逾時：死連線由協定層 ping 偵測，勿以「多久沒收到前端訊息」判斷生死（ADR-0008、#43）
             data = await websocket.receive_text()
             message = json.loads(data)
             message_type = message.get("type")
 
             if message_type == "ping":
-                # 前端看門狗的探測：回 pong 讓它確認連線仍通（ADR-0008）。只回應、不以有沒有收到 ping 判斷生死
+                # 前端看門狗的探測：回 pong 讓它確認連線仍通（ADR-0008）
                 await websocket.send_text(json.dumps({"type": "pong"}))
                 continue
 

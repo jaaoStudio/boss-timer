@@ -10,6 +10,9 @@
       <div class="flex-1 min-w-0 max-w-5xl px-4 py-8 gap-2">
         <AppHeader />
 
+        <!-- 連線中斷、自動重連中的提示 -->
+        <ConnectionBanner />
+
         <!-- 編輯模式工具列 -->
         <EditModeToolbar
           :is-edit-mode="isEditMode"
@@ -63,6 +66,7 @@ import { onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useUserStore } from '@/stores/userStore'
 import AppHeader from '@/components/AppHeader.vue'
+import ConnectionBanner from '@/components/ui/ConnectionBanner.vue'
 import BossControlPanel from '@/components/boss/BossControlPanel.vue'
 import BossInfo from '@/components/boss/BossInfo.vue'
 import ChannelView from '@/components/channel/ChannelView.vue'
