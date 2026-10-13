@@ -323,7 +323,7 @@ ConnectionManager
 └── _connection_counts: Counter              # 同時連線數，個人（personal:）與天花板（ceiling:）分開計；try_reserve 在 await 前一次完成檢查與計入
 ```
 
-**⚠️ 送訊息一律經送出佇列**（照 engine.io 的 writeBuffer，ADR-0008）: 送給單一連線用 `manager.send(websocket, message)`，廣播用 `broadcast_to_room` / `broadcast_to_all`，**勿直接 `websocket.send_text`**（會繞過佇列、打亂順序，`hello` 也不再保證是第一則）。廣播只放進佇列、不等送出，一條收不下的連線不會拖住呼叫端。沒有送出逾時；送出失敗時寫出 task 關閉該連線，**勿在 manager 裡 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。收不下的連線由協定層 ping 逾時關閉。
+**⚠️ 送訊息一律經送出佇列**（照 engine.io 的 writeBuffer，ADR-0008）: 送給單一連線用 `manager.send(websocket, message)`，廣播用 `broadcast_to_room` / `broadcast_to_all`，**勿直接 `websocket.send_text`**（會繞過佇列、打亂順序，`hello` 也不再保證是第一則）。廣播只放進佇列、不等送出，一條收不下的連線不會拖住呼叫端。送出失敗，或同一則訊息超過 `SEND_STALL_SECONDS`（45 秒，= 心跳間隔 + 逾時）送不出去，寫出 task 就關閉該連線並移除其佇列，**勿在 manager 裡 `disconnect()`**——清理一律交給該連線 endpoint 的 `finally`，它才會一併廣播房間人數。**勿以為協定層 ping 會關閉收不下的連線**：ping 要先寫進同一個塞滿的緩衝才開始計時，這種情況永遠不會逾時，所以才有 `SEND_STALL_SECONDS`。
 
 ---
 

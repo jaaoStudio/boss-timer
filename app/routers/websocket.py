@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from starlette.websockets import WebSocketState
 from sqlalchemy.orm import Session
 
 from app.database import models
@@ -153,9 +154,13 @@ async def websocket_endpoint(
 
     try:
         await manager.connect(websocket)
-    except Exception as e:
-        # 握手途中對方離開（accept 失敗），不是伺服器錯誤；釋放 try_reserve 計入的連線數
+    except (WebSocketDisconnect, OSError) as e:
+        # 握手途中對方離開（accept 失敗），不是伺服器錯誤
         logging.info(f"WebSocket handshake aborted: {e!r}")
+        manager.disconnect(websocket)   # 釋放 try_reserve 計入的連線數
+        return
+    except Exception:
+        logging.error("WebSocket handshake failed", exc_info=True)
         manager.disconnect(websocket)
         return
 
@@ -182,7 +187,11 @@ async def websocket_endpoint(
     except WebSocketDisconnect:
         logging.info(f"Client disconnected.")
     except Exception as e:
-        logging.error(f"WebSocket error: {e}", exc_info=True)
+        if websocket.application_state == WebSocketState.DISCONNECTED:
+            # 送出失敗時寫出 task 已關閉連線，之後的 receive 會拋 RuntimeError，屬一般斷線
+            logging.info(f"WebSocket closed after send failure: {e!r}")
+        else:
+            logging.error(f"WebSocket error: {e}", exc_info=True)
     finally:
         if websocket in manager.socket_to_room:
             room_id = manager.socket_to_room[websocket]

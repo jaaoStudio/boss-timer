@@ -16,6 +16,10 @@ HELLO_MESSAGE = {
     "ping_interval": HEARTBEAT_INTERVAL_SECONDS,
     "ping_timeout": HEARTBEAT_TIMEOUT_SECONDS,
 }
+# 同一則訊息送了這麼久還送不出去，就關閉連線。對應 engine.io 的 pingTimeout：對方不收時 ping 也送不到、
+# 收不到 pong，時間一到就關閉。協定層 ping 要先寫進同一個塞滿的緩衝才開始計時，這種情況永遠不會逾時。
+# 只看伺服器送不送得出去，不看用戶端有沒有回應（凍結的背景分頁瀏覽器仍會收下，不會被誤踢，#43）
+SEND_STALL_SECONDS = HEARTBEAT_INTERVAL_SECONDS + HEARTBEAT_TIMEOUT_SECONDS
 
 class ConnectionManager:
     def __init__(self):
@@ -73,17 +77,20 @@ class ConnectionManager:
         if (outbox := self._outboxes.get(websocket)) is not None:
             outbox.put_nowait(text)
 
-    @staticmethod
-    async def _write(websocket: WebSocket, outbox: asyncio.Queue[str]):
+    async def _write(self, websocket: WebSocket, outbox: asyncio.Queue[str]):
         """
-        依序送出佇列裡的訊息。沒有送出逾時：對方一直不收，由協定層 ping 逾時關閉。
-        送出失敗就關閉連線（照 engine.io 傳輸出錯即關閉），清理交給 endpoint 的 finally（會一併更新房間人數）。
+        依序送出佇列裡的訊息。送出失敗或超過 SEND_STALL_SECONDS 送不出去就關閉連線（照 engine.io 傳輸出錯即關閉），
+        清理交給 endpoint 的 finally（會一併更新房間人數）。
         """
         try:
             while True:
-                await websocket.send_text(await outbox.get())
+                text = await outbox.get()
+                async with asyncio.timeout(SEND_STALL_SECONDS):
+                    await websocket.send_text(text)
         except Exception as e:
             logging.info(f"WebSocket send failed, closing: {e!r}")
+            # 不再有人送出：之後的訊息直接丟棄，不留在沒人讀的佇列（房間資料留給 endpoint 清理）
+            self._outboxes.pop(websocket, None)
             with suppress(Exception):   # 對方已斷線時 close 也會失敗，receive 一樣會結束
                 await websocket.close()
 
@@ -156,4 +163,8 @@ class ConnectionManager:
         """
         while True:
             await asyncio.sleep(interval)
-            await self.broadcast_to_all({"type": "heartbeat"})
+            try:
+                await self.broadcast_to_all({"type": "heartbeat"})
+            except Exception as e:
+                # 全站只有這一個心跳 task，勿讓例外結束它（否則所有用戶端都會逾時重連）
+                logging.error(f"Heartbeat broadcast failed: {e}", exc_info=True)

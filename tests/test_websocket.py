@@ -17,6 +17,7 @@ from app.services.boss_service import BossService
 from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import Identity
+from app.websocket import manager as manager_module
 from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_TIMEOUT_SECONDS, HELLO_MESSAGE, ConnectionManager
 from tests.helpers import make_limited_app
 
@@ -43,7 +44,10 @@ def recorded_identities(monkeypatch):
         await manager.broadcast_to_room(record.room_id, {"type": "ok"})
 
     monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss_from_websocket", staticmethod(fake_record))
-    yield recorded
+    # 在 with client 內，所有連線共用同一個 portal（同一個 event loop），與正式環境相同；
+    # 否則每條連線各自一個 loop，廣播跨 loop 放進送出佇列不是 thread-safe
+    with client:
+        yield recorded
     app.dependency_overrides.clear()
 
 
@@ -243,8 +247,7 @@ def test_heartbeat_reaches_every_connection():
         with suppress(asyncio.CancelledError):
             await task
 
-    # 在 with client 內，兩條連線共用同一個 portal（同一個 event loop），與正式環境相同
-    with client, connect(str(uuid.uuid4())) as first, connect(str(uuid.uuid4())) as second:
+    with connect(str(uuid.uuid4())) as first, connect(str(uuid.uuid4())) as second:
         client.portal.call(one_beat)   # 在伺服器的 event loop 上執行
         for ws in (first, second):
             assert ws.receive_json() == {"type": "heartbeat"}
@@ -308,7 +311,25 @@ def test_send_failure_closes_connection_and_leaves_cleanup_to_the_endpoint():
         await asyncio.wait_for(until(lambda: dead.closed), 1)
 
         assert manager.socket_to_room[dead] == ROOM
+        manager.send(dead, {"type": "ok"})   # 寫出 task 已結束：直接丟棄、不拋例外
+        assert dead.sent == []
         manager.disconnect(dead)
+
+    asyncio.run(scenario())
+
+
+def test_stalled_send_closes_connection(monkeypatch):
+    """同一則訊息送太久送不出去就關閉（對應 engine.io 的 pingTimeout），佇列不會無限累積。"""
+    monkeypatch.setattr(manager_module, "SEND_STALL_SECONDS", 0.05)
+
+    async def scenario():
+        manager = ConnectionManager()
+        stalled = FakeSocket(send=asyncio.Event().wait)
+        await manager.connect(stalled)
+
+        await asyncio.wait_for(until(lambda: stalled.closed), 1)
+
+        manager.disconnect(stalled)
 
     asyncio.run(scenario())
 
