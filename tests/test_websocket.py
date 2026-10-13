@@ -356,7 +356,9 @@ def test_slow_but_progressing_connection_is_not_closed(monkeypatch):
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("raw", ["not json", "[]", '{"type": "join_room", "payload": null}'])
+@pytest.mark.parametrize("raw", [
+    "not json", "[]", '{"type": "join_room", "payload": null}', '{"type": [], "payload": {}}', "[" * 100_000,
+])
 def test_malformed_message_closes_the_connection(raw):
     """照 engine.io：封包解析失敗才關閉連線，不留下前端以為還連著的殭屍連線。"""
     with connect(str(uuid.uuid4())) as ws:
@@ -366,16 +368,40 @@ def test_malformed_message_closes_the_connection(raw):
         assert closed.value.code == 1007
 
 
+def test_binary_frame_closes_the_connection():
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_bytes(b"\x00")
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 1007
+
+
+def test_unexpected_error_closes_the_connection(monkeypatch):
+    """非預期錯誤結束 endpoint 時關閉連線（1011）：uvicorn 不會自己關閉，前端會以為還連著。"""
+    async def broken(websocket):
+        await websocket.receive_text()
+        raise ValueError("unexpected")
+
+    monkeypatch.setattr(ws_router, "_receive_message", broken)
+    with connect(str(uuid.uuid4())) as ws:
+        ws.send_json({"type": "ping"})
+        with pytest.raises(WebSocketDisconnect) as closed:
+            ws.receive_json()
+        assert closed.value.code == 1011
+
+
 def test_handler_error_keeps_the_connection(monkeypatch):
     """照 Socket.IO：單則訊息處理出錯不關閉連線，否則資料庫故障時前端會每秒重連一次。"""
     def db_down(db, room_id):
         raise RuntimeError("database unavailable")
 
-    monkeypatch.setattr(ws_router.room_service, "get_room_by_id", db_down)
+    monkeypatch.setattr(ws_router.room_service, "get_room_state", db_down)
+    manager = app.dependency_overrides[get_connection_manager]()
     with connect(str(uuid.uuid4())) as ws:
         ws.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
         ws.send_json({"type": "ping"})
         assert ws.receive_json() == {"type": "pong"}
+        assert manager.get_room_user_count(ROOM) == 0   # 沒有初始狀態就不留在房間裡
 
 
 def test_ping_from_old_frontend_is_answered_with_pong():

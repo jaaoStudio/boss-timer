@@ -492,7 +492,11 @@ ConnectionManager
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼
 - Service 層使用 `logging.error()` 記錄內部錯誤
 - WebSocket 錯誤透過 `manager.send(websocket, {"type": "error", ...})` 回傳（經送出佇列，勿直接 `send_text`）
-- **只有無法解析的訊息才關閉連線**（照 engine.io，close code 1007）；`handle_message` 拋例外只記錄、連線照常（照 Socket.IO）。**勿改成出錯就關閉**：前端重連後 `hello` 會重置退避，資料庫故障時會變成每秒重連、耗盡握手額度後被 4429 擋下
+- **連線何時關閉**（ADR-0008）：
+  - 無法解析（二進位 frame、非 JSON 物件、`type` 非字串、`payload` 非物件）→ 以 **1007** 關閉，記 info（照 engine.io）
+  - `handle_message` 拋例外 → 只記錄、**連線保留**（照 Socket.IO）。**勿改成出錯就關閉**：前端重連後 `hello` 會重置退避，資料庫故障時會變成每秒重連、耗盡握手額度後被 4429 擋下
+  - endpoint 其他非預期錯誤（含握手）→ 先清理（移出房間、更新人數）再以 **1011** 關閉。**勿刪這個關閉**：uvicorn 在 app 返回時不會關閉傳輸，前端會以為還連著、回報無聲遺失
+- `join_room` 取得 `room_state` 成功後才訂閱房間，出錯時不留在房間裡
 - Celery 任務錯誤透過 `self.retry()` 自動重試
 
 ### 安全守則

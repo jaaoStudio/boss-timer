@@ -51,8 +51,9 @@ async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Option
         manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
         return
     room_service.update_room_last_active(db, room_id)
-    manager.subscribe_to_room(websocket, room_id)
+    # 取得初始狀態成功後才訂閱：出錯時（例如資料庫故障）連線保留，但不留在房間裡卻沒有初始狀態
     initial_state = room_service.get_room_state(db, room_id)
+    manager.subscribe_to_room(websocket, room_id)
     manager.send(websocket, initial_state)
     await manager.broadcast_user_count(room_id)
 
@@ -98,20 +99,31 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
 
     payload = message.get("payload", {})
     room_id = payload.get("room_id")
-    if not room_id:
-        logging.warning(f"Received message type '{msg_type}' without room_id")
+    if not room_id or not isinstance(room_id, str):
+        logging.warning(f"Received message type '{msg_type}' without a valid room_id")
         return
 
     await handler(websocket, payload, room_id, db, manager, conn)
 
 
-def _parse_message(data: str) -> Optional[dict]:
-    """解析用戶端訊息；不是 JSON 物件或 payload 不是物件時回傳 None。"""
+async def _receive_message(websocket: WebSocket) -> Optional[dict]:
+    """
+    收下一則用戶端訊息並解析。無法解析時回傳 None：二進位 frame、不是 JSON 物件、
+    type 不是字串（socket.io-parser 同樣把非字串事件名當成解析失敗）、payload 不是物件。
+    """
+    try:
+        data = await websocket.receive_text()
+    except KeyError:   # 二進位 frame：Starlette 的 receive_text 取 message["text"]
+        return None
     try:
         message = json.loads(data)
-    except ValueError:
+    except (ValueError, RecursionError):   # 極深的巢狀 JSON 拋 RecursionError
         return None
-    if not isinstance(message, dict) or not isinstance(message.get("payload", {}), dict):
+    if (
+        not isinstance(message, dict)
+        or not isinstance(message.get("type"), str)
+        or not isinstance(message.get("payload", {}), dict)
+    ):
         return None
     return message
 
@@ -182,7 +194,7 @@ async def websocket_endpoint(
     try:
         while True:
             # 不設接收逾時：死連線由協定層 ping 偵測，勿以「多久沒收到前端訊息」判斷生死（ADR-0008、#43）
-            message = _parse_message(await websocket.receive_text())
+            message = await _receive_message(websocket)
             if message is None:
                 # 照 engine.io：只有封包解析失敗才關閉連線
                 logging.info("Malformed WebSocket message, closing.")
@@ -218,12 +230,10 @@ async def websocket_endpoint(
             logging.error(f"WebSocket error: {e}", exc_info=True)
             close_code = 1011
     finally:
-        if websocket in manager.socket_to_room:
-            room_id = manager.socket_to_room[websocket]
-            manager.disconnect(websocket)
+        room_id = manager.socket_to_room.get(websocket)
+        manager.disconnect(websocket)
+        if room_id:
             await manager.broadcast_user_count(room_id)
-        else:
-            manager.disconnect(websocket)
         if close_code is not None:
             # 先清理再關閉：關閉握手可能要等 10 秒以上，期間不該還算在房間與人數裡。
             # uvicorn 在 app 返回時不會關閉傳輸，不關的話前端以為還連著，回報無聲遺失
