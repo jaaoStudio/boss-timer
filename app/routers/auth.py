@@ -79,8 +79,6 @@ async def login_with_google(
         # 更新最後登入時間
         user = auth_service.update_user_last_login(db, user)
 
-    # 創建 access token 和 refresh token
-    access_token = auth_service.create_access_token(data={"sub": str(user.id)})
     refresh_token = auth_service.create_refresh_token(data={"sub": str(user.id)})
 
     # 將 refresh token 存儲到資料庫
@@ -96,14 +94,7 @@ async def login_with_google(
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60  # 轉換為秒
     )
 
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        samesite='lax',
-        secure=settings.env == "production",
-        max_age=settings.access_token_expire_minutes * 60 # 轉換為秒
-    )
+    access_token = _set_access_token_cookie(response, user.id)
 
     return {
         "access_token": access_token,

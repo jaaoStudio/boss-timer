@@ -27,6 +27,10 @@ def token(token_type: str, sub: str = "42") -> str:
     return jwt.encode({"sub": sub, "type": token_type}, settings.secret_key, algorithm=settings.algorithm)
 
 
+VALID_REFRESH = token("refresh", "42")
+REVOKED_REFRESH = token("refresh", "99")
+
+
 def http_request(cookie_header: bytes = b"") -> Request:
     return Request({"type": "http", "headers": [(b"cookie", cookie_header)] if cookie_header else []})
 
@@ -47,13 +51,13 @@ def deleted_cookies(response) -> set[str]:
 
 @pytest.fixture
 def login(monkeypatch):
-    """模擬資料庫：existing 裡的使用者存在；refresh_token cookie 為 "valid" 時對應使用者 42。"""
+    """模擬資料庫：existing 裡的使用者存在；只有 VALID_REFRESH 未被撤銷（對應使用者 42）。"""
     def setup(existing=(42,), refresh_user=42):
         monkeypatch.setattr(identity_module, "_get_user", lambda db, user_id: models.User(
             id=int(user_id), google_id="g", email="a@example.com", display_name="小明", preferences={},
             created_at=datetime.now(timezone.utc), is_admin=False) if int(user_id) in existing else None)
         monkeypatch.setattr(identity_module.auth_service, "verify_refresh_token",
-                            lambda db, t: refresh_user if t == "valid" else None)
+                            lambda db, t: refresh_user if t == VALID_REFRESH else None)
     return setup
 
 
@@ -157,7 +161,7 @@ def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):
     login()
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
     for _ in range(3):
-        res = init_session(refresh_token="valid")
+        res = init_session(refresh_token=VALID_REFRESH)
         assert res.json()["status"] == "authenticated" and res.json()["user"]["id"] == 42
         assert identity_module.auth_service.decode_token_user_id(res.cookies.get("access_token")) == "42"
         assert issued_cookie(res) is None
@@ -165,9 +169,8 @@ def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):
 
 
 @pytest.mark.parametrize("cookies", [
-    {"refresh_token": "revoked"},   # 被撤銷（例如在其他裝置登入）或過期
-    {"access_token": token("access"), "refresh_token": "revoked"},   # 使用者已刪除
-    {"access_token": "garbage"},
+    {"refresh_token": REVOKED_REFRESH},   # 被撤銷（例如在其他裝置登入）或過期
+    {"access_token": token("access"), "refresh_token": REVOKED_REFRESH},   # 使用者已刪除
 ])
 def test_stale_login_is_cleared_and_becomes_anonymous(login, cookies):
     login(existing=())
@@ -180,7 +183,7 @@ def test_stale_login_is_cleared_and_becomes_anonymous(login, cookies):
 def test_stale_login_keeps_existing_anonymous_identity(login):
     login(existing=())
     anon = str(uuid.uuid4())
-    res = init_session(cookie=anonymous_id.sign(anon), refresh_token="revoked")
+    res = init_session(cookie=anonymous_id.sign(anon), refresh_token=REVOKED_REFRESH)
     assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": anon}
     assert {"access_token", "refresh_token"} <= deleted_cookies(res)
 
@@ -190,7 +193,7 @@ def test_stale_login_over_mint_limit_is_anonymous_without_identity(monkeypatch, 
     login(existing=())
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
     assert init_session().status_code == 200
-    res = init_session(refresh_token="revoked")
+    res = init_session(refresh_token=REVOKED_REFRESH)
     assert res.status_code == 200
     assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": None}
     assert issued_cookie(res) is None
@@ -203,6 +206,15 @@ def test_rejected_refresh_token_cookie_is_deleted(monkeypatch):
     res = client.post("/auth/refresh", headers={"CF-Connecting-IP": "203.0.113.1"})
     assert res.status_code == 401
     assert 'refresh_token=""' in res.headers["set-cookie"] and "max-age=0" in res.headers["set-cookie"].lower()
+
+
+def test_garbage_login_cookie_is_not_a_stale_login(monkeypatch, login):
+    # 解不開的 cookie 不算登入：不能拿來繞過新訪客的發放上限（429）
+    login(existing=())
+    monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
+    assert init_session().status_code == 200
+    res = init_session(access_token="garbage", refresh_token="garbage")
+    assert res.status_code == 429
 
 
 def test_mint_limit_per_ip_does_not_affect_existing_identities(monkeypatch):

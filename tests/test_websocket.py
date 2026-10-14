@@ -69,8 +69,8 @@ def connect(anon: str | None = None, ip: str = "203.0.113.1", **cookies: str):
         yield ws
 
 
-def access_token(user_id: str = "42") -> str:
-    return jwt.encode({"sub": user_id, "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
+def access_token(user_id: str = "42", token_type: str = "access") -> str:
+    return jwt.encode({"sub": user_id, "type": token_type}, settings.secret_key, algorithm=settings.algorithm)
 
 
 def join(ws) -> None:
@@ -110,10 +110,10 @@ def test_forged_anonymous_id_in_payload_is_ignored(recorded_identities):
 @pytest.mark.parametrize("cookies, user_exists, refresh_user, expected", [
     ({"access_token": access_token()}, True, None, Identity("user", "42")),
     # 背景分頁在 access token 過期後重連：改以 refresh token 認出登入者
-    ({"refresh_token": "valid"}, True, 42, Identity("user", "42")),
+    ({"refresh_token": access_token(token_type="refresh")}, True, 42, Identity("user", "42")),
     # 使用者已刪除：access token 仍在效期內也不算（refresh token 已隨使用者刪除）
     ({"access_token": access_token()}, False, None, Identity("none")),
-    ({"refresh_token": "revoked"}, True, None, Identity("none")),
+    ({"refresh_token": access_token(token_type="refresh")}, True, None, Identity("none")),
 ])
 def test_handshake_identity(recorded_identities, monkeypatch, cookies, user_exists, refresh_user, expected):
     monkeypatch.setattr(identity_module, "_get_user",

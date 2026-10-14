@@ -146,7 +146,7 @@ frontend/
 三條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
 
 1. **登入狀態只由伺服器判斷（ADR-0009）**
-   開頁只呼叫一次 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。
+   開頁只呼叫一次 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（送出請求前有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。等待回應期間收到其他分頁的 `LOGIN` / `LOGOUT`（`_authChangedDuringInit`）時，這次的判斷已過時，沿用廣播的狀態、不套用回應。
 
 2. **併發呼叫要去重**
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session` 會被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**

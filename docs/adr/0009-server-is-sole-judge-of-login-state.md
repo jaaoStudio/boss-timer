@@ -25,4 +25,4 @@ status: accepted
 - `/auth/session` 不再只是「發匿名身分」，會換發 access token、清掉失效的登入 cookie。勿把換發或清 cookie 的判斷搬回前端。
 - `/auth/validate` 只供部署切換期間的舊版前端，新前端不呼叫，日後刪除（#63）。`/auth/refresh` 保留給使用中途遇到 401 的自動換發（interceptor，#60）。
 - 前端開頁只有一次請求，判斷失敗時以 `user_info` 顯示上次的狀態：這段期間畫面可能與伺服器不一致，直到下次開頁；WebSocket 仍依 cookie 由伺服器判斷，回報記錄者不受影響。
-- 初始化進行中收到其他分頁的 `LOGOUT`、而本頁的 `/auth/session` 已先判斷為登入時，畫面會顯示登入直到下次開頁（極少發生，我們接受）；WebSocket 在初始化結束時才以當時的 cookie 連線，身分正確。
+- 等待 `/auth/session` 回應期間收到其他分頁的 `LOGIN` / `LOGOUT` 時，這次的判斷已過時（在 cookie 改變前做出），前端沿用廣播的狀態、不套用回應；WebSocket 在初始化結束時才以當時的 cookie 連線。

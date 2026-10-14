@@ -19,6 +19,8 @@ interface UserState {
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
+  // 初始化期間收到其他分頁的 LOGIN / LOGOUT：廣播的狀態比進行中的 /auth/session 判斷新
+  _authChangedDuringInit: boolean;
   _logoutPromise?: Promise<void>;
 }
 
@@ -31,6 +33,7 @@ export const useUserStore = defineStore('user', {
     _channel: undefined,
     _initialized: false,
     _initPromise: undefined,
+    _authChangedDuringInit: false,
     _logoutPromise: undefined,
   }),
   getters: {
@@ -48,14 +51,17 @@ export const useUserStore = defineStore('user', {
           if (event.data.type === 'LOGOUT') {
             this.becomeAnonymous();
           } else if (event.data.type === 'LOGIN') {
-            this.user = event.data.user;
-            this.isLoggedIn = true;
+            this.setLoggedInUser(event.data.user);
           } else {
             return;
           }
           // cookie 已由該分頁更新；WebSocket 的身分由握手時的 cookie 決定，重連才會換成新身分。
           // 初始化完成前不重連：初始化結束時本來就會以當時的 cookie 連線，這裡重連會連續握手兩次
-          if (this._initialized) useWebSocketStore().reconnect();
+          if (this._initialized) {
+            useWebSocketStore().reconnect();
+          } else {
+            this._authChangedDuringInit = true;
+          }
         };
       }
     },
@@ -93,11 +99,13 @@ export const useUserStore = defineStore('user', {
       this.isLoading = true;
       try {
         // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分
+        const wasLoggedIn = localStorage.getItem('user_info') !== null;
         const session = await apiService.initSession();
-        if (session.status === 'authenticated') {
+        if (this._authChangedDuringInit) {
+          // 等待回應期間其他分頁登入 / 登出過：這次的判斷已過時，沿用廣播的狀態（finally 會以新的 cookie 連線）
+        } else if (session.status === 'authenticated') {
           this.setLoggedInUser(session.user);
         } else {
-          const wasLoggedIn = localStorage.getItem('user_info') !== null;
           this.becomeAnonymous();
           // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁一起變匿名並重連
           if (wasLoggedIn) this.notifyLogout();

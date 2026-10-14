@@ -237,7 +237,7 @@ except Exception as e:
 | 情況 | 處理 | 回傳 |
 |---|---|---|
 | 登入有效 | access token 過期時以 refresh token 換發 access token cookie | `{ status: "authenticated", user }` |
-| 有登入 cookie 但登入已失效 | 刪掉 `access_token` / `refresh_token` cookie，接著照匿名處理 | 同下 |
+| 有能解開的登入 token 但登入已失效（refresh token 被撤銷、使用者已刪除） | 刪掉 `access_token` / `refresh_token` cookie，接著照匿名處理 | 同下 |
 | 匿名 cookie 簽章正確 | 沿用 | `{ status: "anonymous", anonymous_user_id }` |
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
 | 撞到發放上限 | 舊登入剛失效：回 `anonymous_user_id: null`（暫時沒有身分、以 IP 限流，畫面才與伺服器一致）；其他情況回 429 | — |
