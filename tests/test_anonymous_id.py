@@ -172,6 +172,7 @@ def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):
     {"refresh_token": REVOKED_REFRESH},   # 被撤銷（例如在其他裝置登入）或過期
     {"access_token": token("access"), "refresh_token": REVOKED_REFRESH},   # 使用者已刪除
     {"access_token": "garbage"},
+    {"refresh_token": "garbage"},
 ])
 def test_stale_login_is_cleared_and_becomes_anonymous(login, cookies):
     login(existing=())
@@ -181,10 +182,14 @@ def test_stale_login_is_cleared_and_becomes_anonymous(login, cookies):
     assert {"access_token", "refresh_token"} <= deleted_cookies(res)
 
 
-def test_stale_login_keeps_existing_anonymous_identity(login):
+@pytest.mark.parametrize("cookies", [
+    {"refresh_token": REVOKED_REFRESH},
+    {"access_token": "garbage", "refresh_token": "garbage"},
+])
+def test_stale_login_keeps_existing_anonymous_identity(login, cookies):
     login(existing=())
     anon = str(uuid.uuid4())
-    res = init_session(cookie=anonymous_id.sign(anon), refresh_token=REVOKED_REFRESH)
+    res = init_session(cookie=anonymous_id.sign(anon), **cookies)
     assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": anon}
     assert {"access_token", "refresh_token"} <= deleted_cookies(res)
 

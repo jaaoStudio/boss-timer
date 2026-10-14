@@ -97,11 +97,9 @@ export const useUserStore = defineStore('user', {
       this.isLoading = true;
       try {
         const wasLoggedIn = localStorage.getItem('user_info') !== null;
-        const changes = this._authChanges;
         await this._syncSession();
-        // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁重新判斷並重連。
-        // 期間收到過其他分頁的通知時不再廣播：那個分頁已通知過（多個分頁同時開頁時才不會互相觸發）
-        if (wasLoggedIn && !this.isLoggedIn && changes === this._authChanges) this.notifyLogout();
+        // 登入已失效（使用者沒按登出）：伺服器清掉的是所有分頁共用的登入 cookie，當作登出通知其他分頁
+        if (wasLoggedIn && !this.isLoggedIn) this.notifyLogout();
       } catch (error) {
         // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用上次的顯示，什麼都不清除
         console.error('Auth initialization failed:', error);
