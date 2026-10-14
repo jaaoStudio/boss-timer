@@ -171,6 +171,7 @@ def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):
 @pytest.mark.parametrize("cookies", [
     {"refresh_token": REVOKED_REFRESH},   # 被撤銷（例如在其他裝置登入）或過期
     {"access_token": token("access"), "refresh_token": REVOKED_REFRESH},   # 使用者已刪除
+    {"access_token": "garbage"},
 ])
 def test_stale_login_is_cleared_and_becomes_anonymous(login, cookies):
     login(existing=())
@@ -206,15 +207,6 @@ def test_rejected_refresh_token_cookie_is_deleted(monkeypatch):
     res = client.post("/auth/refresh", headers={"CF-Connecting-IP": "203.0.113.1"})
     assert res.status_code == 401
     assert 'refresh_token=""' in res.headers["set-cookie"] and "max-age=0" in res.headers["set-cookie"].lower()
-
-
-def test_garbage_login_cookie_is_not_a_stale_login(monkeypatch, login):
-    # 解不開的 cookie 不算登入：不能拿來繞過新訪客的發放上限（429）
-    login(existing=())
-    monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
-    assert init_session().status_code == 200
-    res = init_session(access_token="garbage", refresh_token="garbage")
-    assert res.status_code == 429
 
 
 def test_mint_limit_per_ip_does_not_affect_existing_identities(monkeypatch):

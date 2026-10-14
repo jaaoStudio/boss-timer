@@ -19,8 +19,9 @@ interface UserState {
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
-  // 初始化期間收到其他分頁的 LOGIN / LOGOUT：廣播的狀態比進行中的 /auth/session 判斷新
-  _authChangedDuringInit: boolean;
+  // 登入 cookie 改變（本分頁或其他分頁登入 / 登出）的次數：送出 /auth/session 後有變，代表回應是改變前的判斷
+  _authChanges: number;
+  _resyncPromise?: Promise<void>;
   _logoutPromise?: Promise<void>;
 }
 
@@ -33,7 +34,8 @@ export const useUserStore = defineStore('user', {
     _channel: undefined,
     _initialized: false,
     _initPromise: undefined,
-    _authChangedDuringInit: false,
+    _authChanges: 0,
+    _resyncPromise: undefined,
     _logoutPromise: undefined,
   }),
   getters: {
@@ -48,19 +50,14 @@ export const useUserStore = defineStore('user', {
       if (typeof window !== 'undefined' && window.BroadcastChannel && !this._channel) {
         this._channel = new BroadcastChannel('user-auth');
         this._channel.onmessage = (event) => {
-          if (event.data.type === 'LOGOUT') {
-            this.becomeAnonymous();
-          } else if (event.data.type === 'LOGIN') {
-            this.setLoggedInUser(event.data.user);
-          } else {
-            return;
-          }
-          // cookie 已由該分頁更新；WebSocket 的身分由握手時的 cookie 決定，重連才會換成新身分。
-          // 初始化完成前不重連：初始化結束時本來就會以當時的 cookie 連線，這裡重連會連續握手兩次
-          if (this._initialized) {
-            useWebSocketStore().reconnect();
-          } else {
-            this._authChangedDuringInit = true;
+          if (event.data.type !== 'LOGIN' && event.data.type !== 'LOGOUT') return;
+          // 其他分頁改了共用的 cookie：不採用通知裡的狀態（可能已過時），重新問伺服器（ADR-0009）。
+          // 進行中的判斷（開頁或上一次重新判斷）會因次數改變自己再問一次，初始化結束時也會以當時的 cookie 連線
+          this._authChanges++;
+          if (this._initialized && !this._resyncPromise) {
+            this._resyncPromise = this._runResync().finally(() => {
+              this._resyncPromise = undefined;
+            });
           }
         };
       }
@@ -68,6 +65,7 @@ export const useUserStore = defineStore('user', {
 
     notifyLogin() {
       if (this._channel) {
+        // 收到的分頁會重新問伺服器、不讀 user；保留給部署切換期間仍直接套用 user 的舊版前端
         this._channel.postMessage({ type: 'LOGIN', user: JSON.parse(JSON.stringify(this.user)) });
       }
     },
@@ -98,18 +96,10 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分
         const wasLoggedIn = localStorage.getItem('user_info') !== null;
-        const session = await apiService.initSession();
-        if (this._authChangedDuringInit) {
-          // 等待回應期間其他分頁登入 / 登出過：這次的判斷已過時，沿用廣播的狀態（finally 會以新的 cookie 連線）
-        } else if (session.status === 'authenticated') {
-          this.setLoggedInUser(session.user);
-        } else {
-          this.becomeAnonymous();
-          // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁一起變匿名並重連
-          if (wasLoggedIn) this.notifyLogout();
-        }
+        await this._syncSession();
+        // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁重新判斷並重連
+        if (wasLoggedIn && !this.isLoggedIn) this.notifyLogout();
       } catch (error) {
         // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用上次的顯示，什麼都不清除
         console.error('Auth initialization failed:', error);
@@ -120,6 +110,33 @@ export const useUserStore = defineStore('user', {
         this.isLoading = false;
         this._initialized = true;
         websocketStore.connect();
+      }
+    },
+
+    // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分。
+    // 等待回應期間其他分頁登入 / 登出過（cookie 已改變），這次的判斷已過時，再問一次
+    async _syncSession() {
+      let session;
+      let changes;
+      do {
+        changes = this._authChanges;
+        session = await apiService.initSession();
+      } while (changes !== this._authChanges);
+      if (session.status === 'authenticated') {
+        this.setLoggedInUser(session.user);
+      } else {
+        this.becomeAnonymous();
+      }
+    },
+
+    // 其他分頁登入 / 登出後重新判斷。失敗時沿用目前的顯示（同初始化）；cookie 已改變，WebSocket 一律重連換成新身分
+    async _runResync() {
+      try {
+        await this._syncSession();
+      } catch (error) {
+        console.error('Failed to resync auth state:', error);
+      } finally {
+        useWebSocketStore().reconnect();
       }
     },
 
@@ -138,6 +155,7 @@ export const useUserStore = defineStore('user', {
     async _runLogout() {
       const websocketStore = useWebSocketStore();
       await apiService.logout();
+      this._authChanges++;
       this.becomeAnonymous();
       try {
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
@@ -157,6 +175,7 @@ export const useUserStore = defineStore('user', {
       try {
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
+        this._authChanges++;
         this.setLoggedInUser(response.user);
 
         // 登入回應已設好 access_token cookie；WebSocket 身分由握手時的 cookie 決定，重連即換成登入身分

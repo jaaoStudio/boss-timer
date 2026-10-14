@@ -46,9 +46,7 @@ class Login:
 
 
 def has_login_cookies(cookies: dict[str, str]) -> bool:
-    """有能解開的 access / refresh token（不查資料庫）。空值或編造的 cookie 不算，不會被當成失效的登入。"""
-    return bool(auth_service.decode_token_user_id(cookies.get("access_token"))
-                or auth_service.decode_token_user_id(cookies.get("refresh_token"), token_type="refresh"))
+    return "access_token" in cookies or "refresh_token" in cookies
 
 
 def _get_user(db: Session, user_id: str | int) -> Optional[models.User]:

@@ -139,14 +139,14 @@ frontend/
 - `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清除本地狀態 → `initSession()` → 廣播 `LOGOUT` → 重連（`initSession` 失敗仍廣播並重連）。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
 - `updatePreferences(preferences)` — 更新使用者偏好設定
 
-**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 在多個瀏覽器頁籤間同步登入/登出狀態。收到 `LOGOUT` 時改為匿名（含匿名暱稱）；初始化完成前收到時不重連（初始化結束時本來就會以當時的 cookie 連線）。
+**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 通知其他頁籤登入 / 登出。**收到時不採用通知裡的狀態，重新呼叫 `/auth/session`（`_runResync`）照伺服器的判斷設定並重連 WebSocket**（ADR-0009，照 NextAuth）：所有頁籤共用 cookie，通知裡的狀態可能已過時。初始化完成前收到時不另外重新判斷，由進行中的初始化再問一次（初始化結束時才連線）。`LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
 
 #### ⚠️ 初始化流程守則（`initializeAuth` / `_runInitializeAuth`）
 
 三條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
 
 1. **登入狀態只由伺服器判斷（ADR-0009）**
-   開頁只呼叫一次 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（送出請求前有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。等待回應期間收到其他分頁的 `LOGIN` / `LOGOUT`（`_authChangedDuringInit`）時，這次的判斷已過時，沿用廣播的狀態、不套用回應。
+   開頁呼叫 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（送出請求前有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。開頁與跨頁籤重新判斷共用 `_syncSession()`：送出後登入 cookie 改變過（`_authChanges` 有變：本頁或其他頁籤登入 / 登出），回應是改變前的判斷，**再問一次、不套用**。勿改回直接套用廣播的狀態（PR #64：過時回應的 Set-Cookie 仍會被瀏覽器套用，畫面與伺服器不一致）。
 
 2. **併發呼叫要去重**
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session` 會被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
@@ -232,7 +232,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **核心功能**:
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示。心跳已過期但計時器還沒觸發（剛從休眠喚醒）時不送出、直接重連並回傳 `false`
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
-- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
+- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、收到其他分頁的 `LOGIN` / `LOGOUT` 廣播、重新判斷後都重連，讓 WS 換成新身分
 - **連線模型照 Socket.IO（engine.io v4，ADR-0008）**，勿自創機制或加特例：
   - **只連一次**：`initializeAuth()` 第一次完成時連線，之後換頁不呼叫 `connect()`（會繞過退避），斷線一律交給自動重連
   - **心跳逾時**：伺服器連線後先送 `hello`（`ping_interval` / `ping_timeout`），之後每 25 秒送 `heartbeat`。收到 `hello` 才啟動逾時，每次心跳重新計時，超過兩者相加（45 秒）沒收到就關閉並退避重連。**不分前景背景、不探測、前端不送 `ping`**：背景節流的是計時器，心跳照常送達，逾時只會晚觸發、不會誤判。連到不送 `hello` 的舊後端時不啟動逾時
