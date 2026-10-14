@@ -151,9 +151,8 @@ frontend/
 2. **併發呼叫要去重**
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session`、`/auth/validate` 會各被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
 
-3. **曾登入過的使用者只有兩種情況會變匿名：伺服器明確拒絕換發，或使用者登出**
-   規則集中在 `_resolveLogin()`：`/auth/validate` 回 `valid:false` 且有 `user_info` 時呼叫 `tryRefreshToken()`，回傳 `refreshed` / `rejected`（401，或被限流 429）/ `unavailable`（其他失敗：網路錯誤、5xx 等）。**只有 `rejected` 才變匿名**；`unavailable`、換發後第二次驗證失敗、`_runInitializeAuth` 的 catch（`/auth/session`、`/auth/validate` 被限流或暫時故障）一律以 `restoreUserFromStorage()` 保留登入。理由：refresh token 仍有效時 WebSocket 握手會以它認出登入者，畫面改顯示匿名就不一致；刪掉 `user_info` 後之後的載入也不會再嘗試換發（最長 30 天）。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），被限流更不代表登入失效。**勿改回「任何錯誤都 `clearAuth()`」，也勿在 `rejected` 以外的情況登出**（會撤銷 30 天的登入）。
-   `rejected` 視為登出的理由：401 是 refresh token 無效；429 是後端 `/auth/refresh` 以 refresh token 裡的使用者計算額度，被限流代表同一個登入者一分鐘 refresh 超過 30 次（多半是前端陷入 refresh 迴圈），登出才會讓迴圈停下。`discardStaleLogin()` 先改為匿名（`becomeAnonymous()`，之後失敗時 catch 才不會恢復成登入），盡力呼叫 `/auth/logout` 清掉舊的登入 cookie（失敗只留 log），再 `initSession()` 取得匿名身分，最後廣播 `LOGOUT` 讓其他分頁一起改為匿名：refresh cookie 還在時 `/auth/session` 不發匿名身分，WebSocket 握手也會以它判斷為登入者。
+3. **被限流（429）不可登出**
+   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 遇到 429 會往外丟（其他錯誤才視為未登入），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。例外：`tryRefreshToken()` 被限流時視為換發失敗並登出——後端 `/auth/refresh` 以 refresh token 裡的使用者計算額度，被限流代表同一個登入者一分鐘 refresh 超過 30 次（多半是前端陷入 refresh 迴圈），登出會刪掉 `user_info` 讓迴圈停下；若改為恢復登入狀態，畫面顯示已登入、WebSocket 卻以過期 cookie 連成匿名。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API

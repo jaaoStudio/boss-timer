@@ -12,8 +12,6 @@ export interface User {
   is_admin: boolean;
 }
 
-type RefreshResult = 'refreshed' | 'rejected' | 'unavailable';
-
 interface UserState {
   user: User | null;
   isLoggedIn: boolean;
@@ -94,12 +92,34 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        await this._resolveLogin();
+        // 確保有伺服器簽發的匿名身分 cookie（已登入時不發放）
+        await apiService.initSession();
+
+        let res = await apiService.validateToken();
+
+
+        if (!res.valid && localStorage.getItem('user_info')) {
+          const refreshed = await this.tryRefreshToken();
+          if (refreshed) {
+            res = await apiService.validateToken();
+          }
+        }
+
+        if (res.valid) {
+          this.user = res.user ?? null;
+          this.isLoggedIn = true;
+          localStorage.setItem('user_info', JSON.stringify(res.user));
+        } else {
+          this.clearAuth();
+          this.anonymousName = this.getAnonymousName();
+        }
       } catch (error) {
-        // 失敗（被限流、網路錯誤、5xx）不代表登入失效：曾登入過的使用者以 user_info 保留登入（見 _resolveLogin）
         console.error('Auth initialization failed:', error);
-        if (!this.restoreUserFromStorage()) {
-          this.becomeAnonymous();
+        // 被限流（例如同 IP 有人狂打導致 IP 天花板滿）不代表登入失效，token 仍然有效；
+        // 保留本地的登入資訊，否則已登入的使用者會因為別人被登出。
+        if (!(isAxiosError(error) && error.response?.status === 429 && this.restoreUserFromStorage())) {
+          this.clearAuth();
+          this.anonymousName = this.getAnonymousName();
         }
       } finally {
         this.isLoading = false;
@@ -108,65 +128,16 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    /**
-     * 決定登入狀態。曾登入過（有 user_info）的使用者只有兩種情況會變匿名：伺服器明確拒絕換發
-     * （tryRefreshToken 回 rejected）或使用者登出。其他任何失敗都保留登入：refresh token 仍有效，
-     * WebSocket 握手也會以它認出登入者，畫面改顯示匿名就會不一致；而且刪掉 user_info 後，之後的載入不會再嘗試換發。
-     */
-    async _resolveLogin() {
-      // 確保有伺服器簽發的匿名身分 cookie（已登入時不發放）
-      await apiService.initSession();
-      const res = await apiService.validateToken();
-      if (res.valid) {
-        this.setLoggedInUser(res.user);
-        return;
-      }
-      if (!localStorage.getItem('user_info')) {
-        this.becomeAnonymous();
-        return;
-      }
-      const refresh = await this.tryRefreshToken();
-      if (refresh === 'rejected') {
-        await this.discardStaleLogin();
-        return;
-      }
-      const revalidated = refresh === 'refreshed' ? await apiService.validateToken() : undefined;
-      if (revalidated?.valid) {
-        this.setLoggedInUser(revalidated.user);
-      } else {
-        this.restoreUserFromStorage();
-      }
-    },
-
-    // 嘗試用 refresh token 換新的 access token：
-    // - 'rejected'：refresh token 無效（401），或被限流（429）——後端以 refresh token 裡的使用者計算額度，
-    //   被限流代表前端多半陷入 refresh 迴圈，視為換發失敗並登出，迴圈才會停下
-    // - 'unavailable'：其他失敗（網路錯誤、5xx 等），不能確定登入已失效，不可登出（會撤銷 30 天的登入）
-    async tryRefreshToken(): Promise<RefreshResult> {
+    // 嘗試用 refresh token 換新的 access token。
+    // 成功回傳 true；任何失敗（無 refresh cookie / 已過期 / 被限流）回傳 false，
+    // 由 axios interceptor 處理後續導向與提示。被限流也不恢復登入狀態：此時 validate 已回 valid:false，
+    // 恢復的話畫面顯示已登入、WebSocket 卻以過期的 cookie 連成匿名。
+    async tryRefreshToken(): Promise<boolean> {
       try {
         await apiService.refresh_token();
-        return 'refreshed';
-      } catch (error) {
-        const status = isAxiosError(error) ? error.response?.status : undefined;
-        return status === 401 || status === 429 ? 'rejected' : 'unavailable';
-      }
-    },
-
-    // 換發失敗、改以匿名使用前，盡力清掉舊的登入 cookie：refresh cookie 還在時 /auth/session 不發匿名身分，
-    // WebSocket 握手也會以它判斷為登入者，與畫面上的匿名狀態不一致
-    async discardStaleLogin() {
-      // 先清本地登入狀態：之後的 initSession 失敗時，_runInitializeAuth 的 catch 才不會以 user_info 恢復成登入
-      this.becomeAnonymous();
-      try {
-        await apiService.logout();
-      } catch (error) {
-        console.warn('Failed to clear stale login cookies:', error);
-      }
-      try {
-        await apiService.initSession();
-      } finally {
-        // 撤銷的是所有分頁共用的 refresh token：通知其他分頁一起改為匿名並重連（取得匿名身分後再通知）
-        this.notifyLogout();
+        return true;
+      } catch {
+        return false;
       }
     },
 
@@ -185,7 +156,8 @@ export const useUserStore = defineStore('user', {
     async _runLogout() {
       const websocketStore = useWebSocketStore();
       await apiService.logout();
-      this.becomeAnonymous();
+      this.clearAuth();
+      this.anonymousName = this.getAnonymousName();
       try {
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
         await apiService.initSession();
@@ -235,17 +207,6 @@ export const useUserStore = defineStore('user', {
       } catch (error) {
         console.error('Failed to update preferences:', error);
       }
-    },
-
-    setLoggedInUser(user: User | null | undefined) {
-      this.user = user ?? null;
-      this.isLoggedIn = true;
-      localStorage.setItem('user_info', JSON.stringify(user));
-    },
-
-    becomeAnonymous() {
-      this.clearAuth();
-      this.anonymousName = this.getAnonymousName();
     },
 
     clearAuth() {
