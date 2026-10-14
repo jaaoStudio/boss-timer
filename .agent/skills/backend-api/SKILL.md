@@ -240,7 +240,7 @@ except Exception as e:
 | 有登入 cookie 但登入已失效（refresh token 無效或被撤銷、使用者已刪除） | 刪掉 `access_token` / `refresh_token` cookie，接著照匿名處理 | 同下 |
 | 匿名 cookie 簽章正確 | 沿用 | `{ status: "anonymous", anonymous_user_id }` |
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
-| 撞到發放上限 | 舊登入剛失效：回 `anonymous_user_id: null`（暫時沒有身分、以 IP 限流，畫面才與伺服器一致）；其他情況回 429 | — |
+| 撞到發放上限 | 不發放、**不回 429**（拿不到身分的結果相同，429 只會讓前端當成判斷失敗、沿用上次的顯示） | `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流） |
 
 - 個人額度用 `get_login_user_key`：access token 的使用者 → refresh token 裡的使用者 → 一般規則。呼叫者的 access token 常已過期，退回匿名或 IP 會讓同 IP 的登入者互相擋到
 - **勿把換發或清 cookie 的判斷搬回前端**：前端每多處理一種失敗，就多一個與伺服器判斷不一致的可能
@@ -257,7 +257,7 @@ except Exception as e:
 
 - **沒有任何端點要求「必須有身分」**（ADR-0007 更新）：`none` 只是限流改以 IP 計算。原本的 `verify_user_session` 門檻已移除——它擋不了濫用（打一次 `/auth/session` 就有身分），卻會在拿不到身分時讓前端的 401 處理把匿名使用者踢出房間
 - `/auth/session`：登入有效 → 不發匿名身分；`anon` → 沿用；否則發放新身分（見上方表格）。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
-- 新發經 `anonymous_id_mint_allowed()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429（這次沒有身分、以 IP 限流；舊登入剛失效時例外，見上方表格）
+- 新發經 `anonymous_id_mint_allowed()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過時回 `anonymous_user_id: null`（這次沒有身分、以 IP 限流，見上方表格）
 - `/auth/refresh` 的個人額度與 `/auth/session` 相同，用 `get_login_user_key`
 - `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 的結果由呼叫端存在該連線的 `Connection`，函式本身不快取
 - 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

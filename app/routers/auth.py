@@ -228,11 +228,11 @@ async def init_session(
     - 有登入 cookie 但登入已失效 → 清掉舊的登入 cookie，改以匿名回應
     - 匿名：簽章正確的匿名 cookie 沿用；沒有、編造或簽章上線前的舊 cookie 發放新身分。舊 cookie 不換發成同一個 UUID：
       匿名 UUID 會廣播給房間所有人，伺服器無法確認送來的人就是本人，換發會讓任何人拿到他人身分的合法簽章
-    新發計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
+    新發計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限；撞到上限時回「匿名、暫時沒有身分」，
+    以 IP 限流，下次開頁再申請。不回 429：伺服器端的結果相同（拿不到身分），回 429 只會讓前端當成判斷失敗、沿用上次的顯示（#59）。
     匿名身分只回傳 UUID（前端顯示用），cookie 為 httponly。
     """
     cookies = request.cookies
-    stale_login = False
     if has_login_cookies(cookies):
         if login := resolve_login(db, cookies):
             if login.from_refresh_token:
@@ -241,19 +241,13 @@ async def init_session(
         # 刪掉失效的登入 cookie：refresh cookie 留著的話，WebSocket 握手與之後的請求都還會拿它判斷
         response.delete_cookie(key="access_token")
         response.delete_cookie(key="refresh_token")
-        stale_login = True
 
     identity = resolve_anonymous(cookies)
     if identity.kind == "anon":
         return {"status": "anonymous", "anonymous_user_id": identity.id}
 
     if not anonymous_id_mint_allowed(request):
-        if stale_login:
-            # 舊登入已失效又撞到發放上限：照樣清掉舊登入、回「匿名、暫時沒有身分」，畫面才與伺服器一致（#59）。
-            # 沒有身分時以 IP 限流，下次開頁再申請
-            return {"status": "anonymous", "anonymous_user_id": None}
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                            detail="Rate limit exceeded: anonymous identity")
+        return {"status": "anonymous", "anonymous_user_id": None}
     session_id = str(uuid.uuid4())
     response.set_cookie(
         key=anonymous_id.COOKIE_NAME,

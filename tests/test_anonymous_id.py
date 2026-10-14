@@ -196,11 +196,10 @@ def test_stale_login_keeps_existing_anonymous_identity(login, cookies):
 
 @pytest.mark.parametrize("cookies", [
     {"refresh_token": REVOKED_REFRESH},
-    # 解不開的 cookie 也算失效的登入：繞過 429 也拿不到身分，仍以 IP 限流（ADR-0009）
     {"access_token": "garbage"},
 ])
 def test_stale_login_over_mint_limit_is_anonymous_without_identity(monkeypatch, login, cookies):
-    # 舊登入失效又撞到發放上限：不回 429，照樣清掉舊登入，畫面才與伺服器一致
+    # 舊登入失效又撞到發放上限：照樣清掉舊登入，回匿名、暫時沒有身分
     login(existing=())
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
     assert init_session().status_code == 200
@@ -221,7 +220,11 @@ def test_rejected_refresh_token_cookie_is_deleted(monkeypatch):
 
 def test_mint_limit_per_ip_does_not_affect_existing_identities(monkeypatch):
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "3/hour")
-    assert [init_session().status_code for _ in range(4)] == [200, 200, 200, 429]
+    assert [issued_cookie(init_session()) is not None for _ in range(4)] == [True, True, True, False]
+    # 撞到上限不回 429：拿不到身分，回匿名、暫時沒有身分（以 IP 限流）
+    res = init_session()
+    assert res.status_code == 200
+    assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": None}
     # 已有合法 cookie 的使用者不需發放，不受影響；其他 IP 也不受影響
     assert init_session(cookie=anonymous_id.sign(str(uuid.uuid4()))).status_code == 200
     assert init_session(ip="198.51.100.9").status_code == 200

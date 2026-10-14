@@ -232,7 +232,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **核心功能**:
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示。心跳已過期但計時器還沒觸發（剛從休眠喚醒）時不送出、直接重連並回傳 `false`
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
-- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、收到其他分頁的 `LOGIN` / `LOGOUT` 廣播、重新判斷後都重連，讓 WS 換成新身分
+- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `_syncSession()` 取得新匿名 cookie）、收到其他分頁的 `LOGIN` / `LOGOUT` 廣播、重新判斷後都重連，讓 WS 換成新身分
 - **連線模型照 Socket.IO（engine.io v4，ADR-0008）**，勿自創機制或加特例：
   - **只連一次**：`initializeAuth()` 第一次完成時連線，之後換頁不呼叫 `connect()`（會繞過退避），斷線一律交給自動重連
   - **心跳逾時**：伺服器連線後先送 `hello`（`ping_interval` / `ping_timeout`），之後每 25 秒送 `heartbeat`。收到 `hello` 才啟動逾時，每次心跳重新計時，超過兩者相加（45 秒）沒收到就關閉並退避重連。**不分前景背景、不探測、前端不送 `ping`**：背景節流的是計時器，心跳照常送達，逾時只會晚觸發、不會誤判。連到不送 `hello` 的舊後端時不啟動逾時

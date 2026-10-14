@@ -9,8 +9,9 @@ status: accepted
 我們決定**登入狀態只由伺服器判斷**：開頁只呼叫一次 `POST /auth/session`，它直接回答「你是誰」，前端照結果設定，不再自己換發或重新驗證。
 
 - 登入有效 → `{ status: "authenticated", user }`。access token 過期、refresh token 有效時，伺服器順便換發 access token cookie。
-- 有登入 cookie 但登入已失效（refresh token 無效、被撤銷，或使用者已刪除）→ 伺服器清掉舊的登入 cookie，改以匿名回應 `{ status: "anonymous", anonymous_user_id }`（沿用或發放匿名身分）。撞到匿名身分發放上限時不回 429，回 `anonymous_user_id: null`（暫時沒有身分），舊登入照樣清掉，畫面才與伺服器一致。
-- 有登入 cookie 就照「登入已失效」處理，不先檢查 token 能否解開：編造的 cookie 在撞到發放上限時拿到 `anonymous_user_id: null` 而不是 429，但沒有身分、仍以 IP 限流，繞過也得不到任何額度。若只認能解開的 token，解不開的 cookie 撞到上限時回 429、前端沿用上次的登入顯示，畫面就與伺服器不一致。
+- 有登入 cookie 但登入已失效（refresh token 無效、被撤銷，或使用者已刪除）→ 伺服器清掉舊的登入 cookie，改以匿名回應 `{ status: "anonymous", anonymous_user_id }`（沿用或發放匿名身分）。
+- 撞到匿名身分發放上限時，一律回 `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流，下次開頁再申請），**不回 429**。伺服器端的結果與 429 相同（拿不到身分），但 429 會讓前端當成判斷失敗、沿用上次的顯示：開了多個分頁時，一個分頁發現登入已失效、清掉共用的登入 cookie，其他分頁重新判斷時就變成「新訪客撞到上限」，拿到 429 而繼續顯示登入（PR #64 第 5 輪）。第一次來的訪客也不會再看到與自己操作無關的「請求太頻繁」提示。
+- 有登入 cookie 就照「登入已失效」處理、清掉，不先檢查 token 能否解開：解不開的 cookie 留著沒有用，判斷規則也少一種。
 - 登入者的判斷（access token 且使用者存在 → refresh token 查資料庫確認未撤銷）與 WebSocket 握手共用 `resolve_login()`，兩邊不會判斷出不同結果。
 - 呼叫失敗（網路錯誤、5xx、429）不代表登入狀態改變：前端沿用上次的顯示（`user_info` 只當顯示快取），什麼都不清除。
 - **跨分頁通知的時機只有三種**：在某個分頁登入 → 廣播 `LOGIN`；在某個分頁登出 → 廣播 `LOGOUT`；開頁時原本顯示登入、被判定為匿名（登入已失效，例如在其他裝置登入或過期，使用者沒按登出）→ 伺服器清掉的是所有分頁共用的登入 cookie，當作登出廣播 `LOGOUT`。

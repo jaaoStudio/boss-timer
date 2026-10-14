@@ -15,9 +15,10 @@ const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
 const { syncFromUser: syncLayout } = useLayoutConfig();
 
-// 登入後將後端偏好設定同步到本地（含頁面載入時的 cookie 自動登入）
-watch(() => userStore.isLoggedIn, (loggedIn) => {
-  if (loggedIn) {
+// 登入後將後端偏好設定同步到本地（含頁面載入時的 cookie 自動登入）。
+// 看使用者 id 而不是 isLoggedIn：跨分頁重新判斷可能直接從 A 換成 B，中間不會經過未登入
+watch(() => userStore.user?.id, (userId) => {
+  if (userId) {
     syncChannelView();
     syncFavoriteBosses();
     syncLayout();

@@ -121,6 +121,8 @@ export const useUserStore = defineStore('user', {
         try {
           const session = await apiService.initSession({ background });
           if (changes !== this._authChanges) continue;
+          // 回滾到舊版後端時 authenticated 不帶 user：當作判斷失敗，沿用目前的顯示
+          if (session.status === 'authenticated' && !session.user) throw new Error('Session response without user');
           if (session.status === 'authenticated') {
             this.setLoggedInUser(session.user);
           } else {
