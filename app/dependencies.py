@@ -114,14 +114,12 @@ def check_dual_limit(limit_value: str, scope: str, keys: tuple[str, str]) -> boo
     return ceiling_key == personal_key or _hit_all(limit_value, f"{scope}:ceiling", ceiling_key, IP_CEILING_MULTIPLIER)
 
 
-def check_anonymous_id_mint(request: Request) -> None:
+def anonymous_id_mint_allowed(request: Request) -> bool:
     """
-    發放新匿名身分前呼叫：以真實 IP 計數，超過 ANONYMOUS_ID_MINT_LIMIT 就回 429。
+    發放新匿名身分前呼叫：以真實 IP 計數，超過 ANONYMOUS_ID_MINT_LIMIT 回傳 False。
     不用 rate_limit()：只有真的發放時才計數，已有身分的請求不算。
     """
-    if not _hit_all(ANONYMOUS_ID_MINT_LIMIT, "anonymous_id_mint", get_ip_rate_limit_key(request)):
-        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                            detail=f"Rate limit exceeded: {ANONYMOUS_ID_MINT_LIMIT}")
+    return _hit_all(ANONYMOUS_ID_MINT_LIMIT, "anonymous_id_mint", get_ip_rate_limit_key(request))
 
 
 def scale_limit(limit_value: str, factor: int) -> str:
@@ -131,13 +129,16 @@ def scale_limit(limit_value: str, factor: int) -> str:
     )
 
 
-def get_refresh_token_user_key(request: Request) -> str:
+def get_login_user_key(request: Request) -> str:
     """
-    /auth/refresh 的個人額度 key：以 refresh token 裡的使用者計算。呼叫者的 access token 已過期，
-    若退回 IP，同一個 IP 上的登入者會共用額度、互相把對方擋到被登出。
+    /auth/session、/auth/refresh 的個人額度 key：access token 的使用者 → refresh token 裡的使用者 → 一般規則。
+    呼叫者的 access token 常已過期，若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到。
+    只解開 refresh token、不查資料庫：被撤銷的 token 頂多用掉那個使用者自己的額度。
     """
-    user_id = decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh")
-    return f"user:{user_id}" if user_id else get_user_identifier(request)
+    if resolve_identity(request).kind != "user":
+        if user_id := decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh"):
+            return f"user:{user_id}"
+    return get_user_identifier(request)
 
 
 def rate_limit(limit_value: str, personal_key_func=None):

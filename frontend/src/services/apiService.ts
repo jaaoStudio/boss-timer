@@ -1,4 +1,4 @@
-import { isAxiosError, type AxiosResponse } from 'axios'
+import type { AxiosResponse } from 'axios'
 import { bossService } from '@/axios'
 import type { BossType, BossRecord } from '@/stores/bossStore'
 import type { User } from '@/stores/userStore'
@@ -7,14 +7,10 @@ import type { RoomSettings } from '@/stores/roomStore'
 
 const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`
 
-interface ValidateTokenResponse {
-  valid: boolean
-  user?: User
-}
-
-interface InitSessionResponse {
-  anonymous_user_id?: string
-}
+// 登入狀態以伺服器的判斷為準（ADR-0009）：登入者帶 user，匿名者帶 anonymous_user_id（暫時沒有身分時為 null）
+type InitSessionResponse =
+  | { status: 'authenticated'; user: User }
+  | { status: 'anonymous'; anonymous_user_id: string | null }
 
 interface LoginResponse {
   user: User
@@ -70,17 +66,6 @@ class ApiService {
 
   constructor() {
     this.client = bossService
-  }
-
-  async validateToken(): Promise<ValidateTokenResponse> {
-    try {
-      const res = await this.client.post<ValidateTokenResponse>('/auth/validate')
-      return res.data
-    } catch (error) {
-      // 被限流不代表未登入，往外丟讓 initializeAuth 保留登入狀態；其他錯誤視為未登入
-      if (isAxiosError(error) && error.response?.status === 429) throw error
-      return { valid: false }
-    }
   }
 
   async loginWithGoogle(payload: { credential?: string; code?: string }): Promise<LoginResponse> {

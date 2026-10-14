@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia';
-import { isAxiosError } from 'axios';
 import apiService from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
@@ -47,15 +46,16 @@ export const useUserStore = defineStore('user', {
         this._channel = new BroadcastChannel('user-auth');
         this._channel.onmessage = (event) => {
           if (event.data.type === 'LOGOUT') {
-            this.clearAuth();
+            this.becomeAnonymous();
           } else if (event.data.type === 'LOGIN') {
             this.user = event.data.user;
             this.isLoggedIn = true;
           } else {
             return;
           }
-          // cookie 已由該分頁更新；WebSocket 的身分由握手時的 cookie 決定，重連才會換成新身分
-          useWebSocketStore().reconnect();
+          // cookie 已由該分頁更新；WebSocket 的身分由握手時的 cookie 決定，重連才會換成新身分。
+          // 初始化完成前不重連：初始化結束時本來就會以當時的 cookie 連線，這裡重連會連續握手兩次
+          if (this._initialized) useWebSocketStore().reconnect();
         };
       }
     },
@@ -79,7 +79,7 @@ export const useUserStore = defineStore('user', {
 
       // App.vue onMounted 與 router beforeEach 會在首次載入時「同時」呼叫此方法，
       // 而 _initialized 要等 await 全部跑完才在 finally 翻成 true，
-      // 不去重的話兩邊都會各打一次 /auth/session 與 /auth/validate。
+      // 不去重的話兩邊都會各打一次 /auth/session。
       // 用 in-flight promise 讓併發呼叫共用同一次初始化流程。
       if (!this._initPromise) {
         this._initPromise = this._runInitializeAuth();
@@ -92,52 +92,26 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        // 確保有伺服器簽發的匿名身分 cookie（已登入時不發放）
-        await apiService.initSession();
-
-        let res = await apiService.validateToken();
-
-
-        if (!res.valid && localStorage.getItem('user_info')) {
-          const refreshed = await this.tryRefreshToken();
-          if (refreshed) {
-            res = await apiService.validateToken();
-          }
-        }
-
-        if (res.valid) {
-          this.user = res.user ?? null;
-          this.isLoggedIn = true;
-          localStorage.setItem('user_info', JSON.stringify(res.user));
+        // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分
+        const session = await apiService.initSession();
+        if (session.status === 'authenticated') {
+          this.setLoggedInUser(session.user);
         } else {
-          this.clearAuth();
-          this.anonymousName = this.getAnonymousName();
+          const wasLoggedIn = localStorage.getItem('user_info') !== null;
+          this.becomeAnonymous();
+          // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁一起變匿名並重連
+          if (wasLoggedIn) this.notifyLogout();
         }
       } catch (error) {
+        // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用上次的顯示，什麼都不清除
         console.error('Auth initialization failed:', error);
-        // 被限流（例如同 IP 有人狂打導致 IP 天花板滿）不代表登入失效，token 仍然有效；
-        // 保留本地的登入資訊，否則已登入的使用者會因為別人被登出。
-        if (!(isAxiosError(error) && error.response?.status === 429 && this.restoreUserFromStorage())) {
-          this.clearAuth();
+        if (!this.restoreUserFromStorage()) {
           this.anonymousName = this.getAnonymousName();
         }
       } finally {
         this.isLoading = false;
         this._initialized = true;
         websocketStore.connect();
-      }
-    },
-
-    // 嘗試用 refresh token 換新的 access token。
-    // 成功回傳 true；任何失敗（無 refresh cookie / 已過期 / 被限流）回傳 false，
-    // 由 axios interceptor 處理後續導向與提示。被限流也不恢復登入狀態：此時 validate 已回 valid:false，
-    // 恢復的話畫面顯示已登入、WebSocket 卻以過期的 cookie 連成匿名。
-    async tryRefreshToken(): Promise<boolean> {
-      try {
-        await apiService.refresh_token();
-        return true;
-      } catch {
-        return false;
       }
     },
 
@@ -156,8 +130,7 @@ export const useUserStore = defineStore('user', {
     async _runLogout() {
       const websocketStore = useWebSocketStore();
       await apiService.logout();
-      this.clearAuth();
-      this.anonymousName = this.getAnonymousName();
+      this.becomeAnonymous();
       try {
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
         await apiService.initSession();
@@ -176,9 +149,7 @@ export const useUserStore = defineStore('user', {
       try {
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
-        this.user = response.user;
-        this.isLoggedIn = true;
-        localStorage.setItem('user_info', JSON.stringify(response.user));
+        this.setLoggedInUser(response.user);
 
         // 登入回應已設好 access_token cookie；WebSocket 身分由握手時的 cookie 決定，重連即換成登入身分
         websocketStore.reconnect();
@@ -207,6 +178,17 @@ export const useUserStore = defineStore('user', {
       } catch (error) {
         console.error('Failed to update preferences:', error);
       }
+    },
+
+    setLoggedInUser(user: User) {
+      this.user = user;
+      this.isLoggedIn = true;
+      localStorage.setItem('user_info', JSON.stringify(user));
+    },
+
+    becomeAnonymous() {
+      this.clearAuth();
+      this.anonymousName = this.getAnonymousName();
     },
 
     clearAuth() {

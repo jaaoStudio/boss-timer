@@ -7,14 +7,27 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit, check_anonymous_id_mint, get_refresh_token_user_key
+from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_login_user_key
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
 from app.utils import anonymous_id
-from app.utils.identity import resolve_identity
+from app.utils.identity import has_login_cookies, resolve_anonymous, resolve_login
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
+
+
+def _set_access_token_cookie(response: Response, user_id: int) -> str:
+    access_token = auth_service.create_access_token(data={"sub": str(user_id)})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=settings.env == "production",
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60
+    )
+    return access_token
 
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
@@ -100,7 +113,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@rate_limit("30/minute", personal_key_func=get_refresh_token_user_key)
+@rate_limit("30/minute", personal_key_func=get_login_user_key)
 async def refresh_token(
         request: Request,
         response: Response,
@@ -124,18 +137,7 @@ async def refresh_token(
         rejected.delete_cookie(key="refresh_token", httponly=True, secure=settings.env == "production", samesite="lax")
         return rejected
 
-    # 生成新的 access token
-    new_access_token = auth_service.create_access_token(data={"sub": str(user_id)})
-
-    response.set_cookie(
-        key="access_token",
-        value=new_access_token,
-        httponly=True,
-        secure=settings.env == "production",
-        samesite="lax",
-        max_age=settings.access_token_expire_minutes * 60
-    )
-
+    new_access_token = _set_access_token_cookie(response, user_id)
     return {
         "access_token": new_access_token,
         "token_type": "bearer"
@@ -223,31 +225,44 @@ async def update_preferences(
 
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
-@rate_limit("60/minute")
+@rate_limit("60/minute", personal_key_func=get_login_user_key)
 async def init_session(
         request: Request,
         response: Response,
         db: Session = Depends(get_db),
 ):
     """
-    初始化使用者工作階段。
-    未登入時確保有一個伺服器簽發的匿名身分（cookie 為「UUID.簽章」，見 app/utils/anonymous_id.py）：
-    - 簽章正確：沿用
-    - 沒有、編造或簽章上線前的舊 cookie：發放新身分。舊 cookie 不換發成同一個 UUID：匿名 UUID 會廣播給
-      房間所有人，伺服器無法確認送來的人就是本人，換發會讓任何人拿到他人身分的合法簽章
+    開頁時判斷「你是誰」，登入狀態以這裡的結果為準（ADR-0009）。登入者的判斷與 WebSocket 握手共用 resolve_login：
+    - 登入有效 → authenticated（access token 過期、refresh token 有效時順便換發 access token）
+    - 有登入 cookie 但登入已失效 → 清掉舊的登入 cookie，改以匿名回應
+    - 匿名：簽章正確的匿名 cookie 沿用；沒有、編造或簽章上線前的舊 cookie 發放新身分。舊 cookie 不換發成同一個 UUID：
+      匿名 UUID 會廣播給房間所有人，伺服器無法確認送來的人就是本人，換發會讓任何人拿到他人身分的合法簽章
     新發計入每個 IP 的發放上限（ANONYMOUS_ID_MINT_LIMIT），換 cookie 拿新身分因此有上限。
-    回應 body 只回傳 UUID（前端存 localStorage 顯示用），cookie 為 httponly。
+    匿名身分只回傳 UUID（前端顯示用），cookie 為 httponly。
     """
-    identity = resolve_identity(request)
-    # access token 過期但 refresh token 仍有效：是即將換發 token 的登入者，不是新訪客，不發匿名身分也不計入發放上限。
-    # 要查資料庫確認未被撤銷：被撤銷的 refresh token（例如在其他裝置登入）不能讓人一直拿不到匿名身分
-    refresh_token = request.cookies.get("refresh_token")
-    if identity.kind == "user" or (refresh_token and auth_service.verify_refresh_token(db, refresh_token)):
-        return {"status": "authenticated", "anonymous_user_id": None}
-    if identity.kind == "anon":
-        return {"status": "session_ok", "anonymous_user_id": identity.id}
+    cookies = request.cookies
+    stale_login = False
+    if has_login_cookies(cookies):
+        if login := resolve_login(db, cookies):
+            if login.from_refresh_token:
+                _set_access_token_cookie(response, login.user.id)
+            return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}
+        # 刪掉失效的登入 cookie：refresh cookie 留著的話，WebSocket 握手與之後的請求都還會拿它判斷
+        response.delete_cookie(key="access_token")
+        response.delete_cookie(key="refresh_token")
+        stale_login = True
 
-    check_anonymous_id_mint(request)
+    identity = resolve_anonymous(cookies)
+    if identity.kind == "anon":
+        return {"status": "anonymous", "anonymous_user_id": identity.id}
+
+    if not anonymous_id_mint_allowed(request):
+        if stale_login:
+            # 舊登入已失效又撞到發放上限：照樣清掉舊登入、回「匿名、暫時沒有身分」，畫面才與伺服器一致（#59）。
+            # 沒有身分時以 IP 限流，下次開頁再申請
+            return {"status": "anonymous", "anonymous_user_id": None}
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                            detail="Rate limit exceeded: anonymous identity")
     session_id = str(uuid.uuid4())
     response.set_cookie(
         key=anonymous_id.COOKIE_NAME,
@@ -257,4 +272,4 @@ async def init_session(
         secure=settings.env == "production",
         max_age=365 * 24 * 60 * 60  # 一年
     )
-    return {"status": "anonymous_session_created", "anonymous_user_id": session_id}
+    return {"status": "anonymous", "anonymous_user_id": session_id}

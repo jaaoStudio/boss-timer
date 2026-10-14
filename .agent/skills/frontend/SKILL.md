@@ -134,25 +134,25 @@ frontend/
 | `anonymousName` | `string \| null` | 匿名使用者暱稱 (localStorage) |
 
 **核心 Actions**:
-- `initializeAuth()` — 初始化: 建立 Session → 驗證 Token → 連線 WebSocket（細節見下方「初始化流程守則」）
+- `initializeAuth()` — 初始化: 呼叫 `/auth/session` 由伺服器判斷登入狀態 → 連線 WebSocket（細節見下方「初始化流程守則」）
 - `loginWithGoogle(payload)` — Google 登入 + 通知 WebSocket 更新身份；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
 - `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清除本地狀態 → `initSession()` → 廣播 `LOGOUT` → 重連（`initSession` 失敗仍廣播並重連）。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
 - `updatePreferences(preferences)` — 更新使用者偏好設定
 
-**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 在多個瀏覽器頁籤間同步登入/登出狀態。
+**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 在多個瀏覽器頁籤間同步登入/登出狀態。收到 `LOGOUT` 時改為匿名（含匿名暱稱）；初始化完成前收到時不重連（初始化結束時本來就會以當時的 cookie 連線）。
 
 #### ⚠️ 初始化流程守則（`initializeAuth` / `_runInitializeAuth`）
 
 三條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
 
-1. **access token 過期要先試 refresh，不可直接登出**
-   `/auth/validate` 在 token 過期時回的是 **HTTP 200 + `{ valid: false }`**（語意是「成功判斷出未登入」，匿名訪客也走這條），**不會**觸發 axios 的 401 自動 refresh。因此 `validate` 回 `valid:false` 且本地有 `user_info`（曾登入過）時，必須先呼叫 `tryRefreshToken()` 用 30 天的 refresh token 換新 access token 再驗證一次。**直接 `clearAuth()` 會讓使用者每 30 分鐘（access token 效期）就被登出。** 此處不該改成讓後端回 401（會波及匿名訪客 + 動到全站 interceptor）。
+1. **登入狀態只由伺服器判斷（ADR-0009）**
+   開頁只呼叫一次 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。
 
 2. **併發呼叫要去重**
-   `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session`、`/auth/validate` 會各被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
+   `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session` 會被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
 
-3. **被限流（429）不可登出**
-   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 遇到 429 會往外丟（其他錯誤才視為未登入），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。例外：`tryRefreshToken()` 被限流時視為換發失敗並登出——後端 `/auth/refresh` 以 refresh token 裡的使用者計算額度，被限流代表同一個登入者一分鐘 refresh 超過 30 次（多半是前端陷入 refresh 迴圈），登出會刪掉 `user_info` 讓迴圈停下；若改為恢復登入狀態，畫面顯示已登入、WebSocket 卻以過期 cookie 連成匿名。
+3. **判斷失敗不改變登入狀態**
+   `/auth/session` 失敗（網路錯誤、5xx、被限流 429）不代表登入失效：`catch` 以 `restoreUserFromStorage()` 沿用上次的顯示（`user_info` 只當顯示快取），沒有就顯示匿名，**什麼都不清除**。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都 `clearAuth()`」。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
@@ -330,7 +330,6 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 ```typescript
 class ApiService {
   // Auth
-  validateToken()
   loginWithGoogle(payload)
   logout()
   initSession()

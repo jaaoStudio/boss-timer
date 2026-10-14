@@ -1,5 +1,6 @@
 """匿名身分 cookie 簽章、身分解析與 /auth/session 發放流程的測試（見 docs/adr/0007）。"""
 import uuid
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -9,7 +10,8 @@ from starlette.websockets import WebSocket
 
 import app.dependencies as deps
 from app.config import settings
-from app.dependencies import get_refresh_token_user_key
+from app.database import models
+from app.dependencies import get_login_user_key
 from app.routers import auth
 from app.utils import anonymous_id
 from app.utils import identity as identity_module
@@ -36,6 +38,23 @@ def init_session(ip: str = "203.0.113.1", cookie: str | None = None, **extra: st
 
 def issued_cookie(response) -> str | None:
     return response.cookies.get(anonymous_id.COOKIE_NAME)
+
+
+def deleted_cookies(response) -> set[str]:
+    return {header.split("=", 1)[0] for header in response.headers.get_list("set-cookie")
+            if "max-age=0" in header.lower()}
+
+
+@pytest.fixture
+def login(monkeypatch):
+    """模擬資料庫：existing 裡的使用者存在；refresh_token cookie 為 "valid" 時對應使用者 42。"""
+    def setup(existing=(42,), refresh_user=42):
+        monkeypatch.setattr(identity_module, "_get_user", lambda db, user_id: models.User(
+            id=int(user_id), google_id="g", email="a@example.com", display_name="小明", preferences={},
+            created_at=datetime.now(timezone.utc), is_admin=False) if int(user_id) in existing else None)
+        monkeypatch.setattr(identity_module.auth_service, "verify_refresh_token",
+                            lambda db, t: refresh_user if t == "valid" else None)
+    return setup
 
 
 # --- 簽章 ---
@@ -80,28 +99,31 @@ def test_non_ascii_cookie_resolves_to_none():
     assert resolve_identity(http_request(b"anonymous_user_id=a.\xe9")) == Identity("none")
 
 
-def test_websocket_identity_is_not_cached(monkeypatch):
+def test_websocket_identity_is_not_cached(login):
     # WS 的身分由 endpoint 存在該連線的 Connection，resolve_identity 不在 websocket.state 快取
-    monkeypatch.setattr(identity_module, "_user_exists", lambda db, user_id: True)
+    login()
     ws = WebSocket({"type": "websocket", "headers": [(b"cookie", f"access_token={token('access')}".encode())]},
                    receive=None, send=None)
     assert resolve_identity(ws) == Identity("user", "42")
     assert getattr(ws.state, "identity", None) is None
 
 
-def test_refresh_rate_limit_is_keyed_by_refresh_token_user():
-    assert get_refresh_token_user_key(http_request(f"refresh_token={token('refresh', '7')}".encode())) == "user:7"
+def test_login_rate_limit_is_keyed_by_login_user():
+    # access token 過期時以 refresh token 裡的使用者計算，不退回 IP（同 IP 的人不會互相擋到）
+    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7')}".encode())) == "user:7"
+    both = f"access_token={token('access', '42')}; refresh_token={token('refresh', '7')}".encode()
+    assert get_login_user_key(http_request(both)) == "user:42"
     # 拿 access token 冒充 refresh token：不算，退回一般的個人額度 key
     request = Request({"type": "http", "client": ("203.0.113.9", 0),
                        "headers": [(b"cookie", f"refresh_token={token('access', '7')}".encode())]})
-    assert get_refresh_token_user_key(request) == "ip:203.0.113.9"
+    assert get_login_user_key(request) == "ip:203.0.113.9"
 
 
 # --- /auth/session ---
 
 def test_new_visitor_gets_signed_httponly_cookie():
     res = init_session()
-    assert res.status_code == 200 and res.json()["status"] == "anonymous_session_created"
+    assert res.status_code == 200 and res.json()["status"] == "anonymous"
     anon = res.json()["anonymous_user_id"]
     assert anonymous_id.verify(issued_cookie(res)) == anon
     assert "httponly" in res.headers["set-cookie"].lower()
@@ -110,7 +132,7 @@ def test_new_visitor_gets_signed_httponly_cookie():
 def test_signed_cookie_is_reused_without_new_cookie():
     anon = str(uuid.uuid4())
     res = init_session(cookie=anonymous_id.sign(anon))
-    assert res.json() == {"status": "session_ok", "anonymous_user_id": anon}
+    assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": anon}
     assert issued_cookie(res) is None
 
 
@@ -118,28 +140,61 @@ def test_signed_cookie_is_reused_without_new_cookie():
 def test_forged_or_legacy_cookie_gets_a_fresh_identity(cookie):
     # 舊的無簽章 cookie 不換發成同一個 UUID：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
     res = init_session(cookie=cookie)
-    assert res.json()["status"] == "anonymous_session_created"
+    assert res.json()["status"] == "anonymous"
     assert res.json()["anonymous_user_id"] != cookie
     assert anonymous_id.verify(issued_cookie(res)) == res.json()["anonymous_user_id"]
 
 
-def test_logged_in_user_with_expired_access_token_is_not_minted(monkeypatch):
-    # 只剩有效 refresh token 的登入者即將換發 token，不發匿名身分、也不計入發放上限
+def test_valid_access_token_returns_the_user(login):
+    login()
+    res = init_session(access_token=token("access"))
+    assert res.json()["status"] == "authenticated" and res.json()["user"]["id"] == 42
+    assert res.headers.get("set-cookie") is None   # 不換發、不發匿名身分
+
+
+def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):
+    # 只剩有效 refresh token 的登入者：換發 access token，不發匿名身分、也不計入發放上限
+    login()
     monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
-    monkeypatch.setattr(auth.auth_service, "verify_refresh_token", lambda db, t: 42 if t == "valid" else None)
     for _ in range(3):
         res = init_session(refresh_token="valid")
-        assert res.json() == {"status": "authenticated", "anonymous_user_id": None}
+        assert res.json()["status"] == "authenticated" and res.json()["user"]["id"] == 42
+        assert identity_module.auth_service.decode_token_user_id(res.cookies.get("access_token")) == "42"
         assert issued_cookie(res) is None
     assert init_session().status_code == 200
 
 
-def test_revoked_or_invalid_refresh_token_still_gets_anonymous_identity(monkeypatch):
-    # 被撤銷（例如在其他裝置登入）或無效的 refresh token 不能讓人一直拿不到匿名身分
-    monkeypatch.setattr(auth.auth_service, "verify_refresh_token", lambda db, t: None)
-    res = init_session(refresh_token="revoked")
-    assert res.json()["status"] == "anonymous_session_created"
+@pytest.mark.parametrize("cookies", [
+    {"refresh_token": "revoked"},   # 被撤銷（例如在其他裝置登入）或過期
+    {"access_token": token("access"), "refresh_token": "revoked"},   # 使用者已刪除
+    {"access_token": "garbage"},
+])
+def test_stale_login_is_cleared_and_becomes_anonymous(login, cookies):
+    login(existing=())
+    res = init_session(**cookies)
+    assert res.json()["status"] == "anonymous"
     assert anonymous_id.verify(issued_cookie(res)) == res.json()["anonymous_user_id"]
+    assert {"access_token", "refresh_token"} <= deleted_cookies(res)
+
+
+def test_stale_login_keeps_existing_anonymous_identity(login):
+    login(existing=())
+    anon = str(uuid.uuid4())
+    res = init_session(cookie=anonymous_id.sign(anon), refresh_token="revoked")
+    assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": anon}
+    assert {"access_token", "refresh_token"} <= deleted_cookies(res)
+
+
+def test_stale_login_over_mint_limit_is_anonymous_without_identity(monkeypatch, login):
+    # 舊登入失效又撞到發放上限：不回 429，照樣清掉舊登入，畫面才與伺服器一致
+    login(existing=())
+    monkeypatch.setattr(deps, "ANONYMOUS_ID_MINT_LIMIT", "1/hour")
+    assert init_session().status_code == 200
+    res = init_session(refresh_token="revoked")
+    assert res.status_code == 200
+    assert res.json() == {"status": "anonymous", "user": None, "anonymous_user_id": None}
+    assert issued_cookie(res) is None
+    assert {"access_token", "refresh_token"} <= deleted_cookies(res)
 
 
 def test_rejected_refresh_token_cookie_is_deleted(monkeypatch):
