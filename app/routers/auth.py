@@ -120,8 +120,8 @@ async def refresh_token(
             detail="Refresh token not found",
         )
 
-    # 驗證 refresh token；無效（過期、被撤銷，例如在其他裝置登入）時一併刪除 cookie，
-    # 否則 /auth/session 會一直把這個人當成「即將換發的登入者」而不發匿名身分
+    # 驗證 refresh token；無效（過期、被撤銷，例如在其他裝置登入）時一併刪除 cookie：留著沒有用，
+    # 之後每次重試都還會拿它來換發
     user_id = auth_service.verify_refresh_token(db, refresh_token)
     if not user_id:
         rejected = JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid refresh token"})

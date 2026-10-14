@@ -93,7 +93,7 @@ export function useLayoutConfig() {
     return DEFAULT_ITEMS.map(i => ({ ...i }))
   }
 
-  // 登入後將後端 preferences 同步到本地 layout（由 App.vue watch isLoggedIn 呼叫）
+  // 登入後將後端 preferences 同步到本地 layout（由 App.vue watch user.id 呼叫：登入或換成另一個人時）
   function syncFromUser() {
     const prefs = userStore.user?.preferences?.[PREFERENCE_KEY] as { items?: unknown } | undefined
     if (!prefs) return

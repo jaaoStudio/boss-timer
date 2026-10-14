@@ -242,7 +242,7 @@ except Exception as e:
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
 | 撞到發放上限 | 不發放、**不回 429**（拿不到身分的結果相同，429 只會讓前端當成判斷失敗、沿用上次的顯示） | `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流） |
 
-- 個人額度用 `get_login_user_key`：access token 的使用者 → refresh token 裡的使用者 → 一般規則。呼叫者的 access token 常已過期，退回匿名或 IP 會讓同 IP 的登入者互相擋到
+- 個人額度用 `get_login_user_key`：access token 的使用者 → 這個 refresh token（`refresh:{jti}`）→ 一般規則。呼叫者的 access token 常已過期，退回匿名或 IP 會讓同 IP 的登入者互相擋到；不查資料庫，所以以 token 本身計算、不以裡面的使用者，重送舊的或被撤銷的 refresh token 擋不到使用者目前的登入
 - **勿把換發或清 cookie 的判斷搬回前端**：前端每多處理一種失敗，就多一個與伺服器判斷不一致的可能
 
 ### 匿名使用者

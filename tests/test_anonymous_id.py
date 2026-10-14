@@ -23,8 +23,8 @@ app.include_router(auth.router)
 client = TestClient(app)
 
 
-def token(token_type: str, sub: str = "42") -> str:
-    return jwt.encode({"sub": sub, "type": token_type}, settings.secret_key, algorithm=settings.algorithm)
+def token(token_type: str, sub: str = "42", jti: str = "j") -> str:
+    return jwt.encode({"sub": sub, "type": token_type, "jti": jti}, settings.secret_key, algorithm=settings.algorithm)
 
 
 VALID_REFRESH = token("refresh", "42")
@@ -113,8 +113,10 @@ def test_websocket_identity_is_not_cached(login):
 
 
 def test_login_rate_limit_is_keyed_by_login_user():
-    # access token 過期時以 refresh token 裡的使用者計算，不退回 IP（同 IP 的人不會互相擋到）
-    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7')}".encode())) == "user:7"
+    # access token 過期時以 refresh token 計算，不退回 IP（同 IP 的人不會互相擋到）
+    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "refresh:current"
+    # 以 token 本身計算：重送舊的或被撤銷的 refresh token，用不到同一個使用者目前登入的額度
+    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "refresh:revoked"
     both = f"access_token={token('access', '42')}; refresh_token={token('refresh', '7')}".encode()
     assert get_login_user_key(http_request(both)) == "user:42"
     # 拿 access token 冒充 refresh token：不算，退回一般的個人額度 key

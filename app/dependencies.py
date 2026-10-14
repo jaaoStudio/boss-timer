@@ -13,7 +13,7 @@ from starlette.requests import HTTPConnection
 
 from app.database import models
 from app.websocket.manager import ConnectionManager
-from app.services.auth_service import decode_token_user_id, get_current_user
+from app.services.auth_service import decode_token, decode_token_user_id, get_current_user
 from app.utils.identity import Identity, resolve_identity
 
 # IP 天花板 = 個人額度 × 200（見 docs/adr/0007）。匿名身分有簽章、無法任意編造後，
@@ -131,13 +131,15 @@ def scale_limit(limit_value: str, factor: int) -> str:
 
 def get_login_user_key(request: Request) -> str:
     """
-    /auth/session、/auth/refresh 的個人額度 key：access token 的使用者 → refresh token 裡的使用者 → 一般規則。
+    /auth/session、/auth/refresh 的個人額度 key：access token 的使用者 → 這個 refresh token（jti）→ 一般規則。
     呼叫者的 access token 常已過期，若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到。
-    只解開 refresh token、不查資料庫：被撤銷的 token 頂多用掉那個使用者自己的額度。
+    只解開 refresh token、不查資料庫，所以以 token 本身計算、不以裡面的使用者：拿到舊的或被撤銷的 refresh token
+    重送，只會用掉那個 token 的額度，不會擋到使用者目前的登入。
     """
     if resolve_identity(request).kind != "user":
-        if user_id := decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh"):
-            return f"user:{user_id}"
+        payload = decode_token(request.cookies.get("refresh_token"), token_type="refresh")
+        if payload and payload.get("jti"):
+            return f"refresh:{payload['jti']}"
     return get_user_identifier(request)
 
 
