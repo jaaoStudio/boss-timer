@@ -81,7 +81,7 @@ def test_non_ascii_cookie_resolves_to_none():
 
 
 def test_websocket_identity_is_not_cached(monkeypatch):
-    # WS 連線中途會切換身分，不可把解析結果留在連線上
+    # WS 的身分由 endpoint 存在該連線的 Connection，resolve_identity 不在 websocket.state 快取
     monkeypatch.setattr(identity_module, "_user_exists", lambda db, user_id: True)
     ws = WebSocket({"type": "websocket", "headers": [(b"cookie", f"access_token={token('access')}".encode())]},
                    receive=None, send=None)

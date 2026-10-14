@@ -238,7 +238,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
   - **心跳逾時**：伺服器連線後先送 `hello`（`ping_interval` / `ping_timeout`），之後每 25 秒送 `heartbeat`。收到 `hello` 才啟動逾時，每次心跳重新計時，超過兩者相加（45 秒）沒收到就關閉並退避重連。**不分前景背景、不探測、前端不送 `ping`**：背景節流的是計時器，心跳照常送達，逾時只會晚觸發、不會誤判。連到不送 `hello` 的舊後端時不啟動逾時
   - **自動重連**：`min(30s, 1s × 2^次數) × (1 ± 0.5)`，**不放棄**。**收到伺服器第一則訊息才重置次數、清除 `isReconnecting`**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」且不送訊息，在 `onopen` 重置會一直以最短間隔重連。心跳逾時等主動判定斷線時走退避、不重置次數。握手卡在 CONNECTING 超過 20 秒（`CONNECT_TIMEOUT_MS`）就放棄；`createWebSocket()` 丟例外時同樣交給退避；`offline` 事件立刻關閉進入退避，`online` 不特別處理
   - 每個 socket 事件都先檢查 `socket.value === ws`，`connect()` 開新連線前先 `dropSocket()` 清掉仍在 CLOSING 的舊連線：被取代的舊連線遲到的 `onclose` 不可動到新連線（會變成兩條活連線）
-  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時照一般斷線退避重連（多半是休眠喚醒時舊連線的名額還沒釋放；被拒絕時伺服器不送訊息，次數不會重置，間隔自然拉長，**不另加特例**），連續被擋只在第一次顯示「連線數已達上限」提示，收到伺服器訊息後重新計算。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
+  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時照一般斷線退避重連（多半是休眠喚醒時舊連線的名額還沒釋放；被拒絕時伺服器不送訊息，次數不會重置，間隔自然拉長，**不另加特例**），連續被擋只在第一次顯示「連線數已達上限」提示，收到伺服器訊息或 `reconnect()`（換身分）後重新計算。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:

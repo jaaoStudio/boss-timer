@@ -155,6 +155,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function reconnect() {
     dropSocket()
     reconnectAttempts = 0
+    connectionLimitNotified = false   // 換了身分，被擋下時要重新提示
     connect()
   }
 

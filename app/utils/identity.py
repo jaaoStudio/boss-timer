@@ -15,7 +15,7 @@ from app.database.database import SessionLocal
 from app.services import auth_service
 from app.utils import anonymous_id
 
-# user：access token 有效；anon：伺服器簽發的匿名身分；none：都沒有（含編造的值、過期或類型不符的 token）
+# user：access token 有效（WebSocket 另外接受有效的 refresh token）；anon：伺服器簽發的匿名身分；none：都沒有（含編造的值、過期或類型不符的 token）
 IdentityKind = Literal["user", "anon", "none"]
 
 
