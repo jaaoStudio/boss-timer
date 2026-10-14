@@ -23,7 +23,8 @@
       "createFailed": "建立房間失敗，請再試一次。",
       "nicknameRequiredCreate": "請先輸入您的暱稱，或登入後再創建房間。",
       "nicknameRequiredJoin": "請先輸入您的暱稱，或登入後再加入房間。",
-      "connectionLimit": "連線數已達上限，無法進入房間。請稍後再試。"
+      "connectionLimit": "連線數已達上限，稍後會自動重新連線；若持續出現，請關閉其他分頁。",
+      "logoutFailed": "登出失敗，請稍後再試。"
     },
     "toasts": {
       "loginSuccess": "登入成功！",

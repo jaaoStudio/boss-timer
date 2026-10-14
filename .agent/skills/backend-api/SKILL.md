@@ -234,10 +234,10 @@ except Exception as e:
 ### 匿名使用者
 `POST /auth/session` 發放 httponly 的 `anonymous_user_id` cookie，值為「UUID.簽章」（`app/utils/anonymous_id.py`，以 `SECRET_KEY` 做 HMAC-SHA256）；回應 body 只回傳 UUID。
 
-**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(conn)`**（HTTP 與 WebSocket 皆可用；**只在 HTTP 請求上快取**於 `request.state`；WebSocket 在握手時解析一次，存在該連線的 `Connection`，整條連線固定），回傳 `Identity(kind, id)`：
+**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(conn)`**（HTTP 與 WebSocket 皆可用；**只在 HTTP 請求上快取**於 `request.state`；WebSocket 在握手時解析一次，存在該連線的 `Connection`，整條連線固定；WebSocket 另外在 access token 無效時以 refresh token 認出登入者並查資料庫確認，async 呼叫端須以 `run_in_threadpool` 呼叫），回傳 `Identity(kind, id)`：
 | kind | 條件 |
 |---|---|
-| `user` | `access_token` 能解出使用者 |
+| `user` | `access_token` 能解出使用者（WebSocket 另外確認使用者存在，access token 無效時改用 refresh token） |
 | `anon` | 匿名 cookie 簽章正確 |
 | `none` | 都不是（含編造的值、簽章上線前的舊 cookie、過期或類型不是 access 的 token） |
 
@@ -245,5 +245,5 @@ except Exception as e:
 - `/auth/session`：`user` 或帶 `refresh_token`（即將換發的登入者）→ 不發匿名身分；`anon` → 沿用；`none` → 發放新身分。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
 - 新發經 `check_anonymous_id_mint()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429（這次沒有身分、以 IP 限流）
 - `/auth/refresh` 的個人額度以 refresh token 裡的使用者計算（`get_refresh_token_user_key`）：呼叫者的 access token 已過期，退回 IP 會讓同 IP 的登入者互相擋到被登出
-- `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 連線中途會切換身分，不快取
+- `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 的結果由呼叫端存在該連線的 `Connection`，函式本身不快取
 - 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

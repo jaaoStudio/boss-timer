@@ -37,9 +37,11 @@ function cancel(timer: Timer): null {
 export const useWebSocketStore = defineStore('websocket', () => {
   const socket = ref<WebSocket | null>(null)
 
-  // 連線中斷、正在自動重連（畫面據此顯示提示）；收到伺服器訊息或被連線限制擋下時清除
+  // 連線中斷、正在自動重連（畫面據此顯示提示）；收到伺服器訊息時清除
   const isReconnecting = ref(false)
   let reconnectAttempts = 0
+  // 連續被連線限制（4429）擋下時只提示一次，收到伺服器訊息（連上了）後重新計算
+  let connectionLimitNotified = false
   let reconnectTimeout: Timer = null
   let connectTimeout: Timer = null
   // 心跳逾時（ADR-0008，照 Socket.IO）：收到 hello 才啟動，之後每次心跳重新計時，
@@ -97,6 +99,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
         // 「接受後立刻關閉」且不送訊息，若在 onopen 就重置，每次都會被重置而一直以最短間隔重連
         reconnectAttempts = 0
         isReconnecting.value = false
+        connectionLimitNotified = false
         const message: WSMessage = JSON.parse(event.data)
         handleMessage(message)
       }
@@ -105,14 +108,13 @@ export const useWebSocketStore = defineStore('websocket', () => {
         if (socket.value !== ws) return
         console.log('WebSocket disconnected.')
         resetConnectionState()
-        // 被伺服器的連線限制擋下時不自動重連：限制以分鐘 / 小時計，馬上重試只會再被擋；
-        // 之後使用者一有操作，sendMessage 會再嘗試連線
-        if (event.code === CLOSE_CODE_CONNECTION_LIMITED) {
-          isReconnecting.value = false
+        // 被連線限制擋下也照一般斷線退避重連（ADR-0008）：多是休眠喚醒時伺服器還沒釋放舊連線的名額，
+        // 約 90 秒內就會恢復。被拒絕時伺服器不送訊息，重連次數不會重置，間隔自然拉長
+        if (event.code === CLOSE_CODE_CONNECTION_LIMITED && !connectionLimitNotified) {
+          connectionLimitNotified = true
           notify('warning', 'roomSelection.errors.connectionLimit')
-        } else {
-          attemptReconnect()
         }
+        attemptReconnect()
       }
 
       ws.onerror = (error: Event) => {
@@ -153,6 +155,7 @@ export const useWebSocketStore = defineStore('websocket', () => {
   function reconnect() {
     dropSocket()
     reconnectAttempts = 0
+    connectionLimitNotified = false   // 換了身分，被擋下時要重新提示
     connect()
   }
 

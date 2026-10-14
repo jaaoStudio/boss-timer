@@ -20,6 +20,7 @@ interface UserState {
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
+  _logoutPromise?: Promise<void>;
 }
 
 export const useUserStore = defineStore('user', {
@@ -31,6 +32,7 @@ export const useUserStore = defineStore('user', {
     _channel: undefined,
     _initialized: false,
     _initPromise: undefined,
+    _logoutPromise: undefined,
   }),
   getters: {
     isAdmin(): boolean {
@@ -139,18 +141,28 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async logout() {
-      const websocketStore = useWebSocketStore();
-      try {
-        // 清理本地和後端的認證狀態
-        this.clearAuth();
-        await apiService.logout();
-        this.anonymousName = this.getAnonymousName();
+    // 只有 /auth/logout 成功才算登出：HttpOnly cookie 前端清不掉。失敗時什麼都不動（維持登入、不廣播、不重連），
+    // 錯誤往外丟給呼叫端提示
+    logout(): Promise<void> {
+      // 進行中再呼叫（例如連點登出）就共用同一次，不並行跑兩次完整流程
+      if (!this._logoutPromise) {
+        this._logoutPromise = this._runLogout().finally(() => {
+          this._logoutPromise = undefined;
+        });
+      }
+      return this._logoutPromise;
+    },
 
+    async _runLogout() {
+      const websocketStore = useWebSocketStore();
+      await apiService.logout();
+      this.clearAuth();
+      this.anonymousName = this.getAnonymousName();
+      try {
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
         await apiService.initSession();
       } catch (error) {
-        console.error('Logout failed:', error);
+        console.error('Failed to start anonymous session after logout:', error);
       } finally {
         // 即使取得匿名身分失敗也要通知其他分頁並重連，否則 WebSocket 會停留在登入身分。
         // 伺服器已撤銷 refresh token，重連後會是匿名（或無身分）
@@ -162,12 +174,6 @@ export const useUserStore = defineStore('user', {
     async loginWithGoogle(payload: string | { credential?: string; code?: string }) {
       const websocketStore = useWebSocketStore();
       try {
-        // 換帳號：不需廣播 LOGOUT，其他分頁收到下方的 LOGIN 就會更新並重連
-        if (this.isLoggedIn) {
-          this.clearAuth();
-          await apiService.logout();
-        }
-
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
         this.user = response.user;
@@ -180,8 +186,8 @@ export const useUserStore = defineStore('user', {
         this.notifyLogin();
 
       } catch (error) {
+        // 登入失敗不動登入狀態（登入按鈕只在未登入時顯示），交給呼叫端提示
         console.error('Google login failed:', error);
-        await this.logout();
         throw error;
       }
     },

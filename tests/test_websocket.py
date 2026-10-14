@@ -16,6 +16,7 @@ from app.schemas.boss import BossRecordCreate
 from app.services.boss_service import BossService
 from app.config import settings
 from app.utils import anonymous_id
+from app.utils import identity as identity_module
 from app.utils.identity import Identity
 from app.websocket import manager as manager_module
 from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_TIMEOUT_SECONDS, HELLO_MESSAGE, ConnectionManager
@@ -115,8 +116,8 @@ def test_forged_anonymous_id_in_payload_is_ignored(recorded_identities):
     ({"refresh_token": "revoked"}, False, None, Identity("none")),
 ])
 def test_handshake_identity(recorded_identities, monkeypatch, cookies, user_exists, refresh_user, expected):
-    monkeypatch.setattr(ws_router, "_user_exists", lambda db, user_id: user_exists)
-    monkeypatch.setattr(ws_router.auth_service, "verify_refresh_token", lambda db, token: refresh_user)
+    monkeypatch.setattr(identity_module, "_user_exists", lambda db, user_id: user_exists)
+    monkeypatch.setattr(identity_module.auth_service, "verify_refresh_token", lambda db, token: refresh_user)
     with connect(**cookies) as ws:
         join(ws)
         assert record(ws) == "ok"

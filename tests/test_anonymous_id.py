@@ -12,6 +12,7 @@ from app.config import settings
 from app.dependencies import get_refresh_token_user_key
 from app.routers import auth
 from app.utils import anonymous_id
+from app.utils import identity as identity_module
 from app.utils.identity import Identity, resolve_identity
 from tests.helpers import make_limited_app, set_cookies
 
@@ -79,8 +80,9 @@ def test_non_ascii_cookie_resolves_to_none():
     assert resolve_identity(http_request(b"anonymous_user_id=a.\xe9")) == Identity("none")
 
 
-def test_websocket_identity_is_not_cached():
-    # WS 連線中途會切換身分，不可把解析結果留在連線上
+def test_websocket_identity_is_not_cached(monkeypatch):
+    # WS 的身分由 endpoint 存在該連線的 Connection，resolve_identity 不在 websocket.state 快取
+    monkeypatch.setattr(identity_module, "_user_exists", lambda db, user_id: True)
     ws = WebSocket({"type": "websocket", "headers": [(b"cookie", f"access_token={token('access')}".encode())]},
                    receive=None, send=None)
     assert resolve_identity(ws) == Identity("user", "42")
@@ -154,3 +156,14 @@ def test_mint_limit_per_ip_does_not_affect_existing_identities(monkeypatch):
     # 已有合法 cookie 的使用者不需發放，不受影響；其他 IP 也不受影響
     assert init_session(cookie=anonymous_id.sign(str(uuid.uuid4()))).status_code == 200
     assert init_session(ip="198.51.100.9").status_code == 200
+
+
+def test_anonymous_websocket_handshake_does_not_touch_the_database(monkeypatch):
+    def no_db():
+        raise AssertionError("anonymous handshake opened a DB session")
+
+    monkeypatch.setattr(identity_module, "SessionLocal", no_db)
+    signed = anonymous_id.sign(str(uuid.uuid4()))
+    ws = WebSocket({"type": "websocket", "headers": [(b"cookie", f"{anonymous_id.COOKIE_NAME}={signed}".encode())]},
+                   receive=None, send=None)
+    assert resolve_identity(ws).kind == "anon"

@@ -225,9 +225,20 @@ const handleLoginError = () => {
   showMessage.error(t('roomSelection.toasts.googleSignInFailed'));
 };
 
-const handleLogout = () => {
-  userStore.logout();
-  showMessage.info(t('roomSelection.toasts.logoutSuccess'));
+// 登出進行中忽略再次點擊：store 會共用同一次登出，但每次點擊都會各自跳一次提示
+let loggingOut = false;
+const handleLogout = async () => {
+  if (loggingOut) return;
+  loggingOut = true;
+  try {
+    await userStore.logout();
+    showMessage.info(t('roomSelection.toasts.logoutSuccess'));
+  } catch (error) {
+    console.error("Logout error:", error);
+    showMessage.error(t('roomSelection.errors.logoutFailed'));
+  } finally {
+    loggingOut = false;
+  }
 };
 
 // --- Room Handlers ---
