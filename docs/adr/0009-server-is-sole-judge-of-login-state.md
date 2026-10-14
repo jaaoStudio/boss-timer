@@ -14,7 +14,7 @@ status: accepted
 - 登入者的判斷（access token 且使用者存在 → refresh token 查資料庫確認未撤銷）與 WebSocket 握手共用 `resolve_login()`，兩邊不會判斷出不同結果。
 - 呼叫失敗（網路錯誤、5xx、429）不代表登入狀態改變：前端沿用上次的顯示（`user_info` 只當顯示快取），什麼都不清除。
 - 原本顯示已登入、被判定為匿名時，前端廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。
-- **跨分頁同步也問伺服器**（照 NextAuth 的做法）：收到其他分頁的 `LOGIN` / `LOGOUT` 時不採用通知裡的狀態，而是重新呼叫 `/auth/session`、照結果設定並重連 WebSocket。所有分頁共用同一組 cookie，且可能有好幾個請求同時在改它，通知裡的狀態可能已過時；以伺服器對當下 cookie 的判斷為準，各分頁才會一致。送出 `/auth/session` 後登入 cookie 改變過（本分頁或其他分頁登入 / 登出），回應就是改變前的判斷，再問一次。
+- **跨分頁同步也問伺服器**（照 NextAuth 的做法）：收到其他分頁的 `LOGIN` / `LOGOUT` 時不採用通知裡的狀態，而是重新呼叫 `/auth/session`、照結果設定並重連 WebSocket。所有分頁共用同一組 cookie，且可能有好幾個請求同時在改它，通知裡的狀態可能已過時；以伺服器對當下 cookie 的判斷為準，各分頁才會一致。送出 `/auth/session` 後登入 cookie 改變過（本分頁或其他分頁登入 / 登出），回應（含失敗）就是改變前的結果，再問一次。重新判斷是背景請求，失敗時不跳轉頁面、不提示，沿用目前的顯示；開頁判斷期間收到過其他分頁的通知時，不再廣播 `LOGOUT`，多個分頁同時開頁時才不會互相觸發。
 - 額度：`/auth/session` 的個人額度依序以 access token 的使用者、refresh token 裡的使用者計算，不退回 IP，同 IP 的人不會互相擋到（ADR-0007）。
 
 ## Considered Options

@@ -97,9 +97,11 @@ export const useUserStore = defineStore('user', {
       this.isLoading = true;
       try {
         const wasLoggedIn = localStorage.getItem('user_info') !== null;
+        const changes = this._authChanges;
         await this._syncSession();
-        // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁重新判斷並重連
-        if (wasLoggedIn && !this.isLoggedIn) this.notifyLogout();
+        // 伺服器清掉的是所有分頁共用的登入 cookie：通知其他分頁重新判斷並重連。
+        // 期間收到過其他分頁的通知時不再廣播：那個分頁已通知過（多個分頁同時開頁時才不會互相觸發）
+        if (wasLoggedIn && !this.isLoggedIn && changes === this._authChanges) this.notifyLogout();
       } catch (error) {
         // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用上次的顯示，什麼都不清除
         console.error('Auth initialization failed:', error);
@@ -114,25 +116,31 @@ export const useUserStore = defineStore('user', {
     },
 
     // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分。
-    // 等待回應期間其他分頁登入 / 登出過（cookie 已改變），這次的判斷已過時，再問一次
-    async _syncSession() {
-      let session;
-      let changes;
-      do {
-        changes = this._authChanges;
-        session = await apiService.initSession();
-      } while (changes !== this._authChanges);
-      if (session.status === 'authenticated') {
-        this.setLoggedInUser(session.user);
-      } else {
-        this.becomeAnonymous();
+    // 等待回應期間登入 cookie 改變過（本分頁或其他分頁登入 / 登出），這次的結果（含失敗）是改變前的，再問一次
+    async _syncSession({ background = false } = {}) {
+      for (;;) {
+        const changes = this._authChanges;
+        try {
+          const session = await apiService.initSession({ background });
+          if (changes !== this._authChanges) continue;
+          if (session.status === 'authenticated') {
+            this.setLoggedInUser(session.user);
+          } else {
+            this.becomeAnonymous();
+          }
+          return;
+        } catch (error) {
+          if (changes !== this._authChanges) continue;
+          throw error;
+        }
       }
     },
 
-    // 其他分頁登入 / 登出後重新判斷。失敗時沿用目前的顯示（同初始化）；cookie 已改變，WebSocket 一律重連換成新身分
+    // 其他分頁登入 / 登出後重新判斷。使用者沒有操作，失敗時不跳轉頁面、不提示，沿用目前的顯示（同初始化）；
+    // cookie 已改變，WebSocket 一律重連換成新身分
     async _runResync() {
       try {
-        await this._syncSession();
+        await this._syncSession({ background: true });
       } catch (error) {
         console.error('Failed to resync auth state:', error);
       } finally {
@@ -159,7 +167,7 @@ export const useUserStore = defineStore('user', {
       this.becomeAnonymous();
       try {
         // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
-        await apiService.initSession();
+        await this._syncSession();
       } catch (error) {
         console.error('Failed to start anonymous session after logout:', error);
       } finally {

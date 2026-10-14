@@ -136,17 +136,17 @@ frontend/
 **核心 Actions**:
 - `initializeAuth()` — 初始化: 呼叫 `/auth/session` 由伺服器判斷登入狀態 → 連線 WebSocket（細節見下方「初始化流程守則」）
 - `loginWithGoogle(payload)` — Google 登入 + 通知 WebSocket 更新身份；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
-- `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清除本地狀態 → `initSession()` → 廣播 `LOGOUT` → 重連（`initSession` 失敗仍廣播並重連）。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
+- `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清除本地狀態 → `_syncSession()` → 廣播 `LOGOUT` → 重連（`_syncSession` 失敗仍廣播並重連）。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
 - `updatePreferences(preferences)` — 更新使用者偏好設定
 
-**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 通知其他頁籤登入 / 登出。**收到時不採用通知裡的狀態，重新呼叫 `/auth/session`（`_runResync`）照伺服器的判斷設定並重連 WebSocket**（ADR-0009，照 NextAuth）：所有頁籤共用 cookie，通知裡的狀態可能已過時。初始化完成前收到時不另外重新判斷，由進行中的初始化再問一次（初始化結束時才連線）。`LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
+**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 通知其他頁籤登入 / 登出。**收到時不採用通知裡的狀態，重新呼叫 `/auth/session`（`_runResync`）照伺服器的判斷設定並重連 WebSocket**（ADR-0009，照 NextAuth）：所有頁籤共用 cookie，通知裡的狀態可能已過時。這是使用者沒有操作的背景請求，帶 `skipGlobalErrorHandler`：失敗時不經全域錯誤處理（不跳維護 / 錯誤頁、不提示），沿用目前的顯示。初始化完成前收到時不另外重新判斷，由進行中的初始化再問一次（初始化結束時才連線）。`LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
 
 #### ⚠️ 初始化流程守則（`initializeAuth` / `_runInitializeAuth`）
 
 三條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
 
 1. **登入狀態只由伺服器判斷（ADR-0009）**
-   開頁呼叫 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（送出請求前有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。開頁與跨頁籤重新判斷共用 `_syncSession()`：送出後登入 cookie 改變過（`_authChanges` 有變：本頁或其他頁籤登入 / 登出），回應是改變前的判斷，**再問一次、不套用**。勿改回直接套用廣播的狀態（PR #64：過時回應的 Set-Cookie 仍會被瀏覽器套用，畫面與伺服器不一致）。
+   開頁呼叫 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（送出請求前有 `user_info`）卻被判定為匿名時，廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。開頁與跨頁籤重新判斷共用 `_syncSession()`：送出後登入 cookie 改變過（`_authChanges` 有變：本頁或其他頁籤登入 / 登出），回應（含失敗）是改變前的結果，**再問一次、不套用**；期間收到過其他頁籤的通知時不再廣播 `LOGOUT`（那個頁籤已通知過，多個頁籤同時開頁時才不會互相觸發）。勿改回直接套用廣播的狀態（PR #64：過時回應的 Set-Cookie 仍會被瀏覽器套用，畫面與伺服器不一致）。
 
 2. **併發呼叫要去重**
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session` 會被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
@@ -365,7 +365,7 @@ class ApiService {
 
 ### Axios 設定
 - **Base URL**: 由環境變數 `VITE_APP_BASE_URL` 控制
-- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中)
+- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中)；網路錯誤跳維護頁、5xx 跳錯誤頁、429 提示。使用者沒有操作的背景請求帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
 - **認證**: Cookie-based (HttpOnly)，無需手動帶 Token
 
 ---

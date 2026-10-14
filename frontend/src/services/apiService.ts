@@ -77,8 +77,8 @@ class ApiService {
     await this.client.post('/auth/logout')
   }
 
-  async initSession(): Promise<InitSessionResponse> {
-    const res = await this.client.post<InitSessionResponse>('/auth/session')
+  async initSession({ background = false } = {}): Promise<InitSessionResponse> {
+    const res = await this.client.post<InitSessionResponse>('/auth/session', {}, { skipGlobalErrorHandler: background })
     return res.data
   }
 
