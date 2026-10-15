@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import apiService, { type InitSessionResponse } from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
-import { QueryObserver } from '@tanstack/vue-query';
+import { MutationObserver, QueryObserver } from '@tanstack/vue-query';
 import { queryClient } from '@/queryClient';
 
 export interface User {
@@ -34,6 +34,7 @@ interface UserState {
 }
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
+const PREFERENCES_MUTATION_KEY = ['auth', 'preferences'] as const;
 
 function identityOf(session: InitSessionResponse): string {
   if (session.status === 'authenticated') return `user:${session.user.id}`;
@@ -150,8 +151,10 @@ export const useUserStore = defineStore('user', {
     },
 
     // 伺服器回答的偏好（查詢成功或登入回應）和上次套用的不同時才覆蓋本地：切回分頁時不蓋掉本地還沒存的修改，
-    // 換人時一定套用。查詢失敗、改用快取時不呼叫
+    // 換人時一定套用。查詢失敗、改用快取時不呼叫。還有存檔沒完成時不覆蓋（回答可能是存檔前的），
+    // 最後一個存檔完成時會重新查詢
     _applyServerPreferences(user: User) {
+      if (queryClient.isMutating({ mutationKey: PREFERENCES_MUTATION_KEY }) > 0) return;
       const preferences = JSON.stringify(user.preferences ?? {});
       if (preferences !== this._appliedPreferences) {
         this._appliedPreferences = preferences;
@@ -235,16 +238,26 @@ export const useUserStore = defineStore('user', {
       }
     },
 
+    // 偏好存檔是 Vue Query 的 mutation：存檔期間查詢結果不覆蓋本地偏好，最後一個存檔完成時重新查詢一次
+    // （照 TanStack Query 處理同時有多個樂觀更新的做法，ADR-0009）
     async updatePreferences(preferences: Record<string, unknown>) {
       if (!this.user) return;
       try {
-        this.user = await apiService.updateMyPreferences(preferences);
-        // 本地已是這份偏好：記為已套用，之後查詢回來同一份時不再覆蓋本地（例如正在編輯的版面）
-        this._appliedPreferences = JSON.stringify(this.user.preferences ?? {});
-        // 存檔前送出的查詢會帶回舊的偏好、蓋掉剛存的：取消後重新查詢（照 TanStack Query 樂觀更新的做法）
-        if (queryClient.isFetching({ queryKey: SESSION_QUERY_KEY }) > 0) void this._refetchSession();
+        const updated = await new MutationObserver(queryClient, {
+          mutationKey: PREFERENCES_MUTATION_KEY,
+          mutationFn: (p: Record<string, unknown>) => apiService.updateMyPreferences(p),
+        }).mutate(preferences);
+        // 期間登出或換人時不把舊的登入者放回去
+        if (this.user?.id === updated.id) {
+          this.user = updated;
+          // 本地已是這份偏好：記為已套用，之後查詢回來同一份時不再覆蓋本地（例如正在編輯的版面）
+          this._appliedPreferences = JSON.stringify(updated.preferences ?? {});
+        }
       } catch (error) {
         console.error('Failed to update preferences:', error);
+      } finally {
+        // 存檔期間送出的查詢可能帶回存檔前的偏好：取消後重新問，拿到所有存檔之後的結果
+        if (queryClient.isMutating({ mutationKey: PREFERENCES_MUTATION_KEY }) === 0) void this._refetchSession();
       }
     },
 

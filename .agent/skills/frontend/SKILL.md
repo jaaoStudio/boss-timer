@@ -161,7 +161,7 @@ frontend/
    網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線（否則開頁卡住）。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都 `clearAuth()`」。
 
 6. **偏好設定只從伺服器的回答覆蓋本地**（`_applyServerPreferences`）
-   查詢成功或登入回應的偏好和上次套用的（`_appliedPreferences`）不同時才遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。登入時直接以登入回應套用，不等後續查詢。`updatePreferences` 成功後記為已套用，切回分頁時不會蓋掉正在編輯的版面；存檔完成時若有查詢還在進行（存檔前送出、會帶回舊偏好），取消後重新查詢。`clearAuth()` 清掉記錄，再登入時一定套用。
+   查詢成功或登入回應的偏好和上次套用的（`_appliedPreferences`）不同時才遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。登入時直接以登入回應套用，不等後續查詢。`updatePreferences` 是 Vue Query 的 mutation（`mutationKey: ['auth', 'preferences']`）：**還有存檔沒完成時（`isMutating`）查詢結果不覆蓋本地偏好**，最後一個存檔完成時 `_refetchSession()` 重新問一次；成功後只在仍是同一個登入者時更新 `user` 並記為已套用，切回分頁時不會蓋掉正在編輯的版面。勿改回「存檔完成時有查詢在跑才取消」（PR #64 第 10 輪：只涵蓋一種先後順序）。`clearAuth()` 清掉記錄，再登入時一定套用。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
