@@ -256,7 +256,7 @@ const submit = async () => {
     showMessage.success(t('settings.feedback.submitSuccess'))
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
-    // 全域只處理限流器的 429；每日提交上限也是 429，由這裡提示
+    // 每日提交上限的 429（code: feedback_daily_limit）全域不處理，由這裡提示；其他 429 全域已提示「操作太頻繁」
     if (err?.response?.status === 429 && !isHandledGlobally(e)) {
       showMessage.warning(t('settings.feedback.rateLimited'))
     } else {

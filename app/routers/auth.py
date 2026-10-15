@@ -36,9 +36,10 @@ async def login_with_google(
     elif login_data.credential:
         payload = auth_service.verify_google_token(login_data.credential)
 
+    # 憑證無效回 400 而不是 401：401 在整個後端只代表登入失效，前端遇到 401 會照登入失效處理（ADR-0009）
     if not payload:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid Google credential or code",
         )
 

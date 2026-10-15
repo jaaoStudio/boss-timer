@@ -11,8 +11,6 @@ declare module 'axios' {
   interface AxiosRequestConfig {
     // 失敗由呼叫端處理：不跳轉頁面、不顯示提示
     skipGlobalErrorHandler?: boolean
-    // 401 不代表登入狀態有問題的請求（例如 Google 登入的憑證無效）：不走 401 的登入確認
-    skipUnauthorizedCheck?: boolean
   }
 }
 

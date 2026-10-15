@@ -17,7 +17,7 @@ from app.websocket.manager import ConnectionManager
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
-from app.services.auth_service import decode_token, decode_token_user_id
+from app.services.auth_service import decode_token_user_id
 from app.utils.identity import Identity, has_login_cookies, resolve_identity, resolve_login
 from app.utils.login_cookies import set_access_token_cookie
 
@@ -85,18 +85,16 @@ def get_ip_ceiling_key(request: Request) -> str:
 
 def get_user_identifier(request: Request) -> str:
     """
-    slowapi 的 key_func：個人額度，見 personal_limit_key。access token 無效時改以這個 refresh token（jti）計算：
+    slowapi 的 key_func：個人額度，見 personal_limit_key。access token 無效時改以 refresh token 裡的使用者計算：
     需要登入的 API 與 /auth/session 在 access token 過期時照樣以登入者處理並換發（ADR-0009），
     若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到（ADR-0007）。
-    只解開 refresh token、不查資料庫，所以以 token 本身計算、不以裡面的使用者：拿到舊的或被撤銷的 refresh token
-    重送，只會用掉那個 token 的額度，不會擋到使用者目前的登入；輪流使用很多舊 token 的人由 IP 天花板擋下
-    （天花板不採用 refresh token）。
+    只解開 refresh token、不查資料庫：以使用者而不是 token 本身（jti）計算，舊的或已撤銷的 token 才不會各拿一份額度
+    （每次登入都會產生新的 jti，輪流使用就能繞過每日上限）
     """
     identity = resolve_identity(request)
     if identity.kind != "user":
-        payload = decode_token(request.cookies.get("refresh_token"), token_type="refresh")
-        if payload and payload.get("jti"):
-            return f"refresh:{payload['jti']}"
+        if refresh_user := decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh"):
+            return f"user:{refresh_user}"
     return personal_limit_key(identity, request)
 
 limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
@@ -162,7 +160,7 @@ def rate_limit(limit_value: str):
 
     return decorator
 
-# 自定義速率限制超過時的例外處理函式。前端以 detail 開頭的 "Rate limit exceeded" 辨認限流器的 429（handlingErrors.ts），勿改這個開頭
+# 自定義速率限制超過時的例外處理函式
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,

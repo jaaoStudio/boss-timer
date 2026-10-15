@@ -55,7 +55,8 @@ async def create_feedback(
     try:
         item = FeedbackService.create_feedback(db, user_id=user.id, payload=payload)
     except FeedbackRateLimited as e:
-        raise HTTPException(status_code=429, detail=str(e))
+        # 帶 code：前端全域只略過這個 429（其他 429 一律提示「操作太頻繁」），由回饋頁提示每日上限
+        raise HTTPException(status_code=429, detail={"code": "feedback_daily_limit", "message": str(e)})
 
     return FeedbackResponse(
         id=item.id,

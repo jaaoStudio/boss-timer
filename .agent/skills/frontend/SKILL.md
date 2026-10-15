@@ -371,7 +371,7 @@ class ApiService {
 
 ### Axios 設定
 - **Base URL**: 由環境變數 `VITE_APP_BASE_URL` 控制
-- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中，ADR-0009「使用中途遇到 401」)：網路錯誤與 503 跳維護頁、5xx 跳錯誤頁、限流器的 429 提示（以 detail 開頭 `Rate limit exceeded` 辨認，其他 429 交給呼叫端）、401 代表登入失效：原本顯示為登入時提示「登入已失效」並回首頁（`handleLoginLost()`；之後接著的 401、原本就是匿名、`skipUnauthorizedCheck` 的請求不處理）；呼叫端自己取消的請求不處理。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
+- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中，ADR-0009「使用中途遇到 401」)：網路錯誤與 503 跳維護頁、5xx 跳錯誤頁、429 提示「操作太頻繁」（`detail.code === 'feedback_daily_limit'` 的回饋每日上限交給回饋頁）、401 代表登入失效：原本顯示為登入時提示「登入已失效」並回首頁（`handleLoginLost()`；之後接著的 401、正因 cookie 改變而重新查詢時的 401 不處理；顯示匿名時重新查詢一次以清掉失效的登入 cookie）；進行中的全域跳頁不被之後的 401 蓋掉；呼叫端自己取消的請求不處理。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
 - **呼叫端的失敗提示**: 一律用 `showFailure(error, 訊息)`（勿直接 `showMessage.error`），全域已處理（跳頁或已提示）就不再顯示，同一個錯誤不會出現兩個提示。要導頁前先問 `isNavigatedGlobally(error)`，全域已跳頁就不要再導頁
 - **認證**: Cookie-based (HttpOnly)，無需手動帶 Token
 

@@ -30,9 +30,7 @@ export const showFailure = (error: unknown, message: string): void => {
 export const handleError = (error: AxiosError): Promise<never> => {
   // 呼叫端自己取消的請求（例如換篩選條件中斷載入）不是錯誤
   if (!axios.isCancel(error)) {
-    const handled = error.response?.status === 401 && !error.config?.skipUnauthorizedCheck
-      ? handleUnauthorized()
-      : handleGlobally(error)
+    const handled = error.response?.status === 401 ? handleUnauthorized() : handleGlobally(error)
     if (handled) handledErrors.set(error, handled)
   }
   return Promise.reject(error)
@@ -45,8 +43,9 @@ const handleGlobally = (error: AxiosError): 'navigated' | 'notified' | undefined
   }
   const { status } = error.response
   const detail = (error.response.data as { detail?: unknown } | undefined)?.detail
-  // 只處理限流器的 429（後端 rate_limit_exceeded_handler 的格式）；其他 429（例如回饋的每日提交上限）由呼叫端提示
-  if (status === 429 && typeof detail === 'string' && detail.startsWith('Rate limit exceeded')) {
+  // 429 一律提示「操作太頻繁」（含 Cloudflare / nginx 回的）；只有回饋的每日提交上限帶 code，由回饋頁提示
+  const code = typeof detail === 'object' && detail !== null ? (detail as { code?: unknown }).code : undefined
+  if (status === 429 && code !== 'feedback_daily_limit') {
     showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
     return 'notified'
   }
@@ -62,7 +61,7 @@ const handleGlobally = (error: AxiosError): 'navigated' | 'notified' | undefined
 /**
  * 使用中途遇到 401：需要登入的 API 在 access token 過期時會自己換發，401 代表伺服器已判斷登入失效（ADR-0009），不再確認。
  * 原本顯示為登入時照登出的順序改為匿名、提示並退回首頁（CONTEXT.md「登入失效」）；需要登入的頁面由 App.vue 跳頁。
- * 已經是匿名時（後面接著的 401、匿名使用者碰到需要登入的功能）不處理，由呼叫端提示失敗
+ * 不是登入失效的 401（已經是匿名、其他分頁剛登入 / 登出而正在重新查詢）不處理，由呼叫端提示失敗
  */
 const handleUnauthorized = (): 'navigated' | undefined => {
   if (!useUserStore().handleLoginLost()) return undefined
@@ -70,11 +69,20 @@ const handleUnauthorized = (): 'navigated' | undefined => {
   const current = router.currentRoute.value
   // 需要登入的頁面由 App.vue 跳頁；已在維護頁、錯誤頁（同時送出的其他請求已跳過去）時不蓋掉
   const stay = ['RoomSelection', 'Maintenance', 'Error']
-  if (canAccess(current) && !stay.includes(current.name as string)) router.push({ name: 'RoomSelection' })
+  if (!globalNavigation && canAccess(current) && !stay.includes(current.name as string)) router.push({ name: 'RoomSelection' })
   return 'navigated'
 }
 
+// 進行中的全域跳頁（維護頁、錯誤頁）：router.currentRoute 要等跳完才會改變，之後的 401 不可蓋掉它
+let globalNavigation: Promise<unknown> | undefined
+
 const goTo = (name: 'Maintenance' | 'Error'): 'navigated' => {
-  if (router.currentRoute.value.name !== name) router.push({ name })
+  if (router.currentRoute.value.name !== name) {
+    const navigation = router.push({ name })
+    globalNavigation = navigation
+    void navigation.finally(() => {
+      if (globalNavigation === navigation) globalNavigation = undefined
+    })
+  }
   return 'navigated'
 }

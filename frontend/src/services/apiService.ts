@@ -69,8 +69,7 @@ class ApiService {
   }
 
   async loginWithGoogle(payload: { credential?: string; code?: string }): Promise<LoginResponse> {
-    // 這裡的 401 代表 Google 憑證無效，與登入狀態無關，不走 401 的登入確認
-    const res = await this.client.post<LoginResponse>('/auth/google', payload, { skipUnauthorizedCheck: true })
+    const res = await this.client.post<LoginResponse>('/auth/google', payload)
     return res.data
   }
 

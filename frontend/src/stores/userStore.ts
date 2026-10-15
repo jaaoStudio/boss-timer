@@ -153,9 +153,15 @@ export const useUserStore = defineStore('user', {
     },
 
     // 使用中途遇到 401：需要登入的 API 在 access token 過期時會自己換發，401 代表伺服器已判斷登入失效（ADR-0009），
-    // 不再確認，照登出的順序處理。回傳是否由這次處理：只在原本顯示為登入時，同時好幾個 401 只有第一個會處理
+    // 不再確認，照登出的順序處理。回傳是否當成登入失效處理：同時好幾個 401 只有第一個會處理
     handleLoginLost(): boolean {
-      if (!this.isLoggedIn) return false;
+      // 其他分頁剛登入 / 登出（例如在其他分頁按了登出）、正在重新查詢：401 是預期中的結果，交給查詢結果處理
+      if (this._cookieChanged) return false;
+      if (!this.isLoggedIn) {
+        // 顯示為匿名，卻仍帶著失效的登入 cookie（例如開頁查詢失敗）：重新查詢讓 /auth/session 清掉，之後的請求才不會一直 401
+        void this._refetchSession();
+        return false;
+      }
       void this._clearLoginAfterResync();
       return true;
     },
