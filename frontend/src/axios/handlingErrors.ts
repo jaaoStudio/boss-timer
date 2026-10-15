@@ -67,7 +67,9 @@ let unauthorizedCheck: Promise<'navigated' | undefined> | undefined
  * 重新問伺服器：回答登入失效、而這個分頁原本顯示為登入時，提示並退回首頁（CONTEXT.md「登入失效」）；
  * 其他情況（仍是登入、查詢失敗、原本就是匿名）不處理，由呼叫端提示失敗
  */
-const handleUnauthorized = (): Promise<'navigated' | undefined> => {
+const handleUnauthorized = async (): Promise<'navigated' | undefined> => {
+  // 已經顯示為匿名（例如剛發現登入失效之後才回來的 401）：結果不可能是登入失效，不再確認，由呼叫端提示失敗
+  if (!useUserStore().isLoggedIn) return undefined
   unauthorizedCheck ??= checkLoginAfterUnauthorized().finally(() => {
     unauthorizedCheck = undefined
   })

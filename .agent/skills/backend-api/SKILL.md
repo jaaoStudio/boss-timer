@@ -236,7 +236,7 @@ except Exception as e:
 
 | 情況 | 處理 | 回傳 |
 |---|---|---|
-| 登入有效 | access token 過期時以 refresh token 換發 access token cookie | `{ status: "authenticated", user }` |
+| 登入有效 | access token 過期時以 refresh token 換發；仍有效但剩不到一半效期時也換發（照 NextAuth `updateAge`，前端定期查詢時不會到期） | `{ status: "authenticated", user }` |
 | 有登入 cookie 但登入已失效（refresh token 無效或被撤銷、使用者已刪除） | 刪掉 `access_token` / `refresh_token` cookie，接著照匿名處理 | 同下 |
 | 匿名 cookie 簽章正確 | 沿用 | `{ status: "anonymous", anonymous_user_id }` |
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |

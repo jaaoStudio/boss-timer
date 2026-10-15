@@ -1,4 +1,5 @@
 """匿名身分 cookie 簽章、身分解析與 /auth/session 發放流程的測試（見 docs/adr/0007）。"""
+import time
 import uuid
 from datetime import datetime, timezone
 
@@ -156,6 +157,20 @@ def test_valid_access_token_returns_the_user(login):
     res = init_session(access_token=token("access"))
     assert res.json()["status"] == "authenticated" and res.json()["user"]["id"] == 42
     assert res.headers.get("set-cookie") is None   # 不換發、不發匿名身分
+
+
+@pytest.mark.parametrize("minutes_left, renewed", [(25, False), (10, True)])
+def test_access_token_is_renewed_when_less_than_half_left(login, minutes_left, renewed):
+    # 照 NextAuth 的 updateAge：剩不到一半效期就順便換發，前端定期查詢時 access token 不會到期
+    login()
+    exp = int(time.time()) + minutes_left * 60
+    access = jwt.encode({"sub": "42", "type": "access", "exp": exp}, settings.secret_key, algorithm=settings.algorithm)
+    res = init_session(access_token=access)
+    assert res.json()["status"] == "authenticated"
+    new_access = res.cookies.get("access_token")
+    assert (new_access is not None) == renewed
+    if renewed:
+        assert identity_module.auth_service.decode_token(new_access, "access")["exp"] > exp
 
 
 def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):

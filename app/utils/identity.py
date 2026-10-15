@@ -3,6 +3,7 @@
 
 需要完整的 User 物件時改用 auth_service.get_current_user_from_token；兩者都不要自己解析 JWT 或讀 cookie 原值。
 """
+import time
 from dataclasses import dataclass
 from typing import Literal, Optional
 
@@ -11,6 +12,7 @@ from starlette.requests import HTTPConnection
 from starlette.websockets import WebSocket
 
 from app.database import models
+from app.config import settings
 from app.database.database import SessionLocal
 from app.services import auth_service
 from app.utils import anonymous_id
@@ -41,8 +43,17 @@ def resolve_anonymous(cookies: dict[str, str]) -> Identity:
 @dataclass(frozen=True)
 class Login:
     user: models.User
-    # access token 無效、以 refresh token 認出：/auth/session 要換發 access token
-    from_refresh_token: bool
+    # /auth/session 要換發 access token：已失效（以 refresh token 認出），或剩不到一半效期
+    renew_access_token: bool
+
+
+def _expires_soon(access_payload: dict) -> bool:
+    """
+    access token 剩不到一半效期。/auth/session 這時就順便換發（照 NextAuth 的 updateAge）：前端在前景每 20 分鐘查詢一次，
+    只在失效後才換發的話，到期到下次查詢之間的請求都會遇到 401（ADR-0009「使用中途遇到 401」）
+    """
+    exp = access_payload.get("exp")
+    return exp is not None and exp - time.time() < settings.access_token_expire_minutes * 60 / 2
 
 
 def has_login_cookies(cookies: dict[str, str]) -> bool:
@@ -56,16 +67,16 @@ def _get_user(db: Session, user_id: str | int) -> Optional[models.User]:
 def resolve_login(db: Session, cookies: dict[str, str]) -> Optional[Login]:
     """
     登入者的判斷，/auth/session 與 WebSocket 握手共用，兩邊不會判斷出不同結果（ADR-0009）：
-    1. access token 有效且使用者仍存在 → 登入者
+    1. access token 有效且使用者仍存在 → 登入者；剩不到一半效期時 access token 需要換發
     2. 否則 refresh token 有效（資料庫確認未撤銷；使用者刪除時一併刪除）→ 登入者，access token 需要換發
     3. 否則 None：登入已失效或從未登入
     """
-    access_user = auth_service.decode_token_user_id(cookies.get("access_token"))
-    if access_user and (user := _get_user(db, access_user)):
-        return Login(user, from_refresh_token=False)
+    access = auth_service.decode_token(cookies.get("access_token"), token_type="access")
+    if access and (user := _get_user(db, access["sub"])):
+        return Login(user, renew_access_token=_expires_soon(access))
     refreshed_user = auth_service.verify_refresh_token(db, cookies.get("refresh_token"))
     if refreshed_user and (user := _get_user(db, refreshed_user)):
-        return Login(user, from_refresh_token=True)
+        return Login(user, renew_access_token=True)
     return None
 
 

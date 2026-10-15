@@ -241,7 +241,7 @@ async def init_session(
     if has_login_cookies(cookies):
         # resolve_login 會查資料庫（同步）：每次開頁與跨分頁重新判斷都會呼叫，放進 threadpool 免得卡住 WebSocket 等其他工作
         if login := await run_in_threadpool(resolve_login, db, cookies):
-            if login.from_refresh_token:
+            if login.renew_access_token:
                 _set_access_token_cookie(response, login.user.id)
             return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}
         # 刪掉失效的登入 cookie：refresh cookie 留著的話，WebSocket 握手與之後的請求都還會拿它判斷

@@ -254,7 +254,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 - `POST /auth/validate` — 支援 `Authorization: Bearer <token>` Header 或 `access_token` Cookie。只供部署切換期間的舊版前端，日後刪除
 
 ### 開頁判斷登入狀態 / 匿名使用者 Session
-- `POST /auth/session` — **登入狀態只由伺服器判斷（ADR-0009）**：登入有效回 `authenticated` + user（access token 過期時以 refresh token 順便換發），登入已失效時清掉舊的登入 cookie、改以匿名回應；登入判斷與 WebSocket 握手共用 `resolve_login()`（詳見 backend-api skill「開頁判斷登入狀態」）。未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
+- `POST /auth/session` — **登入狀態只由伺服器判斷（ADR-0009）**：登入有效回 `authenticated` + user（access token 過期時以 refresh token 順便換發，剩不到一半效期時也換發），登入已失效時清掉舊的登入 cookie、改以匿名回應；登入判斷與 WebSocket 握手共用 `resolve_login()`（詳見 backend-api skill「開頁判斷登入狀態」）。未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
 
 ### 安全設定
 - `samesite='lax'`, `secure=True` (生產環境)

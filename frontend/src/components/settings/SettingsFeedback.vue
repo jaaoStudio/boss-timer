@@ -256,12 +256,11 @@ const submit = async () => {
     showMessage.success(t('settings.feedback.submitSuccess'))
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
-    if (isHandledGlobally(e)) return
     // 全域只處理限流器的 429；每日提交上限也是 429，由這裡提示
-    if (err?.response?.status === 429) {
+    if (err?.response?.status === 429 && !isHandledGlobally(e)) {
       showMessage.warning(t('settings.feedback.rateLimited'))
     } else {
-      showMessage.error(t('settings.feedback.submitFailed'))
+      showFailure(e, t('settings.feedback.submitFailed'))
     }
   } finally {
     submitting.value = false

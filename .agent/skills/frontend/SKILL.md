@@ -148,7 +148,7 @@ frontend/
    以 TanStack Vue Query 的單一查詢（`['auth', 'session']`，`QueryObserver` 訂閱）呼叫 `apiService.initSession()`，結果在 `_fetchSession` 套用：`authenticated` → `_applyServerUser(user)`（處理帳號偏好，見第 6 條，勿直接呼叫 `setLoggedInUser`）；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）。
 
 2. **每個分頁只有一個查詢，何時查詢是固定的**
-   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；前景時每 20 分鐘（`refetchInterval`，讓 access token 不會在正常使用時到期）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求中斷、結果不套用到畫面，但回應標頭已到的話瀏覽器仍會套用 Set-Cookie），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
+   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；登入時前景每 20 分鐘（`refetchInterval`；伺服器在 access token 剩不到一半效期時順便換發，正常使用時不會到期）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求中斷、結果不套用到畫面，但回應標頭已到的話瀏覽器仍會套用 Set-Cookie），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
 
 3. **WebSocket 只在身分不同時重連**（`_syncWebSocket`）
    開頁第一次判斷完成（成功或失敗）才 `connect()`。之後查詢成功時，伺服器回答的身分（`user:{id}` / `anon:{id}` / `none`）和 `_wsIdentity` 不同才 `reconnect()`；查詢失敗時，期間登入 / 登出過（`_cookieChanged`）才照目前的 cookie 重連。
@@ -327,7 +327,7 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 ### 路由守衛 (`beforeEach`)
 1. 每次導航前調用 `userStore.initializeAuth()` 確保認證狀態已載入
 2. `canAccess(route)`：`requiresAuth` 路由要已登入、`requiresAdmin` 路由要是管理員，否則導向 `RoomSelection`
-3. 停在頁面時登入狀態改變（登入失效、其他分頁登出、切回分頁時的查詢）：`App.vue` watch `canAccess(route)`，不能再停留就回首頁。interceptor 不跳頁
+3. 停在頁面時登入狀態改變（登入失效、其他分頁登出、切回分頁時的查詢）：`App.vue` watch `canAccess(route)`，不能再停留就回首頁。使用中途遇到 401 而發現登入失效的分頁，interceptor 另外提示並回首頁
 
 ---
 
@@ -371,7 +371,7 @@ class ApiService {
 
 ### Axios 設定
 - **Base URL**: 由環境變數 `VITE_APP_BASE_URL` 控制
-- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中，ADR-0009「使用中途遇到 401」)：網路錯誤與 503 跳維護頁、5xx 跳錯誤頁、限流器的 429 提示（以 detail 開頭 `Rate limit exceeded` 辨認，其他 429 交給呼叫端）、401 重新查詢登入狀態、登入失效時提示「登入已失效」並回首頁（不重送，多個 401 共用一次確認；`skipUnauthorizedCheck` 的請求例外）；呼叫端自己取消的請求不處理。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
+- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中，ADR-0009「使用中途遇到 401」)：網路錯誤與 503 跳維護頁、5xx 跳錯誤頁、限流器的 429 提示（以 detail 開頭 `Rate limit exceeded` 辨認，其他 429 交給呼叫端）、401 重新查詢登入狀態、登入失效時提示「登入已失效」並回首頁（不重送，多個 401 共用一次確認；已顯示匿名時與 `skipUnauthorizedCheck` 的請求不確認）；呼叫端自己取消的請求不處理。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
 - **呼叫端的失敗提示**: 一律用 `showFailure(error, 訊息)`（勿直接 `showMessage.error`），全域已處理（跳頁或已提示）就不再顯示，同一個錯誤不會出現兩個提示。要導頁前先問 `isNavigatedGlobally(error)`，全域已跳頁就不要再導頁
 - **認證**: Cookie-based (HttpOnly)，無需手動帶 Token
 

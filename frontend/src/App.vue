@@ -25,8 +25,8 @@ watch(() => userStore.preferencesVersion, () => {
   syncLayout();
 });
 
-// 登入狀態改變後（登入失效、其他分頁登出、切回分頁時的查詢）不能再停在需要登入的頁面時回首頁。
-// 不管是哪種原因造成的都由這裡處理，interceptor 不跳頁（ADR-0009）
+// 登入狀態改變後（登入失效、其他分頁登出、切回分頁時的查詢）不能再停在需要登入的頁面時回首頁，不論原因（ADR-0009）。
+// 使用中途遇到 401 而發現登入失效的分頁，interceptor 另外會提示並回首頁
 watch(() => canAccess(route), (allowed) => {
   if (!allowed) router.push({ name: 'RoomSelection' });
 });

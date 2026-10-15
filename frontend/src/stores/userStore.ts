@@ -141,9 +141,10 @@ export const useUserStore = defineStore('user', {
           retry: false,
           networkMode: 'always',
           refetchOnReconnect: false,
-          // 分頁在前景時定期查詢，伺服器會順便換發 access token（30 分鐘到期），正常使用時不會遇到 401（照 NextAuth 的
-          // refetchInterval）。在背景時不查，切回來時本來就會查
-          refetchInterval: SESSION_REFETCH_INTERVAL_MS,
+          // 登入時分頁在前景定期查詢：伺服器在 access token（30 分鐘到期）剩不到一半效期時順便換發，正常使用時不會遇到 401
+          // （照 NextAuth 的 refetchInterval 與 updateAge）。在背景時不查，切回來時本來就會查；匿名沒有 access token 要保持有效。
+          // 登入 / 登出後的重新查詢完成時會重新計算
+          refetchInterval: () => (this.isLoggedIn ? SESSION_REFETCH_INTERVAL_MS : false),
         });
         // 訂閱後才開始查詢，也才會在切回分頁時重新查詢
         observer.subscribe(() => {});
@@ -151,16 +152,23 @@ export const useUserStore = defineStore('user', {
       return this._initPromise;
     },
 
-    // 登入 cookie 改變了（登入、登出、其他分頁通知、401 換發失敗）：不在前端自己判斷，重新問伺服器（ADR-0009）
+    // 登入 cookie 改變了（登入、登出、其他分頁通知）：不在前端自己判斷，重新問伺服器（ADR-0009）
     resyncAfterCookieChange(): Promise<void> {
       this._cookieChanged = true;
       return this._refetchSession();
     },
 
-    // 使用中途遇到 401：重新問伺服器（ADR-0009）。進行中的查詢可能是 access token 到期前送出的，取消後再問；
-    // 伺服器回答登入失效就照一般規則改為匿名、通知其他分頁
-    recheckSession(): Promise<void> {
-      return this._refetchSession();
+    // 使用中途遇到 401：重新問伺服器（ADR-0009），等到這之後送出的查詢有了結果才回傳。進行中的查詢可能是
+    // access token 到期前送出的，取消後再問；伺服器回答登入失效就照一般規則改為匿名、通知其他分頁
+    async recheckSession(): Promise<void> {
+      const since = Date.now();
+      await this._refetchSession();
+      // 期間被取消重發（例如收到其他分頁的通知）時，refetchQueries 會提早結束：加入或重新送出，直到有新的結果
+      for (;;) {
+        const state = queryClient.getQueryState(SESSION_QUERY_KEY);
+        if (!state || (state.fetchStatus === 'idle' && Math.max(state.dataUpdatedAt, state.errorUpdatedAt) >= since)) return;
+        await queryClient.refetchQueries({ queryKey: SESSION_QUERY_KEY }, { cancelRefetch: false });
+      }
     },
 
     // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
