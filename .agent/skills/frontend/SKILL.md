@@ -146,7 +146,7 @@ frontend/
 三條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
 
 1. **登入狀態只由伺服器判斷（ADR-0009）**
-   開頁呼叫 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。原本顯示已登入（送出請求前有 `user_info`）卻被判定為匿名時（登入已失效，使用者沒按登出），當作登出廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。**勿加「期間收到其他頁籤通知就不廣播」**（PR #64 第 4 輪：失效判斷的回應晚到、刪掉其他頁籤剛完成的登入時，那個頁籤會一直顯示登入）。開頁與跨頁籤重新判斷共用 `_syncSession()`：送出後登入 cookie 改變過（`_authChanges` 有變：本頁或其他頁籤登入 / 登出），回應（含失敗）是改變前的結果，**再問一次、不套用**。勿改回直接套用廣播的狀態（PR #64：過時回應的 Set-Cookie 仍會被瀏覽器套用，畫面與伺服器不一致）。
+   開頁呼叫 `apiService.initSession()`（`POST /auth/session`），照回傳設定：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）：前端每多處理一種失敗，就多一個與伺服器（含 WebSocket 握手）判斷不一致的可能。被判定為匿名、套用時 `user_info` 還在（登入已失效，使用者沒按登出），當作登出廣播 `LOGOUT`：伺服器清掉的是所有分頁共用的登入 cookie。`user_info` 是所有分頁共用的顯示快取，在套用當下才讀：已被其他分頁清掉代表那個分頁已通知過，瀏覽器一次還原很多分頁時只由第一個通知，不會每個分頁各廣播一次（PR #64 第 7 輪）。**勿加「期間收到其他頁籤通知就不廣播」**（PR #64 第 4 輪：失效判斷的回應晚到、刪掉其他頁籤剛完成的登入時，那個頁籤會一直顯示登入）。開頁與跨頁籤重新判斷共用 `_syncSession()`：送出後登入 cookie 改變過（`_authChanges` 有變：本頁或其他頁籤登入 / 登出），回應（含失敗）是改變前的結果，**再問一次、不套用**。勿改回直接套用廣播的狀態（PR #64：過時回應的 Set-Cookie 仍會被瀏覽器套用，畫面與伺服器不一致）。
 
 2. **併發呼叫要去重**
    `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session` 會被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**

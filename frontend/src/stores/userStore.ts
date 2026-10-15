@@ -96,10 +96,8 @@ export const useUserStore = defineStore('user', {
       this.initBroadcastChannel();
       this.isLoading = true;
       try {
-        const wasLoggedIn = localStorage.getItem('user_info') !== null;
-        await this._syncSession();
         // 登入已失效（使用者沒按登出）：伺服器清掉的是所有分頁共用的登入 cookie，當作登出通知其他分頁
-        if (wasLoggedIn && !this.isLoggedIn) this.notifyLogout();
+        if (await this._syncSession()) this.notifyLogout();
       } catch (error) {
         // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用上次的顯示，什麼都不清除
         console.error('Auth initialization failed:', error);
@@ -114,8 +112,10 @@ export const useUserStore = defineStore('user', {
     },
 
     // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分。
-    // 等待回應期間登入 cookie 改變過（本分頁或其他分頁登入 / 登出），這次的結果（含失敗）是改變前的，再問一次
-    async _syncSession({ background = false } = {}) {
+    // 等待回應期間登入 cookie 改變過（本分頁或其他分頁登入 / 登出），這次的結果（含失敗）是改變前的，再問一次。
+    // 回傳是否清掉了顯示中的登入：user_info 是所有分頁共用的顯示快取，已被其他分頁清掉時代表那個分頁已通知過，
+    // 多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）只由第一個通知
+    async _syncSession({ background = false } = {}): Promise<boolean> {
       for (;;) {
         const changes = this._authChanges;
         try {
@@ -125,10 +125,11 @@ export const useUserStore = defineStore('user', {
           if (session.status === 'authenticated' && !session.user) throw new Error('Session response without user');
           if (session.status === 'authenticated') {
             this.setLoggedInUser(session.user);
-          } else {
-            this.becomeAnonymous();
+            return false;
           }
-          return;
+          const clearedLogin = localStorage.getItem('user_info') !== null;
+          this.becomeAnonymous();
+          return clearedLogin;
         } catch (error) {
           if (changes !== this._authChanges) continue;
           throw error;
