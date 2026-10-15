@@ -5,14 +5,14 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
-from fastapi import Response
+from fastapi import HTTPException, Response
 from starlette.requests import Request
 from starlette.websockets import WebSocket
 
 import app.dependencies as deps
 from app.config import settings
 from app.database import models
-from app.dependencies import get_login_user_key
+from app.dependencies import get_user_identifier
 from app.routers import auth
 from app.utils import anonymous_id
 from app.utils import identity as identity_module
@@ -113,17 +113,17 @@ def test_websocket_identity_is_not_cached(login):
     assert getattr(ws.state, "identity", None) is None
 
 
-def test_login_rate_limit_is_keyed_by_login_user():
+def test_personal_rate_limit_uses_refresh_token_when_access_token_is_invalid():
     # access token 過期時以 refresh token 計算，不退回 IP（同 IP 的人不會互相擋到）
-    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "refresh:current"
+    assert get_user_identifier(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "refresh:current"
     # 以 token 本身計算：重送舊的或被撤銷的 refresh token，用不到同一個使用者目前登入的額度
-    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "refresh:revoked"
+    assert get_user_identifier(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "refresh:revoked"
     both = f"access_token={token('access', '42')}; refresh_token={token('refresh', '7')}".encode()
-    assert get_login_user_key(http_request(both)) == "user:42"
+    assert get_user_identifier(http_request(both)) == "user:42"
     # 拿 access token 冒充 refresh token：不算，退回一般的個人額度 key
     request = Request({"type": "http", "client": ("203.0.113.9", 0),
                        "headers": [(b"cookie", f"refresh_token={token('access', '7')}".encode())]})
-    assert get_login_user_key(request) == "ip:203.0.113.9"
+    assert get_user_identifier(request) == "ip:203.0.113.9"
 
 
 # --- /auth/session ---
@@ -282,5 +282,12 @@ def test_optional_user_renews_expired_access_token(login):
     user = deps.get_optional_user(http_request(f"refresh_token={VALID_REFRESH}".encode()), response, db=None)
     assert user is not None and user.id == 42
     assert "access_token=" in response.headers.get("set-cookie", "")
-    assert deps.get_optional_user(http_request(f"refresh_token={REVOKED_REFRESH}".encode()), Response(), db=None) is None
-    assert deps.get_optional_user(http_request(), Response(), db=None) is None
+    assert deps.get_optional_user(http_request(), Response(), db=None) is None   # 沒有登入 cookie：匿名
+
+
+def test_optional_user_rejects_lost_login(login):
+    # 帶著登入 cookie 但登入已失效：401，前端照登入失效處理，不悄悄當成匿名
+    login()
+    with pytest.raises(HTTPException) as exc:
+        deps.get_optional_user(http_request(f"refresh_token={REVOKED_REFRESH}".encode()), Response(), db=None)
+    assert exc.value.status_code == 401

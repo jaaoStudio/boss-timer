@@ -75,7 +75,7 @@ const handleLoginSuccess = async (response: { code?: string; credential?: string
     await userStore.loginWithGoogle(payload)
   } catch (error) {
     console.error("Backend login failed:", error)
-    showFailure(error, t('roomSelection.toasts.loginFailed'))
+    showFailure(error, t('appHeader.loginFailed'))
   }
 }
 

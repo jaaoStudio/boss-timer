@@ -68,7 +68,9 @@ const handleUnauthorized = (): 'navigated' | undefined => {
   if (!useUserStore().handleLoginLost()) return undefined
   showMessage.warning(i18n.global.t('globalErrors.sessionExpired'))
   const current = router.currentRoute.value
-  if (canAccess(current) && current.name !== 'RoomSelection') router.push({ name: 'RoomSelection' })
+  // 需要登入的頁面由 App.vue 跳頁；已在維護頁、錯誤頁（同時送出的其他請求已跳過去）時不蓋掉
+  const stay = ['RoomSelection', 'Maintenance', 'Error']
+  if (canAccess(current) && !stay.includes(current.name as string)) router.push({ name: 'RoomSelection' })
   return 'navigated'
 }
 

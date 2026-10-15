@@ -8,7 +8,7 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user, get_login_user_key
+from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
@@ -91,7 +91,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@rate_limit("30/minute", personal_key_func=get_login_user_key)
+@rate_limit("30/minute")
 async def refresh_token(
         request: Request,
         response: Response,
@@ -201,7 +201,7 @@ async def update_preferences(
 
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
-@rate_limit("60/minute", personal_key_func=get_login_user_key)
+@rate_limit("60/minute")
 async def init_session(
         request: Request,
         response: Response,

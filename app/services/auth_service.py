@@ -1,5 +1,5 @@
 # app/services/auth_service.py
-from fastapi import Depends, HTTPException, status
+from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 
-from app.database import models, database
+from app.database import models
 from app.schemas import auth as auth_schemas
 from app.config import settings
 
