@@ -77,9 +77,10 @@ class ApiService {
     await this.client.post('/auth/logout')
   }
 
-  // 登入狀態的查詢（ADR-0009）：失敗時沿用目前的顯示、等下次觸發再問，不經全域錯誤處理
+  // 登入狀態的查詢（ADR-0009）：失敗時沿用目前的顯示、等下次觸發再問，不經全域錯誤處理。
+  // 有逾時：開頁要等第一次判斷完成，網路卡住沒有回應時不能讓頁面一直等
   async initSession(signal?: AbortSignal): Promise<InitSessionResponse> {
-    const res = await this.client.post<InitSessionResponse>('/auth/session', {}, { signal, skipGlobalErrorHandler: true })
+    const res = await this.client.post<InitSessionResponse>('/auth/session', {}, { signal, timeout: 10_000, skipGlobalErrorHandler: true })
     return res.data
   }
 

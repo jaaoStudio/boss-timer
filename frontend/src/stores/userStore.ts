@@ -46,6 +46,16 @@ function readCachedUser(): User | null {
   }
 }
 
+// 寫入 user_info。它只是顯示快取，寫不進去（例如空間滿了）時忽略，不中斷登入狀態的處理
+function writeCachedUser(user: User | null) {
+  try {
+    if (user) localStorage.setItem('user_info', JSON.stringify(user));
+    else localStorage.removeItem('user_info');
+  } catch (error) {
+    console.error('Failed to write user_info:', error);
+  }
+}
+
 function identityOf(session: InitSessionResponse): string {
   if (session.status === 'authenticated') return `user:${session.user.id}`;
   return session.anonymous_user_id ? `anon:${session.anonymous_user_id}` : 'none';
@@ -81,8 +91,7 @@ export const useUserStore = defineStore('user', {
         this._channel.onmessage = (event) => {
           if (event.data.type !== 'LOGIN' && event.data.type !== 'LOGOUT') return;
           // 其他分頁改了共用的 cookie：不採用通知裡的狀態（可能已過時），重新問伺服器（ADR-0009）
-          this._cookieChanged = true;
-          void this._refetchSession();
+          this.resyncAfterCookieChange();
         };
       }
     },
@@ -125,6 +134,12 @@ export const useUserStore = defineStore('user', {
       return this._initPromise;
     },
 
+    // 登入 cookie 可能改變了（其他分頁通知、401 換發失敗）：不在前端自己判斷，重新問伺服器（ADR-0009）
+    resyncAfterCookieChange() {
+      this._cookieChanged = true;
+      void this._refetchSession();
+    },
+
     // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
     // 不只用 invalidateQueries：Vue Query 在還沒有任何結果時（開頁的查詢進行中）不會取消進行中的請求
     async _refetchSession() {
@@ -146,19 +161,25 @@ export const useUserStore = defineStore('user', {
         }
         throw error;
       }
-      // 在請求的錯誤處理之外套用：套用時出錯（例如 localStorage 寫不進去）不是判斷失敗，不走失敗的處理
+      // 回應到了但請求已被取消（之後登入 cookie 改變過）：不套用
+      if (signal.aborted) throw new Error('Session request cancelled');
+      // 在請求的錯誤處理之外套用：套用時出錯不是判斷失敗，不走失敗的處理
       this._applySession(session);
       return session;
     },
 
     // 照伺服器的判斷設定（登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分）
     _applySession(session: InitSessionResponse) {
-      if (session.status === 'authenticated') {
-        this._applyServerUser(session.user);
-      } else {
-        this.becomeAnonymous();
+      try {
+        if (session.status === 'authenticated') {
+          this._applyServerUser(session.user);
+        } else {
+          this.becomeAnonymous();
+        }
+      } finally {
+        // 套用出錯也要完成初始化、處理 WebSocket，否則路由守衛一直等 initializeAuth()、頁面空白
+        this._syncWebSocket(identityOf(session));
       }
-      this._syncWebSocket(identityOf(session));
     },
 
     // 照伺服器回答的登入者（查詢成功或登入回應）設定。帳號偏好只在換人時（開頁、登入、換成另一個人）套用到本地：
@@ -178,10 +199,13 @@ export const useUserStore = defineStore('user', {
     // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用目前的顯示，什麼都不清除。
     // 開頁時還沒有顯示，以 user_info（顯示快取）恢復上次的狀態
     _applySessionFailure() {
-      if (!this._initialized && !this.restoreUserFromStorage()) {
-        this.anonymousName = this.getAnonymousName();
+      try {
+        if (!this._initialized && !this.restoreUserFromStorage()) {
+          this.anonymousName = this.getAnonymousName();
+        }
+      } finally {
+        this._syncWebSocket(undefined);
       }
-      this._syncWebSocket(undefined);
     },
 
     // WebSocket 的身分在握手時依 cookie 固定。查詢成功時，伺服器回答的身分和連線用的不同才重連；
@@ -261,7 +285,7 @@ export const useUserStore = defineStore('user', {
       // user_info 的偏好也是這台裝置目前的偏好（同各元件存在 localStorage 的收藏、版面），一改就寫入，不等存檔結果。
       // 只在快取仍是同一個登入者時寫入：其他分頁已登出就不寫回；這不是登入者改變，不經 _writeUserInfo、不通知其他分頁
       this.user = { ...this.user, preferences: { ...this.user.preferences, ...preferences } };
-      if (readCachedUser()?.id === this.user.id) localStorage.setItem('user_info', JSON.stringify(this.user));
+      if (readCachedUser()?.id === this.user.id) writeCachedUser(this.user);
       try {
         await apiService.updateMyPreferences(preferences);
       } catch (error) {
@@ -295,10 +319,10 @@ export const useUserStore = defineStore('user', {
       const cached = localStorage.getItem('user_info');
       if (user) {
         const cachedId = readCachedUser()?.id;
-        localStorage.setItem('user_info', JSON.stringify(user));
+        writeCachedUser(user);
         if (cachedId !== user.id) this.notifyLogin();
       } else {
-        localStorage.removeItem('user_info');
+        writeCachedUser(null);
         if (cached !== null) this.notifyLogout();
       }
     },
