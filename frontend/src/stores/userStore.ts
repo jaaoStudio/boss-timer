@@ -142,16 +142,21 @@ export const useUserStore = defineStore('user', {
     _applySession(session: InitSessionResponse) {
       if (session.status === 'authenticated') {
         this.setLoggedInUser(session.user);
-        // 只在伺服器的偏好和上次套用的不同時才覆蓋本地：切回分頁時不蓋掉本地還沒存的修改，換人時一定套用
-        const preferences = JSON.stringify(session.user.preferences ?? {});
-        if (preferences !== this._appliedPreferences) {
-          this._appliedPreferences = preferences;
-          this.preferencesVersion++;
-        }
+        this._applyServerPreferences(session.user);
       } else {
         this.becomeAnonymous();
       }
       this._syncWebSocket(identityOf(session));
+    },
+
+    // 伺服器回答的偏好（查詢成功或登入回應）和上次套用的不同時才覆蓋本地：切回分頁時不蓋掉本地還沒存的修改，
+    // 換人時一定套用。查詢失敗、改用快取時不呼叫
+    _applyServerPreferences(user: User) {
+      const preferences = JSON.stringify(user.preferences ?? {});
+      if (preferences !== this._appliedPreferences) {
+        this._appliedPreferences = preferences;
+        this.preferencesVersion++;
+      }
     },
 
     // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用目前的顯示，什麼都不清除。
@@ -209,9 +214,11 @@ export const useUserStore = defineStore('user', {
       try {
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
-        // 登入回應已設好 cookie：先照它顯示並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分、套用偏好）
+        // 登入回應已設好 cookie：先照它顯示、套用偏好並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分）。
+        // 偏好不等查詢：查詢失敗時本地會留著匿名時的偏好，之後存檔會蓋掉帳號的設定
         this._cookieChanged = true;
         this.setLoggedInUser(response.user);
+        this._applyServerPreferences(response.user);
         void this._refetchSession();
       } catch (error) {
         // 登入失敗不動登入狀態（登入按鈕只在未登入時顯示），交給呼叫端提示
@@ -234,6 +241,8 @@ export const useUserStore = defineStore('user', {
         this.user = await apiService.updateMyPreferences(preferences);
         // 本地已是這份偏好：記為已套用，之後查詢回來同一份時不再覆蓋本地（例如正在編輯的版面）
         this._appliedPreferences = JSON.stringify(this.user.preferences ?? {});
+        // 存檔前送出的查詢會帶回舊的偏好、蓋掉剛存的：取消後重新查詢（照 TanStack Query 樂觀更新的做法）
+        if (queryClient.isFetching({ queryKey: SESSION_QUERY_KEY }) > 0) void this._refetchSession();
       } catch (error) {
         console.error('Failed to update preferences:', error);
       }
@@ -257,17 +266,23 @@ export const useUserStore = defineStore('user', {
       this._writeUserInfo(null);
     },
 
-    // user_info 是所有分頁共用的登入顯示快取。由改變它的分頁通知其他分頁（ADR-0009）：從有變沒有通知登出、
-    // 從沒有變有通知登入。其他分頁收到後重新查詢，套用時快取已是新的狀態，不會再通知；
-    // 多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）也只由第一個通知
+    // user_info 是所有分頁共用的登入顯示快取。由改變顯示中的登入者的分頁通知其他分頁（ADR-0009）：
+    // 變成沒有登入通知登出，變成另一個登入者（含從沒有變有）通知登入。其他分頁收到後重新查詢，
+    // 套用時快取已是新的狀態，不會再通知；多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）也只由第一個通知
     _writeUserInfo(user: User | null) {
-      const hadLogin = localStorage.getItem('user_info') !== null;
+      const cached = localStorage.getItem('user_info');
       if (user) {
+        let cachedId: unknown;
+        try {
+          cachedId = cached ? (JSON.parse(cached) as User).id : undefined;
+        } catch {
+          cachedId = undefined;
+        }
         localStorage.setItem('user_info', JSON.stringify(user));
-        if (!hadLogin) this.notifyLogin();
+        if (cachedId !== user.id) this.notifyLogin();
       } else {
         localStorage.removeItem('user_info');
-        if (hadLogin) this.notifyLogout();
+        if (cached !== null) this.notifyLogout();
       }
     },
 

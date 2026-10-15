@@ -149,19 +149,19 @@ frontend/
    以 TanStack Vue Query 的單一查詢（`['auth', 'session']`，`QueryObserver` 訂閱）呼叫 `apiService.initSession()`，結果在 `_fetchSession` 套用：`authenticated` → `setLoggedInUser(user)`；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）。
 
 2. **每個分頁只有一個查詢，何時查詢是固定的**
-   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求會中斷、不套用），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
+   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求中斷、結果不套用到畫面，但回應標頭已到的話瀏覽器仍會套用 Set-Cookie），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
 
 3. **WebSocket 只在身分不同時重連**（`_syncWebSocket`）
    開頁第一次判斷完成（成功或失敗）才 `connect()`。之後查詢成功時，伺服器回答的身分（`user:{id}` / `anon:{id}` / `none`）和 `_wsIdentity` 不同才 `reconnect()`；查詢失敗時，期間登入 / 登出過（`_cookieChanged`）才照目前的 cookie 重連。
 
 4. **改變 `user_info` 的分頁負責通知**（`_writeUserInfo`）
-   `user_info` 是所有分頁共用的顯示快取：從有變沒有廣播 `LOGOUT`，從沒有變有廣播 `LOGIN`。登入、登出、發現登入失效都由這一條處理；收到通知的分頁重新查詢時快取已是新狀態，不會再通知，多個分頁同時發現登入失效也只由第一個通知。**勿另外呼叫 `notifyLogin()` / `notifyLogout()`。** `LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
+   `user_info` 是所有分頁共用的顯示快取：變成沒有登入廣播 `LOGOUT`，變成另一個登入者（含從沒有變有）廣播 `LOGIN`。登入、登出、發現登入失效都由這一條處理；收到通知的分頁重新查詢時快取已是新狀態，不會再通知，多個分頁同時發現登入失效也只由第一個通知。**勿另外呼叫 `notifyLogin()` / `notifyLogout()`。** `LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
 
 5. **判斷失敗不改變登入狀態**
    網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線（否則開頁卡住）。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都 `clearAuth()`」。
 
-6. **偏好設定只從成功的查詢覆蓋本地**
-   伺服器的偏好和上次套用的（`_appliedPreferences`）不同時才遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。`updatePreferences` 成功後記為已套用，切回分頁時不會蓋掉正在編輯的版面；`clearAuth()` 清掉記錄，再登入時一定套用。
+6. **偏好設定只從伺服器的回答覆蓋本地**（`_applyServerPreferences`）
+   查詢成功或登入回應的偏好和上次套用的（`_appliedPreferences`）不同時才遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。登入時直接以登入回應套用，不等後續查詢。`updatePreferences` 成功後記為已套用，切回分頁時不會蓋掉正在編輯的版面；存檔完成時若有查詢還在進行（存檔前送出、會帶回舊偏好），取消後重新查詢。`clearAuth()` 清掉記錄，再登入時一定套用。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
