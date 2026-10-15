@@ -1,4 +1,4 @@
-import { isAxiosError, type AxiosResponse } from 'axios'
+import type { AxiosResponse } from 'axios'
 import { bossService } from '@/axios'
 import type { BossType, BossRecord } from '@/stores/bossStore'
 import type { User } from '@/stores/userStore'
@@ -7,14 +7,10 @@ import type { RoomSettings } from '@/stores/roomStore'
 
 const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`
 
-interface ValidateTokenResponse {
-  valid: boolean
-  user?: User
-}
-
-interface InitSessionResponse {
-  anonymous_user_id?: string
-}
+// 登入狀態以伺服器的判斷為準（ADR-0009）：登入者帶 user，匿名者帶 anonymous_user_id（暫時沒有身分時為 null）
+export type InitSessionResponse =
+  | { status: 'authenticated'; user: User }
+  | { status: 'anonymous'; anonymous_user_id: string | null }
 
 interface LoginResponse {
   user: User
@@ -72,17 +68,6 @@ class ApiService {
     this.client = bossService
   }
 
-  async validateToken(): Promise<ValidateTokenResponse> {
-    try {
-      const res = await this.client.post<ValidateTokenResponse>('/auth/validate')
-      return res.data
-    } catch (error) {
-      // 被限流不代表未登入，往外丟讓 initializeAuth 保留登入狀態；其他錯誤視為未登入
-      if (isAxiosError(error) && error.response?.status === 429) throw error
-      return { valid: false }
-    }
-  }
-
   async loginWithGoogle(payload: { credential?: string; code?: string }): Promise<LoginResponse> {
     const res = await this.client.post<LoginResponse>('/auth/google', payload)
     return res.data
@@ -92,13 +77,10 @@ class ApiService {
     await this.client.post('/auth/logout')
   }
 
-  async initSession(): Promise<InitSessionResponse> {
-    const res = await this.client.post<InitSessionResponse>('/auth/session')
-    return res.data
-  }
-
-  async getMe(): Promise<User> {
-    const res = await this.client.get<User>('/auth/me')
+  // 登入狀態的查詢（ADR-0009）：失敗時沿用目前的顯示、等下次觸發再問，不經全域錯誤處理。
+  // 有逾時：開頁要等第一次判斷完成，網路卡住沒有回應時不能讓頁面一直等
+  async initSession(signal?: AbortSignal): Promise<InitSessionResponse> {
+    const res = await this.client.post<InitSessionResponse>('/auth/session', {}, { signal, timeout: 10_000, skipGlobalErrorHandler: true })
     return res.data
   }
 

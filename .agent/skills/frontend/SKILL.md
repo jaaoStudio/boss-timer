@@ -20,6 +20,7 @@ Boss Timer 前端是一個 **Vue 3 + Vite** 單頁應用 (SPA)，提供房間制
 | 框架 | Vue.js 3 (Composition API + Options API 混用) | ^3.5 |
 | 建置工具 | Vite | ^6.3 |
 | 狀態管理 | Pinia | ^3.0 |
+| 伺服器狀態查詢 | TanStack Vue Query（目前只用於登入狀態的查詢） | ^5 |
 | 路由 | Vue Router | ^4.5 |
 | CSS 框架 | Tailwind CSS v4 (`@tailwindcss/vite` plugin) | ^4.1 |
 | UI 元件庫 | Element Plus | ^2.10 |
@@ -55,6 +56,7 @@ frontend/
     ├── App.vue                   # 根元件 (MaintenanceBanner + RouterView)
     ├── style.css                 # 全域 CSS / Tailwind 入口
     ├── i18n.ts                   # vue-i18n 設定 (自動偵測瀏覽器語系)
+    ├── queryClient.ts            # TanStack Vue Query 的 QueryClient（main.ts 以 VueQueryPlugin 掛載）
     │
     ├── router/
     │   └── index.ts              # 路由定義 + beforeEach 守衛 (認證 + 權限檢查)
@@ -130,29 +132,35 @@ frontend/
 |---|---|---|
 | `user` | `User \| null` | 登入使用者資訊 |
 | `isLoggedIn` | `boolean` | 是否已登入 |
-| `isLoading` | `boolean` | 正在初始化認證 |
 | `anonymousName` | `string \| null` | 匿名使用者暱稱 (localStorage) |
 
 **核心 Actions**:
-- `initializeAuth()` — 初始化: 建立 Session → 驗證 Token → 連線 WebSocket（細節見下方「初始化流程守則」）
-- `loginWithGoogle(payload)` — Google 登入 + 通知 WebSocket 更新身份；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
-- `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清除本地狀態 → `initSession()` → 廣播 `LOGOUT` → 重連（`initSession` 失敗仍廣播並重連）。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
-- `updatePreferences(preferences)` — 更新使用者偏好設定
+- `initializeAuth()` — 開始查詢登入狀態（`/auth/session`，由伺服器判斷），第一次判斷完成後連線 WebSocket（細節見下方「登入狀態的查詢守則」）
+- `loginWithGoogle(payload)` — Google 登入：照登入回應顯示（同時通知其他分頁），再重新查詢；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
+- `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清掉本分頁的畫面並重新查詢；取得匿名身分後才清 `user_info`（同時通知其他分頁，讓它們沿用同一個匿名身分），查詢失敗也照樣清掉並通知。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
+- `updatePreferences(preferences)` — 更新使用者偏好設定：先寫進 `user.preferences` 與 `user_info`（快取仍是同一個登入者時）再存檔
 
-**跨頁籤同步**: 使用 `BroadcastChannel('user-auth')` 在多個瀏覽器頁籤間同步登入/登出狀態。
+#### ⚠️ 登入狀態的查詢守則（ADR-0009，照 NextAuth 前端的模型）
 
-#### ⚠️ 初始化流程守則（`initializeAuth` / `_runInitializeAuth`）
+動這段前務必讀 ADR-0009「跨分頁同步」。PR #64 曾在舊架構上逐一補特例，連續八輪審查都在這裡找到新問題，**勿再加計數器、重試迴圈或通知特例**。
 
-三條鐵則，動這段前務必理解，否則容易重現已修過的 bug：
+1. **登入狀態只由伺服器判斷**
+   以 TanStack Vue Query 的單一查詢（`['auth', 'session']`，`QueryObserver` 訂閱）呼叫 `apiService.initSession()`，結果在 `_fetchSession` 套用：`authenticated` → `_applyServerUser(user)`（處理帳號偏好，見第 6 條，勿直接呼叫 `setLoggedInUser`）；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）。
 
-1. **access token 過期要先試 refresh，不可直接登出**
-   `/auth/validate` 在 token 過期時回的是 **HTTP 200 + `{ valid: false }`**（語意是「成功判斷出未登入」，匿名訪客也走這條），**不會**觸發 axios 的 401 自動 refresh。因此 `validate` 回 `valid:false` 且本地有 `user_info`（曾登入過）時，必須先呼叫 `tryRefreshToken()` 用 30 天的 refresh token 換新 access token 再驗證一次。**直接 `clearAuth()` 會讓使用者每 30 分鐘（access token 效期）就被登出。** 此處不該改成讓後端回 401（會波及匿名訪客 + 動到全站 interceptor）。
+2. **每個分頁只有一個查詢，何時查詢是固定的**
+   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求中斷、結果不套用到畫面，但回應標頭已到的話瀏覽器仍會套用 Set-Cookie），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
 
-2. **併發呼叫要去重**
-   `App.vue` 的 `onMounted` 與 router `beforeEach` 在首次載入時會**同時**呼叫 `initializeAuth()`，而 `_initialized` 旗標要等 `await` 全跑完才在 `finally` 翻成 `true`。因此用 in-flight 的 `_initPromise` 讓併發呼叫共用同一次流程，否則 `/auth/session`、`/auth/validate` 會各被打兩次。**勿移除 `_initPromise` 去重，也勿隨意刪掉任一進入點。**
+3. **WebSocket 只在身分不同時重連**（`_syncWebSocket`）
+   開頁第一次判斷完成（成功或失敗）才 `connect()`。之後查詢成功時，伺服器回答的身分（`user:{id}` / `anon:{id}` / `none`）和 `_wsIdentity` 不同才 `reconnect()`；查詢失敗時，期間登入 / 登出過（`_cookieChanged`）才照目前的 cookie 重連。
 
-3. **被限流（429）不可登出**
-   後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），`/auth/session`、`/auth/validate`、`/auth/refresh` 回 429 不代表登入失效。`apiService.validateToken()` 遇到 429 會往外丟（其他錯誤才視為未登入），由 `catch` 以 `restoreUserFromStorage()` 保留本地登入狀態。**勿改回「任何錯誤都 `clearAuth()`」**。例外：`tryRefreshToken()` 被限流時視為換發失敗並登出——後端 `/auth/refresh` 以 refresh token 裡的使用者計算額度，被限流代表同一個登入者一分鐘 refresh 超過 30 次（多半是前端陷入 refresh 迴圈），登出會刪掉 `user_info` 讓迴圈停下；若改為恢復登入狀態，畫面顯示已登入、WebSocket 卻以過期 cookie 連成匿名。
+4. **改變 `user_info` 的分頁負責通知**（`_writeUserInfo`）
+   `user_info` 是所有分頁共用的顯示快取：變成沒有登入廣播 `LOGOUT`，變成另一個登入者（含從沒有變有）廣播 `LOGIN`。登入、登出、發現登入失效都由這一條處理；收到通知的分頁重新查詢時快取已是新狀態，不會再通知，多個分頁同時發現登入失效也只由第一個通知。`user_info` 寫不進去（`writeCachedUser` 回傳 false）時不通知：快取沒變，否則分頁之間會互相觸發。**勿另外呼叫 `notifyLogin()` / `notifyLogout()`。** `LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
+
+5. **判斷失敗不改變登入狀態**
+   網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線；請求有 10 秒逾時，網路卡住沒有回應時也不會讓開頁一直等。套用結果出錯時仍以 `finally` 完成初始化，`user_info` 寫不進去（`writeCachedUser`）只記錄、不中斷。401 換發失敗時呼叫 `resyncAfterCookieChange()` 重新問伺服器，勿在前端自己清除登入。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都清除登入」。
+
+6. **帳號偏好只在換人時套用到本地**（`_applyServerUser`，CONTEXT.md「跨裝置同步」）
+   伺服器回答（查詢成功或登入回應）的登入者和 `_preferencesUserId` 不同時（開頁、登入、換成另一個人）才套用帳號偏好並遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。同一個人的回答只更新帳號資料、保留目前的 `user.preferences`。`updatePreferences` 先把存的項目寫進 `user.preferences` 再送出（回應先後顛倒也不會改回舊值）；`user_info` 的偏好也是這台裝置目前的偏好，一改就寫入、不等存檔結果，只在快取仍是同一個登入者時直接寫入，不經 `_writeUserInfo`、不通知（其他分頁已登出時不寫回）。**勿改回「每次查詢都同步偏好」**（PR #64 第 8～11 輪：存檔中的先後順序一直出問題；要即時同步得另外把偏好做成獨立查詢）。`becomeAnonymous()` 清掉 `_preferencesUserId`，再登入時一定套用。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
@@ -232,13 +240,13 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 **核心功能**:
 - **`sendMessage()` 不排隊**: 只在連線中送出並回傳 `true`；未連線時觸發重連、丟棄訊息並回傳 `false`。連線建立時重建伺服器端狀態——身分由 cookie 決定、`onopen` 依 `roomStore.roomId` 重新 `join_room`，所以不需要補送。`record_boss` 刻意不補送（紀錄時間以伺服器收到為準），`BossControlPanel` 依回傳值顯示離線提示。心跳已過期但計時器還沒觸發（剛從休眠喚醒）時不送出、直接重連並回傳 `false`
 - **身分由伺服器在握手時依 cookie 決定**：前端不送身分欄位，`BossControlPanel` 回報只帶 `anonymous_name`
-- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，登入（回應已設好 cookie）、登出（先 `initSession()` 取得新匿名 cookie）、其他分頁收到 `LOGIN` / `LOGOUT` 廣播時都重連，讓 WS 換成新身分
+- **`reconnect()`**: 以目前的 cookie 重新建立連線。**身分在握手時固定**，由 `userStore` 在登入狀態的查詢結果與連線身分不同時呼叫（見 userStore「登入狀態的查詢守則」第 3 條）
 - **連線模型照 Socket.IO（engine.io v4，ADR-0008）**，勿自創機制或加特例：
   - **只連一次**：`initializeAuth()` 第一次完成時連線，之後換頁不呼叫 `connect()`（會繞過退避），斷線一律交給自動重連
   - **心跳逾時**：伺服器連線後先送 `hello`（`ping_interval` / `ping_timeout`），之後每 25 秒送 `heartbeat`。收到 `hello` 才啟動逾時，每次心跳重新計時，超過兩者相加（45 秒）沒收到就關閉並退避重連。**不分前景背景、不探測、前端不送 `ping`**：背景節流的是計時器，心跳照常送達，逾時只會晚觸發、不會誤判。連到不送 `hello` 的舊後端時不啟動逾時
   - **自動重連**：`min(30s, 1s × 2^次數) × (1 ± 0.5)`，**不放棄**。**收到伺服器第一則訊息才重置次數、清除 `isReconnecting`**（不在 `onopen`）：伺服器拒絕時是「接受後立刻關閉」且不送訊息，在 `onopen` 重置會一直以最短間隔重連。心跳逾時等主動判定斷線時走退避、不重置次數。握手卡在 CONNECTING 超過 20 秒（`CONNECT_TIMEOUT_MS`）就放棄；`createWebSocket()` 丟例外時同樣交給退避；`offline` 事件立刻關閉進入退避，`online` 不特別處理
   - 每個 socket 事件都先檢查 `socket.value === ws`，`connect()` 開新連線前先 `dropSocket()` 清掉仍在 CLOSING 的舊連線：被取代的舊連線遲到的 `onclose` 不可動到新連線（會變成兩條活連線）
-  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時照一般斷線退避重連（多半是休眠喚醒時舊連線的名額還沒釋放；被拒絕時伺服器不送訊息，次數不會重置，間隔自然拉長，**不另加特例**），連續被擋只在第一次顯示「連線數已達上限」提示，收到伺服器訊息或 `reconnect()`（換身分）後重新計算。登出時即使 `initSession()` 失敗也會廣播並重連（`finally`），避免 WS 停留在登入身分
+  - 重連中 `isReconnecting` 為 true，`BossTracker` 的 `ConnectionBanner` 據此顯示「正在重新連線」（超過 2 秒才顯示）。伺服器以 close code **4429**（連線限制）關閉時照一般斷線退避重連（多半是休眠喚醒時舊連線的名額還沒釋放；被拒絕時伺服器不送訊息，次數不會重置，間隔自然拉長，**不另加特例**），連續被擋只在第一次顯示「連線數已達上限」提示，收到伺服器訊息或 `reconnect()`（換身分）後重新計算。登出後即使登入狀態的查詢失敗也會重連（期間登出過），避免 WS 停留在登入身分
 - **訊息路由**: `handleMessage()` 根據 `type` 分發到對應 Store
 
 **訊息路由表**:
@@ -330,11 +338,9 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 ```typescript
 class ApiService {
   // Auth
-  validateToken()
   loginWithGoogle(payload)
   logout()
   initSession()
-  getMe()
   refresh_token()
   updateMyPreferences(preferences)
 
@@ -366,7 +372,7 @@ class ApiService {
 
 ### Axios 設定
 - **Base URL**: 由環境變數 `VITE_APP_BASE_URL` 控制
-- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中)
+- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中)；網路錯誤跳維護頁、5xx 跳錯誤頁、429 提示。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
 - **認證**: Cookie-based (HttpOnly)，無需手動帶 Token
 
 ---

@@ -15,20 +15,18 @@ const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
 const { syncFromUser: syncLayout } = useLayoutConfig();
 
-// 登入後將後端偏好設定同步到本地（含頁面載入時的 cookie 自動登入）
-watch(() => userStore.isLoggedIn, (loggedIn) => {
-  if (loggedIn) {
-    syncChannelView();
-    syncFavoriteBosses();
-    syncLayout();
-  }
+// 換成另一個登入者時（開頁、登入、換人）把帳號偏好同步到本地；同一個人的查詢結果不覆蓋（跨裝置同步，ADR-0009）
+watch(() => userStore.preferencesVersion, () => {
+  syncChannelView();
+  syncFavoriteBosses();
+  syncLayout();
 });
 
-// When the component is mounted, try to fetch the user data
 onMounted(async () => {
-  // 初始化認證狀態；完成後（finally）才建立 WebSocket 連線。
+  // 開始查詢登入狀態，第一次判斷完成後才建立 WebSocket 連線。
   // WebSocket 的身分在握手時以 cookie 決定、整條連線固定，必須等 /auth/session 發好匿名 cookie 再連，
-  // 否則第一次來的訪客整條連線都沒有身分
+  // 否則第一次來的訪客整條連線都沒有身分。登入狀態的查詢失敗不經全域錯誤處理；
+  // 伺服器真的掛掉時，接著的維護狀態請求會帶到維護頁或錯誤頁
   await userStore.initializeAuth();
   // 檢查維護狀態 (首次載入時)
   await appInfoStore.checkMaintenanceStatus();

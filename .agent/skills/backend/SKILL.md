@@ -251,10 +251,10 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 - `POST /auth/refresh` — 從 Cookie 讀取 refresh token → 驗證 → 生成新的 access token
 
 ### Token 驗證
-- `POST /auth/validate` — 支援 `Authorization: Bearer <token>` Header 或 `access_token` Cookie
+- `POST /auth/validate` — 支援 `Authorization: Bearer <token>` Header 或 `access_token` Cookie。只供部署切換期間的舊版前端，日後刪除
 
-### 匿名使用者 Session
-- `POST /auth/session` — 未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
+### 開頁判斷登入狀態 / 匿名使用者 Session
+- `POST /auth/session` — **登入狀態只由伺服器判斷（ADR-0009）**：登入有效回 `authenticated` + user（access token 過期時以 refresh token 順便換發），登入已失效時清掉舊的登入 cookie、改以匿名回應；登入判斷與 WebSocket 握手共用 `resolve_login()`（詳見 backend-api skill「開頁判斷登入狀態」）。未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
 
 ### 安全設定
 - `samesite='lax'`, `secure=True` (生產環境)
@@ -267,7 +267,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 ### 連線建立
 - Endpoint: `ws://<host>/api/ws/`
-- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，以 `run_in_threadpool` 呼叫；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
+- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，以 `run_in_threadpool` 呼叫；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無（登入者的判斷與 `/auth/session` 共用 `resolve_login()`，ADR-0009）。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
 - 使用全域 Singleton `ConnectionManager` 管理所有連線
 
 ### 訊息格式 (JSON)
@@ -361,11 +361,11 @@ ConnectionManager
 |---|---|---|---|---|
 | POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
 | POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
-| POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token 有效性 |
+| POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token 有效性（只供舊版前端，日後刪除） |
 | GET | `/auth/me` | Cookie | 60/min | 取得當前使用者資訊 |
 | POST | `/auth/logout` | Cookie | 10/min | 登出 + 撤銷 refresh token |
 | PUT | `/auth/me/preferences` | Cookie | 30/min | 更新使用者偏好設定 |
-| POST | `/auth/session` | Cookie (可選) | 60/min | 初始化使用者 Session (匿名/已登入) |
+| POST | `/auth/session` | Cookie (可選) | 60/min | 開頁判斷登入狀態（ADR-0009），需要時換發 / 清 cookie / 發匿名身分 |
 
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |

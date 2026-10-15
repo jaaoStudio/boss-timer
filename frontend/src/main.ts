@@ -6,14 +6,17 @@ import './style.css';
 import { createGtm } from '@gtm-support/vue-gtm';
 import clarity from '@microsoft/clarity';
 import vue3GoogleLogin from 'vue3-google-login'
+import { VueQueryPlugin } from '@tanstack/vue-query'
 import App from './App.vue'
 import i18n from './i18n';
+import { queryClient } from './queryClient';
 
 const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
 app.use(router);
 app.use(i18n);
+app.use(VueQueryPlugin, { queryClient });
 
 app.use(vue3GoogleLogin, {
   clientId: `${import.meta.env.VITE_GOOGLE_CLIENT_ID}`,

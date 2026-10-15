@@ -7,6 +7,13 @@ import axios, {
 } from 'axios'
 import { handleError } from './handlingErrors'
 
+declare module 'axios' {
+  interface AxiosRequestConfig {
+    // 失敗由呼叫端處理：不跳轉頁面、不顯示提示
+    skipGlobalErrorHandler?: boolean
+  }
+}
+
 class AxiosInstance {
   private axiosInstance: AxiosClient
 
@@ -44,7 +51,7 @@ const setAxiosInterceptor = (axiosInstance: AxiosClient) => {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     (error: AxiosError) => {
-      handleError(axiosInstance, error)
+      if (!error.config?.skipGlobalErrorHandler) handleError(axiosInstance, error)
       return Promise.reject(error)
     },
   )

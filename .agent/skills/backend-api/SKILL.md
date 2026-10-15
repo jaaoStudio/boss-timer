@@ -121,11 +121,11 @@ async def get_room_state(db, room_id) -> dict:
 |---|---|---|---|---|
 | POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
 | POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
-| POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token |
+| POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token（只供舊版前端，日後刪除） |
 | GET | `/auth/me` | Cookie | 60/min | 取得使用者資訊 |
 | POST | `/auth/logout` | Cookie | 10/min | 登出 |
 | PUT | `/auth/me/preferences` | Cookie | 30/min | 更新偏好設定 |
-| POST | `/auth/session` | Cookie(可選) | 60/min | 初始化 Session |
+| POST | `/auth/session` | Cookie(可選) | 60/min | 開頁判斷登入狀態（ADR-0009），需要時換發 / 清 cookie / 發匿名身分 |
 
 ### 房間 (`/room`)
 | Method | Path | Auth | Rate Limit | 說明 |
@@ -229,12 +229,26 @@ except Exception as e:
 - `Authorization: Bearer <token>` Header
 - `access_token` Cookie
 
-> ⚠️ **`/auth/validate` 故意永遠回 `200`**：token 無效/過期時回 `{ "valid": false }`（而非 401）。它是「查詢登入狀態」的端點，對匿名訪客而言「未登入」是正常結果。前端 `userStore.initializeAuth` 依賴此契約：拿到 `valid:false` 後自行決定是否用 refresh token 換新。**勿改成回 401** —— 會波及匿名訪客（觸發前端的全站 401 refresh/導向 interceptor）。token 過期的自動續期由前端負責，不是這個端點。
+> ⚠️ **`/auth/validate` 只供部署切換期間的舊版前端**（新前端開頁改呼叫 `/auth/session`，ADR-0009），日後刪除。舊版前端依賴它永遠回 `200`：token 無效/過期時回 `{ "valid": false }`（而非 401），刪除前**勿改成回 401**（會觸發舊版前端的全站 401 interceptor）。
+
+### 開頁判斷登入狀態（`/auth/session`，ADR-0009）
+登入狀態只由伺服器判斷，前端開頁只呼叫這一次、照結果設定。登入者的判斷用 `app/utils/identity.py` 的 `resolve_login(db, cookies)`，與 WebSocket 握手共用：access token 有效且使用者存在 → 登入者；否則 refresh token 有效（查資料庫確認未撤銷）→ 登入者、需要換發；否則登入已失效。
+
+| 情況 | 處理 | 回傳 |
+|---|---|---|
+| 登入有效 | access token 過期時以 refresh token 換發 access token cookie | `{ status: "authenticated", user }` |
+| 有登入 cookie 但登入已失效（refresh token 無效或被撤銷、使用者已刪除） | 刪掉 `access_token` / `refresh_token` cookie，接著照匿名處理 | 同下 |
+| 匿名 cookie 簽章正確 | 沿用 | `{ status: "anonymous", anonymous_user_id }` |
+| 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
+| 撞到發放上限 | 不發放、**不回 429**（拿不到身分的結果相同，429 只會讓前端當成判斷失敗、沿用上次的顯示） | `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流） |
+
+- 個人額度用 `get_login_user_key`：access token 的使用者 → 這個 refresh token（`refresh:{jti}`）→ 一般規則。呼叫者的 access token 常已過期，退回匿名或 IP 會讓同 IP 的登入者互相擋到；不查資料庫，所以以 token 本身計算、不以裡面的使用者，重送舊的或被撤銷的 refresh token 擋不到使用者目前的登入
+- **勿把換發或清 cookie 的判斷搬回前端**：前端每多處理一種失敗，就多一個與伺服器判斷不一致的可能
 
 ### 匿名使用者
 `POST /auth/session` 發放 httponly 的 `anonymous_user_id` cookie，值為「UUID.簽章」（`app/utils/anonymous_id.py`，以 `SECRET_KEY` 做 HMAC-SHA256）；回應 body 只回傳 UUID。
 
-**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(conn)`**（HTTP 與 WebSocket 皆可用；**只在 HTTP 請求上快取**於 `request.state`；WebSocket 在握手時解析一次，存在該連線的 `Connection`，整條連線固定；WebSocket 另外在 access token 無效時以 refresh token 認出登入者並查資料庫確認，async 呼叫端須以 `run_in_threadpool` 呼叫），回傳 `Identity(kind, id)`：
+**判斷請求者身分一律經 `app/utils/identity.py` 的 `resolve_identity(conn)`**（HTTP 與 WebSocket 皆可用；**只在 HTTP 請求上快取**於 `request.state`；WebSocket 在握手時解析一次，存在該連線的 `Connection`，整條連線固定；WebSocket 有登入 cookie 時以 `resolve_login` 判斷登入者（與 `/auth/session` 相同，會查資料庫），async 呼叫端須以 `run_in_threadpool` 呼叫），回傳 `Identity(kind, id)`：
 | kind | 條件 |
 |---|---|
 | `user` | `access_token` 能解出使用者（WebSocket 另外確認使用者存在，access token 無效時改用 refresh token） |
@@ -242,8 +256,8 @@ except Exception as e:
 | `none` | 都不是（含編造的值、簽章上線前的舊 cookie、過期或類型不是 access 的 token） |
 
 - **沒有任何端點要求「必須有身分」**（ADR-0007 更新）：`none` 只是限流改以 IP 計算。原本的 `verify_user_session` 門檻已移除——它擋不了濫用（打一次 `/auth/session` 就有身分），卻會在拿不到身分時讓前端的 401 處理把匿名使用者踢出房間
-- `/auth/session`：`user` 或帶 `refresh_token`（即將換發的登入者）→ 不發匿名身分；`anon` → 沿用；`none` → 發放新身分。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
-- 新發經 `check_anonymous_id_mint()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過回 429（這次沒有身分、以 IP 限流）
-- `/auth/refresh` 的個人額度以 refresh token 裡的使用者計算（`get_refresh_token_user_key`）：呼叫者的 access token 已過期，退回 IP 會讓同 IP 的登入者互相擋到被登出
+- `/auth/session`：登入有效 → 不發匿名身分；`anon` → 沿用；否則發放新身分（見上方表格）。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
+- 新發經 `anonymous_id_mint_allowed()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過時回 `anonymous_user_id: null`（這次沒有身分、以 IP 限流，見上方表格）
+- `/auth/refresh` 的個人額度與 `/auth/session` 相同，用 `get_login_user_key`
 - `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 的結果由呼叫端存在該連線的 `Connection`，函式本身不快取
 - 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

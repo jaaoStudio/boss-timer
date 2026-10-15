@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, ConfigDict, Field
-from typing import Optional, Dict, Any
+from typing import Literal, Optional, Dict, Any
 from datetime import datetime
 
 
@@ -70,5 +70,7 @@ class TokenData(BaseModel):
 
 
 class SessionResponse(BaseModel):
-    status: str
+    """/auth/session：登入者帶 user，匿名者帶 anonymous_user_id（暫時沒有身分時為 None），見 ADR-0009。"""
+    status: Literal["authenticated", "anonymous"]
+    user: Optional[User] = None
     anonymous_user_id: Optional[str] = None
