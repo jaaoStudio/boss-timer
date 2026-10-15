@@ -35,6 +35,17 @@ interface UserState {
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
 
+// 讀取共用的登入顯示快取 user_info；沒有或格式損壞時回傳 null
+function readCachedUser(): User | null {
+  const cached = localStorage.getItem('user_info');
+  if (!cached) return null;
+  try {
+    return JSON.parse(cached) as User;
+  } catch {
+    return null;
+  }
+}
+
 function identityOf(session: InitSessionResponse): string {
   if (session.status === 'authenticated') return `user:${session.user.id}`;
   return session.anonymous_user_id ? `anon:${session.anonymous_user_id}` : 'none';
@@ -238,12 +249,15 @@ export const useUserStore = defineStore('user', {
 
     async updatePreferences(preferences: Record<string, unknown>) {
       if (!this.user) return;
+      // 先寫進這台裝置目前的偏好再存檔（各元件也是先改本地）：本地永遠是使用者最後的意思，回應先後顛倒也不會改回舊值
+      this.user = { ...this.user, preferences: { ...this.user.preferences, ...preferences } };
+      const userId = this.user.id;
       try {
-        const updated = await apiService.updateMyPreferences(preferences);
-        // 存檔成功：把存的這幾項併進這台裝置目前的偏好，連同 user_info 快取（下次開頁判斷失敗時也是新的）。
-        // 只併入這次存的項目，同時有好幾個存檔、回應先後顛倒時不會把其他項目改回舊值；期間登出或換人就不放回去
-        if (this.user?.id === updated.id) {
-          this.setLoggedInUser({ ...this.user, preferences: { ...this.user.preferences, ...preferences } });
+        await apiService.updateMyPreferences(preferences);
+        // 存檔成功才更新共用的顯示快取（下次開頁判斷失敗時也是新的偏好）。只在快取與本分頁仍是同一個登入者時：
+        // 其他分頁已登出時不寫回；這不是登入者改變，不經 _writeUserInfo、不通知其他分頁
+        if (this.user?.id === userId && readCachedUser()?.id === userId) {
+          localStorage.setItem('user_info', JSON.stringify(this.user));
         }
       } catch (error) {
         console.error('Failed to update preferences:', error);
@@ -274,12 +288,7 @@ export const useUserStore = defineStore('user', {
     _writeUserInfo(user: User | null) {
       const cached = localStorage.getItem('user_info');
       if (user) {
-        let cachedId: unknown;
-        try {
-          cachedId = cached ? (JSON.parse(cached) as User).id : undefined;
-        } catch {
-          cachedId = undefined;
-        }
+        const cachedId = readCachedUser()?.id;
         localStorage.setItem('user_info', JSON.stringify(user));
         if (cachedId !== user.id) this.notifyLogin();
       } else {
@@ -290,15 +299,11 @@ export const useUserStore = defineStore('user', {
 
     // 以 localStorage 的 user_info 恢復登入狀態；沒有或格式損壞時回傳 false
     restoreUserFromStorage(): boolean {
-      const cached = localStorage.getItem('user_info');
+      const cached = readCachedUser();
       if (!cached) return false;
-      try {
-        this.user = JSON.parse(cached) as User;
-        this.isLoggedIn = true;
-        return true;
-      } catch {
-        return false;
-      }
+      this.user = cached;
+      this.isLoggedIn = true;
+      return true;
     },
 
     // --- Anonymous User Name Logic ---
