@@ -236,7 +236,7 @@ except Exception as e:
 
 | 情況 | 處理 | 回傳 |
 |---|---|---|
-| 登入有效 | access token 過期時以 refresh token 換發；仍有效但剩不到一半效期時也換發（照 NextAuth `updateAge`，前端定期查詢時不會到期） | `{ status: "authenticated", user }` |
+| 登入有效 | access token 過期時以 refresh token 換發 access token cookie | `{ status: "authenticated", user }` |
 | 有登入 cookie 但登入已失效（refresh token 無效或被撤銷、使用者已刪除） | 刪掉 `access_token` / `refresh_token` cookie，接著照匿名處理 | 同下 |
 | 匿名 cookie 簽章正確 | 沿用 | `{ status: "anonymous", anonymous_user_id }` |
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
@@ -260,4 +260,4 @@ except Exception as e:
 - 新發經 `anonymous_id_mint_allowed()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過時回 `anonymous_user_id: null`（這次沒有身分、以 IP 限流，見上方表格）
 - `/auth/refresh` 的個人額度與 `/auth/session` 相同，用 `get_login_user_key`
 - `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 的結果由呼叫端存在該連線的 `Connection`，函式本身不快取
-- 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**
+- **需要登入的 API 用 `dependencies.get_current_user`（未登入回 401）或 `get_optional_user`（未登入回 None）**：以 `resolve_login` 判斷，與 `/auth/session`、WebSocket 握手相同，access token 過期、refresh token 有效時在這次回應換發 access token，所以 401 只代表登入真的失效（前端當成登入失效處理，ADR-0009「使用中途遇到 401」）。勿改回只看 access token；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

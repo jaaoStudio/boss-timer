@@ -8,35 +8,15 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_login_user_key
+from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user, get_login_user_key
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import has_login_cookies, resolve_anonymous, resolve_login
+from app.utils.login_cookies import cookie_attrs, delete_login_cookies, set_access_token_cookie
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-
-def _cookie_attrs() -> dict:
-    # 所有 cookie 設定與刪除共用的屬性：刪除時屬性要與設定時相同才刪得掉
-    return {"httponly": True, "secure": settings.env == "production", "samesite": "lax"}
-
-
-def _set_access_token_cookie(response: Response, user_id: int) -> str:
-    access_token = auth_service.create_access_token(data={"sub": str(user_id)})
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        max_age=settings.access_token_expire_minutes * 60,
-        **_cookie_attrs(),
-    )
-    return access_token
-
-
-def _delete_login_cookies(response: Response, keys: tuple[str, ...] = ("access_token", "refresh_token")) -> None:
-    for key in keys:
-        response.delete_cookie(key=key, **_cookie_attrs())
 
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
@@ -98,10 +78,10 @@ async def login_with_google(
         key="refresh_token",
         value=refresh_token,
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,  # 轉換為秒
-        **_cookie_attrs(),
+        **cookie_attrs(),
     )
 
-    access_token = _set_access_token_cookie(response, user.id)
+    access_token = set_access_token_cookie(response, user.id)
 
     return {
         "access_token": access_token,
@@ -132,10 +112,10 @@ async def refresh_token(
     user_id = auth_service.verify_refresh_token(db, refresh_token)
     if not user_id:
         rejected = JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid refresh token"})
-        _delete_login_cookies(rejected, keys=("refresh_token",))
+        delete_login_cookies(rejected, keys=("refresh_token",))
         return rejected
 
-    new_access_token = _set_access_token_cookie(response, user_id)
+    new_access_token = set_access_token_cookie(response, user_id)
     return {
         "access_token": new_access_token,
         "token_type": "bearer"
@@ -176,7 +156,7 @@ async def validate_token(
 
 @router.get("/me", response_model=auth_schemas.User)
 @rate_limit("60/minute")
-async def read_users_me(request: Request, current_user: models.User = Depends(auth_service.get_current_user)):
+async def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
@@ -198,7 +178,7 @@ async def logout(
         # 從資料庫中刪除 refresh token
         auth_service.revoke_refresh_token(db, refresh_token)
 
-    _delete_login_cookies(response)
+    delete_login_cookies(response)
 
     return {"message": "Logged out successfully"}
 
@@ -208,7 +188,7 @@ async def logout(
 async def update_preferences(
         request: Request,
         preferences: Dict[str, Any],
-        current_user: models.User = Depends(auth_service.get_current_user),
+        current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
     """
@@ -242,10 +222,10 @@ async def init_session(
         # resolve_login 會查資料庫（同步）：每次開頁與跨分頁重新判斷都會呼叫，放進 threadpool 免得卡住 WebSocket 等其他工作
         if login := await run_in_threadpool(resolve_login, db, cookies):
             if login.renew_access_token:
-                _set_access_token_cookie(response, login.user.id)
+                set_access_token_cookie(response, login.user.id)
             return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}
         # 刪掉失效的登入 cookie：refresh cookie 留著的話，WebSocket 握手與之後的請求都還會拿它判斷
-        _delete_login_cookies(response)
+        delete_login_cookies(response)
 
     identity = resolve_anonymous(cookies)
     if identity.kind == "anon":
@@ -258,6 +238,6 @@ async def init_session(
         key=anonymous_id.COOKIE_NAME,
         value=anonymous_id.sign(session_id),
         max_age=365 * 24 * 60 * 60,  # 一年
-        **_cookie_attrs(),
+        **cookie_attrs(),
     )
     return {"status": "anonymous", "anonymous_user_id": session_id}

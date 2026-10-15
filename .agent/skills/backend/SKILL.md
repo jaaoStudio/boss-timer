@@ -254,7 +254,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 - `POST /auth/validate` — 支援 `Authorization: Bearer <token>` Header 或 `access_token` Cookie。只供部署切換期間的舊版前端，日後刪除
 
 ### 開頁判斷登入狀態 / 匿名使用者 Session
-- `POST /auth/session` — **登入狀態只由伺服器判斷（ADR-0009）**：登入有效回 `authenticated` + user（access token 過期時以 refresh token 順便換發，剩不到一半效期時也換發），登入已失效時清掉舊的登入 cookie、改以匿名回應；登入判斷與 WebSocket 握手共用 `resolve_login()`（詳見 backend-api skill「開頁判斷登入狀態」）。未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
+- `POST /auth/session` — **登入狀態只由伺服器判斷（ADR-0009）**：登入有效回 `authenticated` + user（access token 過期時以 refresh token 順便換發），登入已失效時清掉舊的登入 cookie、改以匿名回應；登入判斷與 WebSocket 握手共用 `resolve_login()`（詳見 backend-api skill「開頁判斷登入狀態」）。未登入時確保有伺服器簽發的匿名身分：cookie 為 httponly 的「UUID.簽章」；沒有、編造或簽章上線前的舊 cookie 一律發放新身分（不換發舊 UUID），受每個 IP 的發放上限限制（詳見 backend-api skill「匿名使用者」）
 
 ### 安全設定
 - `samesite='lax'`, `secure=True` (生產環境)
@@ -505,5 +505,5 @@ ConnectionManager
 - ⚠️ Room ID 路徑參數限制長度: `min_length=10, max_length=10`
 - ⚠️ 管理員端點使用 `Depends(get_current_admin_user)` 保護
 - ⚠️ 所有 HTTP API 使用 `rate_limit()` 雙層限流（個人額度 + 真實 IP ×200 天花板，見 ADR-0007 與 backend-api skill），勿直接用 `@limiter.limit`
-- ⚠️ 限流與匿名身分一律經 `app/utils/identity.resolve_identity()` 判斷；需要完整 User 物件時用 `auth_service.get_current_user_from_token()`。勿自己解析 JWT 或信任 cookie 原值（JWT 一律經 `decode_token_user_id()`，會檢查 access / refresh 類型）
+- ⚠️ 限流與匿名身分一律經 `app/utils/identity.resolve_identity()` 判斷；需要登入的 API 用 `dependencies.get_current_user` / `get_optional_user`（以 `resolve_login` 判斷，access token 過期時在回應換發，401 只代表登入失效）。勿自己解析 JWT 或信任 cookie 原值（JWT 一律經 `decode_token_user_id()`，會檢查 access / refresh 類型）
 - ⚠️ Celery Worker 不使用 root 執行 (Docker 中建議加 `--uid` 參數)

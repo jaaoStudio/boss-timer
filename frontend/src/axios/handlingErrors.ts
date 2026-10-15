@@ -1,5 +1,5 @@
 import axios, { type AxiosError } from 'axios'
-import router from '@/router/index'
+import router, { canAccess } from '@/router/index'
 import { useUserStore } from '@/stores/userStore'
 import { showMessage } from '@/composables/useElementPlus'
 import i18n from '@/i18n'
@@ -27,15 +27,15 @@ export const showFailure = (error: unknown, message: string): void => {
  * 全域錯誤處理（ADR-0009「使用中途遇到 401」）：只處理呼叫端處理不了、或需要全站一致的結果，
  * 處理過的記在 handledErrors，之後一律丟出原本的錯誤
  */
-export const handleError = async (error: AxiosError): Promise<never> => {
+export const handleError = (error: AxiosError): Promise<never> => {
   // 呼叫端自己取消的請求（例如換篩選條件中斷載入）不是錯誤
   if (!axios.isCancel(error)) {
     const handled = error.response?.status === 401 && !error.config?.skipUnauthorizedCheck
-      ? await handleUnauthorized()
+      ? handleUnauthorized()
       : handleGlobally(error)
     if (handled) handledErrors.set(error, handled)
   }
-  throw error
+  return Promise.reject(error)
 }
 
 const handleGlobally = (error: AxiosError): 'navigated' | 'notified' | undefined => {
@@ -59,30 +59,16 @@ const handleGlobally = (error: AxiosError): 'navigated' | 'notified' | undefined
   return undefined
 }
 
-// 同一時間的多個 401 共用同一次確認：只問一次、只提示一次、只退回一次
-let unauthorizedCheck: Promise<'navigated' | undefined> | undefined
-
 /**
- * 使用中途遇到 401：分頁在前景時會定期換發 access token，正常使用時不會遇到，一律當成異常、不重送。
- * 重新問伺服器：回答登入失效、而這個分頁原本顯示為登入時，提示並退回首頁（CONTEXT.md「登入失效」）；
- * 其他情況（仍是登入、查詢失敗、原本就是匿名）不處理，由呼叫端提示失敗
+ * 使用中途遇到 401：需要登入的 API 在 access token 過期時會自己換發，401 代表伺服器已判斷登入失效（ADR-0009），不再確認。
+ * 原本顯示為登入時照登出的順序改為匿名、提示並退回首頁（CONTEXT.md「登入失效」）；需要登入的頁面由 App.vue 跳頁。
+ * 已經是匿名時（後面接著的 401、匿名使用者碰到需要登入的功能）不處理，由呼叫端提示失敗
  */
-const handleUnauthorized = async (): Promise<'navigated' | undefined> => {
-  // 已經顯示為匿名（例如剛發現登入失效之後才回來的 401）：結果不可能是登入失效，不再確認，由呼叫端提示失敗
-  if (!useUserStore().isLoggedIn) return undefined
-  unauthorizedCheck ??= checkLoginAfterUnauthorized().finally(() => {
-    unauthorizedCheck = undefined
-  })
-  return unauthorizedCheck
-}
-
-const checkLoginAfterUnauthorized = async (): Promise<'navigated' | undefined> => {
-  const userStore = useUserStore()
-  const wasLoggedIn = userStore.isLoggedIn
-  await userStore.recheckSession()
-  if (!wasLoggedIn || userStore.isLoggedIn) return undefined
+const handleUnauthorized = (): 'navigated' | undefined => {
+  if (!useUserStore().handleLoginLost()) return undefined
   showMessage.warning(i18n.global.t('globalErrors.sessionExpired'))
-  if (router.currentRoute.value.name !== 'RoomSelection') router.push({ name: 'RoomSelection' })
+  const current = router.currentRoute.value
+  if (canAccess(current) && current.name !== 'RoomSelection') router.push({ name: 'RoomSelection' })
   return 'navigated'
 }
 

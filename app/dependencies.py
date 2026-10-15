@@ -1,8 +1,9 @@
 # app/dependencies.py
 import ipaddress
+from typing import Optional
 from functools import lru_cache
 
-from fastapi import Depends, status, HTTPException, Request
+from fastapi import Depends, status, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from limits import parse_many
@@ -13,8 +14,12 @@ from starlette.requests import HTTPConnection
 
 from app.database import models
 from app.websocket.manager import ConnectionManager
-from app.services.auth_service import decode_token, decode_token_user_id, get_current_user
-from app.utils.identity import Identity, resolve_identity
+from sqlalchemy.orm import Session
+
+from app.database.database import get_db
+from app.services.auth_service import decode_token, decode_token_user_id
+from app.utils.identity import Identity, has_login_cookies, resolve_identity, resolve_login
+from app.utils.login_cookies import set_access_token_cookie
 
 # IP 天花板 = 個人額度 × 200（見 docs/adr/0007）。匿名身分有簽章、無法任意編造後，
 # 天花板只是最後防線，放寬到能容納學校、行動網路 CGNAT 等大量玩家共用一個 IP
@@ -171,6 +176,33 @@ _connection_manager = ConnectionManager()
 
 def get_connection_manager() -> ConnectionManager:
     return _connection_manager
+
+
+def get_optional_user(request: Request, response: Response, db: Session = Depends(get_db)) -> Optional[models.User]:
+    """
+    需要知道登入者的 API：與 /auth/session、WebSocket 握手同一個判斷（resolve_login，ADR-0009）。
+    access token 過期、refresh token 有效時在這次回應換發 access token，請求照常成功：前端不必讓 token 保持有效，
+    401 只代表登入真的失效。未登入或登入已失效回 None。resolve_login 會查資料庫，同步 def 由 FastAPI 放進 threadpool
+    """
+    if not has_login_cookies(request.cookies):
+        return None
+    login = resolve_login(db, request.cookies)
+    if login is None:
+        return None
+    if login.renew_access_token:
+        set_access_token_cookie(response, login.user.id)
+    return login.user
+
+
+def get_current_user(user: Optional[models.User] = Depends(get_optional_user)) -> models.User:
+    """需要登入的 API：判斷同 get_optional_user，未登入或登入已失效回 401（前端當成登入失效處理）。"""
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user
 
 
 async def get_current_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:

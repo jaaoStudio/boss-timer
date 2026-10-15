@@ -1,11 +1,11 @@
 """匿名身分 cookie 簽章、身分解析與 /auth/session 發放流程的測試（見 docs/adr/0007）。"""
-import time
 import uuid
 from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
+from fastapi import Response
 from starlette.requests import Request
 from starlette.websockets import WebSocket
 
@@ -159,20 +159,6 @@ def test_valid_access_token_returns_the_user(login):
     assert res.headers.get("set-cookie") is None   # 不換發、不發匿名身分
 
 
-@pytest.mark.parametrize("minutes_left, renewed", [(25, False), (10, True)])
-def test_access_token_is_renewed_when_less_than_half_left(login, minutes_left, renewed):
-    # 照 NextAuth 的 updateAge：剩不到一半效期就順便換發，前端定期查詢時 access token 不會到期
-    login()
-    exp = int(time.time()) + minutes_left * 60
-    access = jwt.encode({"sub": "42", "type": "access", "exp": exp}, settings.secret_key, algorithm=settings.algorithm)
-    res = init_session(access_token=access)
-    assert res.json()["status"] == "authenticated"
-    new_access = res.cookies.get("access_token")
-    assert (new_access is not None) == renewed
-    if renewed:
-        assert identity_module.auth_service.decode_token(new_access, "access")["exp"] > exp
-
-
 def test_expired_access_token_is_renewed_with_refresh_token(monkeypatch, login):
     # 只剩有效 refresh token 的登入者：換發 access token，不發匿名身分、也不計入發放上限
     login()
@@ -256,3 +242,45 @@ def test_anonymous_websocket_handshake_does_not_touch_the_database(monkeypatch):
     ws = WebSocket({"type": "websocket", "headers": [(b"cookie", f"{anonymous_id.COOKIE_NAME}={signed}".encode())]},
                    receive=None, send=None)
     assert resolve_identity(ws).kind == "anon"
+
+
+# --- 需要登入的 API（get_current_user / get_optional_user）---
+
+def get_me(**cookies: str):
+    set_cookies(client, **cookies)
+    return client.get("/auth/me", headers={"CF-Connecting-IP": "203.0.113.2"})
+
+
+def test_login_required_api_renews_expired_access_token(login):
+    # access token 過期、refresh token 有效：伺服器在這次回應換發，請求照常成功（ADR-0009「使用中途遇到 401」）
+    login()
+    res = get_me(refresh_token=VALID_REFRESH)
+    assert res.status_code == 200 and res.json()["id"] == 42
+    assert identity_module.auth_service.decode_token_user_id(res.cookies.get("access_token")) == "42"
+
+
+def test_login_required_api_does_not_renew_valid_access_token(login):
+    login()
+    res = get_me(access_token=token("access"))
+    assert res.status_code == 200 and res.headers.get("set-cookie") is None
+
+
+@pytest.mark.parametrize("cookies", [
+    {},
+    {"refresh_token": REVOKED_REFRESH},   # 被撤銷（例如在其他裝置登入）：401 就是登入失效
+    {"access_token": "garbage"},
+])
+def test_login_required_api_rejects_lost_login(login, cookies):
+    login()
+    assert get_me(**cookies).status_code == 401
+
+
+def test_optional_user_renews_expired_access_token(login):
+    # 例如回饋清單：access token 過期時仍以登入者身分載入，並換發
+    login()
+    response = Response()
+    user = deps.get_optional_user(http_request(f"refresh_token={VALID_REFRESH}".encode()), response, db=None)
+    assert user is not None and user.id == 42
+    assert "access_token=" in response.headers.get("set-cookie", "")
+    assert deps.get_optional_user(http_request(f"refresh_token={REVOKED_REFRESH}".encode()), Response(), db=None) is None
+    assert deps.get_optional_user(http_request(), Response(), db=None) is None
