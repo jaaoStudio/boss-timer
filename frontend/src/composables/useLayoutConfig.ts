@@ -93,7 +93,7 @@ export function useLayoutConfig() {
     return DEFAULT_ITEMS.map(i => ({ ...i }))
   }
 
-  // 將伺服器的 preferences 同步到本地 layout（由 App.vue 在套用新的伺服器偏好時呼叫）
+  // 將帳號的 preferences 同步到本地 layout（由 App.vue 在換成另一個登入者時呼叫）
   function syncFromUser() {
     const prefs = userStore.user?.preferences?.[PREFERENCE_KEY] as { items?: unknown } | undefined
     if (!prefs) return

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import apiService, { type InitSessionResponse } from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
-import { MutationObserver, QueryObserver } from '@tanstack/vue-query';
+import { QueryObserver } from '@tanstack/vue-query';
 import { queryClient } from '@/queryClient';
 
 export interface User {
@@ -18,14 +18,14 @@ interface UserState {
   isLoggedIn: boolean;
   isLoading?: boolean;
   anonymousName: string | null;
-  // 伺服器偏好設定套用到本地的次數（App.vue 據此同步各項偏好）
+  // 帳號偏好套用到本地的次數（App.vue 據此同步各項偏好）
   preferencesVersion: number;
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
   _resolveInit?: () => void;
-  // 上次套用到本地的伺服器偏好設定（JSON）：只在伺服器的和它不同時才覆蓋本地
-  _appliedPreferences?: string;
+  // 上次把帳號偏好套用到本地的登入者：換人時才再套用（跨裝置同步，ADR-0009）
+  _preferencesUserId?: number;
   // WebSocket 握手時的身分（伺服器回答的 user:{id} / anon:{id} / none）；不確定時為 undefined
   _wsIdentity?: string;
   // 上次查詢完成後，本分頁或其他分頁登入 / 登出過（共用的登入 cookie 改變過）
@@ -34,7 +34,6 @@ interface UserState {
 }
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
-const PREFERENCES_MUTATION_KEY = ['auth', 'preferences'] as const;
 
 function identityOf(session: InitSessionResponse): string {
   if (session.status === 'authenticated') return `user:${session.user.id}`;
@@ -52,7 +51,7 @@ export const useUserStore = defineStore('user', {
     _initialized: false,
     _initPromise: undefined,
     _resolveInit: undefined,
-    _appliedPreferences: undefined,
+    _preferencesUserId: undefined,
     _wsIdentity: undefined,
     _cookieChanged: false,
     _logoutPromise: undefined,
@@ -142,24 +141,24 @@ export const useUserStore = defineStore('user', {
     // 照伺服器的判斷設定（登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分）
     _applySession(session: InitSessionResponse) {
       if (session.status === 'authenticated') {
-        this.setLoggedInUser(session.user);
-        this._applyServerPreferences(session.user);
+        this._applyServerUser(session.user);
       } else {
         this.becomeAnonymous();
       }
       this._syncWebSocket(identityOf(session));
     },
 
-    // 伺服器回答的偏好（查詢成功或登入回應）和上次套用的不同時才覆蓋本地：切回分頁時不蓋掉本地還沒存的修改，
-    // 換人時一定套用。查詢失敗、改用快取時不呼叫。還有存檔沒完成時不覆蓋（回答可能是存檔前的），
-    // 最後一個存檔完成時會重新查詢
-    _applyServerPreferences(user: User) {
-      if (queryClient.isMutating({ mutationKey: PREFERENCES_MUTATION_KEY }) > 0) return;
-      const preferences = JSON.stringify(user.preferences ?? {});
-      if (preferences !== this._appliedPreferences) {
-        this._appliedPreferences = preferences;
-        this.preferencesVersion++;
+    // 照伺服器回答的登入者（查詢成功或登入回應）設定。帳號偏好只在換人時（開頁、登入、換成另一個人）套用到本地：
+    // 跨裝置同步是重新開頁才載入，同一個人的回答只更新帳號資料、保留這台裝置目前的偏好，
+    // 不會蓋掉存檔中或還沒存的修改。查詢失敗、改用快取時不呼叫
+    _applyServerUser(user: User) {
+      if (this.user && user.id === this._preferencesUserId) {
+        this.setLoggedInUser({ ...user, preferences: this.user.preferences });
+        return;
       }
+      this._preferencesUserId = user.id;
+      this.setLoggedInUser(user);
+      this.preferencesVersion++;
     },
 
     // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用目前的顯示，什麼都不清除。
@@ -217,11 +216,10 @@ export const useUserStore = defineStore('user', {
       try {
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
-        // 登入回應已設好 cookie：先照它顯示、套用偏好並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分）。
+        // 登入回應已設好 cookie：先照它顯示、套用帳號偏好並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分）。
         // 偏好不等查詢：查詢失敗時本地會留著匿名時的偏好，之後存檔會蓋掉帳號的設定
         this._cookieChanged = true;
-        this.setLoggedInUser(response.user);
-        this._applyServerPreferences(response.user);
+        this._applyServerUser(response.user);
         void this._refetchSession();
       } catch (error) {
         // 登入失敗不動登入狀態（登入按鈕只在未登入時顯示），交給呼叫端提示
@@ -238,26 +236,17 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    // 偏好存檔是 Vue Query 的 mutation：存檔期間查詢結果不覆蓋本地偏好，最後一個存檔完成時重新查詢一次
-    // （照 TanStack Query 處理同時有多個樂觀更新的做法，ADR-0009）
     async updatePreferences(preferences: Record<string, unknown>) {
       if (!this.user) return;
       try {
-        const updated = await new MutationObserver(queryClient, {
-          mutationKey: PREFERENCES_MUTATION_KEY,
-          mutationFn: (p: Record<string, unknown>) => apiService.updateMyPreferences(p),
-        }).mutate(preferences);
-        // 期間登出或換人時不把舊的登入者放回去
+        const updated = await apiService.updateMyPreferences(preferences);
+        // 存檔成功：把存的這幾項併進這台裝置目前的偏好，連同 user_info 快取（下次開頁判斷失敗時也是新的）。
+        // 只併入這次存的項目，同時有好幾個存檔、回應先後顛倒時不會把其他項目改回舊值；期間登出或換人就不放回去
         if (this.user?.id === updated.id) {
-          this.user = updated;
-          // 本地已是這份偏好：記為已套用，之後查詢回來同一份時不再覆蓋本地（例如正在編輯的版面）
-          this._appliedPreferences = JSON.stringify(updated.preferences ?? {});
+          this.setLoggedInUser({ ...this.user, preferences: { ...this.user.preferences, ...preferences } });
         }
       } catch (error) {
         console.error('Failed to update preferences:', error);
-      } finally {
-        // 存檔期間送出的查詢可能帶回存檔前的偏好：取消後重新問，拿到所有存檔之後的結果
-        if (queryClient.isMutating({ mutationKey: PREFERENCES_MUTATION_KEY }) === 0) void this._refetchSession();
       }
     },
 
@@ -275,7 +264,7 @@ export const useUserStore = defineStore('user', {
     clearAuth() {
       this.user = null;
       this.isLoggedIn = false;
-      this._appliedPreferences = undefined;   // 再登入時一定套用伺服器的偏好
+      this._preferencesUserId = undefined;   // 再登入時一定套用帳號的偏好
       this._writeUserInfo(null);
     },
 

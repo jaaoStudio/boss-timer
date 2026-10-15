@@ -15,7 +15,7 @@ const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
 const { syncFromUser: syncLayout } = useLayoutConfig();
 
-// 查詢登入狀態成功、伺服器的偏好和上次套用的不同時（登入、換人、其他裝置改過），同步到本地（ADR-0009）
+// 換成另一個登入者時（開頁、登入、換人）把帳號偏好同步到本地；同一個人的查詢結果不覆蓋（跨裝置同步，ADR-0009）
 watch(() => userStore.preferencesVersion, () => {
   syncChannelView();
   syncFavoriteBosses();
