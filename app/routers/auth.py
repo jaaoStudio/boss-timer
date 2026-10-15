@@ -18,23 +18,25 @@ from app.utils.identity import has_login_cookies, resolve_anonymous, resolve_log
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+def _cookie_attrs() -> dict:
+    # 所有 cookie 設定與刪除共用的屬性：刪除時屬性要與設定時相同才刪得掉
+    return {"httponly": True, "secure": settings.env == "production", "samesite": "lax"}
+
+
 def _set_access_token_cookie(response: Response, user_id: int) -> str:
     access_token = auth_service.create_access_token(data={"sub": str(user_id)})
     response.set_cookie(
         key="access_token",
         value=access_token,
-        httponly=True,
-        secure=settings.env == "production",
-        samesite="lax",
-        max_age=settings.access_token_expire_minutes * 60
+        max_age=settings.access_token_expire_minutes * 60,
+        **_cookie_attrs(),
     )
     return access_token
 
 
-def _delete_login_cookies(response: Response) -> None:
-    # 屬性與設定時相同（_set_access_token_cookie、登入時的 refresh_token）
-    for key in ("access_token", "refresh_token"):
-        response.delete_cookie(key=key, httponly=True, secure=settings.env == "production", samesite="lax")
+def _delete_login_cookies(response: Response, keys: tuple[str, ...] = ("access_token", "refresh_token")) -> None:
+    for key in keys:
+        response.delete_cookie(key=key, **_cookie_attrs())
 
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
@@ -95,10 +97,8 @@ async def login_with_google(
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
-        httponly=True,
-        samesite='lax',
-        secure=settings.env == "production",
-        max_age=settings.refresh_token_expire_days * 24 * 60 * 60  # 轉換為秒
+        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,  # 轉換為秒
+        **_cookie_attrs(),
     )
 
     access_token = _set_access_token_cookie(response, user.id)
@@ -132,7 +132,7 @@ async def refresh_token(
     user_id = auth_service.verify_refresh_token(db, refresh_token)
     if not user_id:
         rejected = JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid refresh token"})
-        rejected.delete_cookie(key="refresh_token", httponly=True, secure=settings.env == "production", samesite="lax")
+        _delete_login_cookies(rejected, keys=("refresh_token",))
         return rejected
 
     new_access_token = _set_access_token_cookie(response, user_id)
@@ -257,9 +257,7 @@ async def init_session(
     response.set_cookie(
         key=anonymous_id.COOKIE_NAME,
         value=anonymous_id.sign(session_id),
-        httponly=True,
-        samesite='lax',
-        secure=settings.env == "production",
-        max_age=365 * 24 * 60 * 60  # 一年
+        max_age=365 * 24 * 60 * 60,  # 一年
+        **_cookie_attrs(),
     )
     return {"status": "anonymous", "anonymous_user_id": session_id}

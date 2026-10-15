@@ -56,7 +56,7 @@ const callRefreshToken = async (axiosInstance: AxiosInstance, originalRequestCon
   const result = await apiService.refresh_token()
   if (result.status === 401) {
     // 不在前端自己清除登入：重新問伺服器，由它清 cookie、決定身分，WebSocket 與其他分頁照結果處理（ADR-0009）
-    userStore.resyncAfterCookieChange()
+    void userStore.resyncAfterCookieChange()
     await router.push({ name: 'RoomSelection' })
     showMessage.warning('連線過期, 請重新登入！')
     return

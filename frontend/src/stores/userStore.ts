@@ -22,6 +22,7 @@ interface UserState {
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
+  _resolveInit?: () => void;
   // 上次把帳號偏好套用到本地的登入者：換人時才再套用（跨裝置同步，ADR-0009）
   _preferencesUserId?: number;
   // WebSocket 握手時的身分（伺服器回答的 user:{id} / anon:{id} / none）；不確定時為 undefined
@@ -32,9 +33,6 @@ interface UserState {
 }
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
-
-// 第一次判斷完成時讓 initializeAuth() 回傳的 promise 完成
-let resolveInit: (() => void) | undefined;
 
 // 讀取共用的登入顯示快取 user_info 的原始字串；讀不到時當作沒有
 function readCachedUserRaw(): string | null {
@@ -49,7 +47,8 @@ function readCachedUserRaw(): string | null {
 function parseCachedUser(raw: string | null): User | null {
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as User;
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === 'object' && parsed !== null && typeof (parsed as User).id === 'number' ? parsed as User : null;
   } catch {
     return null;
   }
@@ -59,13 +58,15 @@ function readCachedUser(): User | null {
   return parseCachedUser(readCachedUserRaw());
 }
 
-// 寫入 user_info。它只是顯示快取，寫不進去（例如空間滿了）時忽略，不中斷登入狀態的處理
-function writeCachedUser(user: User | null) {
+// 寫入 user_info，回傳是否成功。它只是顯示快取，寫不進去（例如空間滿了）時忽略，不中斷登入狀態的處理
+function writeCachedUser(user: User | null): boolean {
   try {
     if (user) localStorage.setItem('user_info', JSON.stringify(user));
     else localStorage.removeItem('user_info');
+    return true;
   } catch (error) {
     console.error('Failed to write user_info:', error);
+    return false;
   }
 }
 
@@ -83,6 +84,7 @@ export const useUserStore = defineStore('user', {
     _channel: undefined,
     _initialized: false,
     _initPromise: undefined,
+    _resolveInit: undefined,
     _preferencesUserId: undefined,
     _wsIdentity: undefined,
     _cookieChanged: false,
@@ -127,7 +129,7 @@ export const useUserStore = defineStore('user', {
       // App.vue onMounted 與 router beforeEach 會在首次載入時同時呼叫，共用同一次初始化
       if (!this._initPromise) {
         this._initPromise = new Promise((resolve) => {
-          resolveInit = resolve;
+          this._resolveInit = resolve;
         });
         this.initBroadcastChannel();
         const observer = new QueryObserver(queryClient, {
@@ -229,7 +231,7 @@ export const useUserStore = defineStore('user', {
         this._initialized = true;
         this._wsIdentity = identity;
         websocketStore.connect();
-        resolveInit?.();
+        this._resolveInit?.();
         return;
       }
       if (identity === undefined ? cookieChanged : identity !== this._wsIdentity) {
@@ -267,10 +269,12 @@ export const useUserStore = defineStore('user', {
       try {
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
-        // 登入回應已設好 cookie：先照它顯示、套用帳號偏好並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分）。
+        // 登入回應已設好 cookie：先標記 cookie 改變過並開始重新查詢（套用出錯也不會遺失標記；請求在取消舊查詢後才送出），
+        // 再照登入回應顯示、套用帳號偏好並通知其他分頁，WebSocket 依查詢結果換成登入身分。
         // 偏好不等查詢：查詢失敗時本地會留著匿名時的偏好，之後存檔會蓋掉帳號的設定
+        const resync = this.resyncAfterCookieChange();
         this._applyServerUser(response.user);
-        void this.resyncAfterCookieChange();
+        void resync;
       } catch (error) {
         // 登入失敗不動登入狀態（登入按鈕只在未登入時顯示），交給呼叫端提示
         console.error('Google login failed:', error);
@@ -316,7 +320,8 @@ export const useUserStore = defineStore('user', {
     // 套用時快取已是新的狀態，不會再通知；多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）也只由第一個通知
     _writeUserInfo(user: User | null) {
       const raw = readCachedUserRaw();
-      writeCachedUser(user);
+      // 寫不進去時不通知：快取沒變，其他分頁查詢後也會寫不進去而再通知，分頁之間會互相觸發。它們靠切回分頁時的查詢修正
+      if (!writeCachedUser(user)) return;
       if (user) {
         if (parseCachedUser(raw)?.id !== user.id) this.notifyLogin();
       } else if (raw !== null) {

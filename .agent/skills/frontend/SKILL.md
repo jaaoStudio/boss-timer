@@ -154,7 +154,7 @@ frontend/
    開頁第一次判斷完成（成功或失敗）才 `connect()`。之後查詢成功時，伺服器回答的身分（`user:{id}` / `anon:{id}` / `none`）和 `_wsIdentity` 不同才 `reconnect()`；查詢失敗時，期間登入 / 登出過（`_cookieChanged`）才照目前的 cookie 重連。
 
 4. **改變 `user_info` 的分頁負責通知**（`_writeUserInfo`）
-   `user_info` 是所有分頁共用的顯示快取：變成沒有登入廣播 `LOGOUT`，變成另一個登入者（含從沒有變有）廣播 `LOGIN`。登入、登出、發現登入失效都由這一條處理；收到通知的分頁重新查詢時快取已是新狀態，不會再通知，多個分頁同時發現登入失效也只由第一個通知。**勿另外呼叫 `notifyLogin()` / `notifyLogout()`。** `LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
+   `user_info` 是所有分頁共用的顯示快取：變成沒有登入廣播 `LOGOUT`，變成另一個登入者（含從沒有變有）廣播 `LOGIN`。登入、登出、發現登入失效都由這一條處理；收到通知的分頁重新查詢時快取已是新狀態，不會再通知，多個分頁同時發現登入失效也只由第一個通知。`user_info` 寫不進去（`writeCachedUser` 回傳 false）時不通知：快取沒變，否則分頁之間會互相觸發。**勿另外呼叫 `notifyLogin()` / `notifyLogout()`。** `LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
 
 5. **判斷失敗不改變登入狀態**
    網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線；請求有 10 秒逾時，網路卡住沒有回應時也不會讓開頁一直等。套用結果出錯時仍以 `finally` 完成初始化，`user_info` 寫不進去（`writeCachedUser`）只記錄、不中斷。401 換發失敗時呼叫 `resyncAfterCookieChange()` 重新問伺服器，勿在前端自己清除登入。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都清除登入」。
