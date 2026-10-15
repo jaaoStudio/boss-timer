@@ -8,7 +8,7 @@ import type { RoomSettings } from '@/stores/roomStore'
 const WS_URL = `wss://${import.meta.env.VITE_WS_URL}`
 
 // 登入狀態以伺服器的判斷為準（ADR-0009）：登入者帶 user，匿名者帶 anonymous_user_id（暫時沒有身分時為 null）
-type InitSessionResponse =
+export type InitSessionResponse =
   | { status: 'authenticated'; user: User }
   | { status: 'anonymous'; anonymous_user_id: string | null }
 
@@ -77,8 +77,9 @@ class ApiService {
     await this.client.post('/auth/logout')
   }
 
-  async initSession({ background = false } = {}): Promise<InitSessionResponse> {
-    const res = await this.client.post<InitSessionResponse>('/auth/session', {}, { skipGlobalErrorHandler: background })
+  // 登入狀態的查詢（ADR-0009）：失敗時沿用目前的顯示、等下次觸發再問，不經全域錯誤處理
+  async initSession(signal?: AbortSignal): Promise<InitSessionResponse> {
+    const res = await this.client.post<InitSessionResponse>('/auth/session', {}, { signal, skipGlobalErrorHandler: true })
     return res.data
   }
 

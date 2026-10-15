@@ -1,7 +1,9 @@
 import { defineStore } from 'pinia';
-import apiService from '@/services/apiService';
+import apiService, { type InitSessionResponse } from '@/services/apiService';
 import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
+import { QueryObserver } from '@tanstack/vue-query';
+import { queryClient } from '@/queryClient';
 
 export interface User {
   id: number;
@@ -16,13 +18,26 @@ interface UserState {
   isLoggedIn: boolean;
   isLoading?: boolean;
   anonymousName: string | null;
+  // 伺服器偏好設定套用到本地的次數（App.vue 據此同步各項偏好）
+  preferencesVersion: number;
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
-  // 登入 cookie 改變（本分頁或其他分頁登入 / 登出）的次數：送出 /auth/session 後有變，代表回應是改變前的判斷
-  _authChanges: number;
-  _resyncPromise?: Promise<void>;
+  _resolveInit?: () => void;
+  // 上次套用到本地的伺服器偏好設定（JSON）：只在伺服器的和它不同時才覆蓋本地
+  _appliedPreferences?: string;
+  // WebSocket 握手時的身分（伺服器回答的 user:{id} / anon:{id} / none）；不確定時為 undefined
+  _wsIdentity?: string;
+  // 上次查詢完成後，本分頁或其他分頁登入 / 登出過（共用的登入 cookie 改變過）
+  _cookieChanged: boolean;
   _logoutPromise?: Promise<void>;
+}
+
+const SESSION_QUERY_KEY = ['auth', 'session'] as const;
+
+function identityOf(session: InitSessionResponse): string {
+  if (session.status === 'authenticated') return `user:${session.user.id}`;
+  return session.anonymous_user_id ? `anon:${session.anonymous_user_id}` : 'none';
 }
 
 export const useUserStore = defineStore('user', {
@@ -31,11 +46,14 @@ export const useUserStore = defineStore('user', {
     isLoggedIn: false,
     isLoading: false,
     anonymousName: null,
+    preferencesVersion: 0,
     _channel: undefined,
     _initialized: false,
     _initPromise: undefined,
-    _authChanges: 0,
-    _resyncPromise: undefined,
+    _resolveInit: undefined,
+    _appliedPreferences: undefined,
+    _wsIdentity: undefined,
+    _cookieChanged: false,
     _logoutPromise: undefined,
   }),
   getters: {
@@ -51,14 +69,9 @@ export const useUserStore = defineStore('user', {
         this._channel = new BroadcastChannel('user-auth');
         this._channel.onmessage = (event) => {
           if (event.data.type !== 'LOGIN' && event.data.type !== 'LOGOUT') return;
-          // 其他分頁改了共用的 cookie：不採用通知裡的狀態（可能已過時），重新問伺服器（ADR-0009）。
-          // 進行中的判斷（開頁或上一次重新判斷）會因次數改變自己再問一次，初始化結束時也會以當時的 cookie 連線
-          this._authChanges++;
-          if (this._initialized && !this._resyncPromise) {
-            this._resyncPromise = this._runResync().finally(() => {
-              this._resyncPromise = undefined;
-            });
-          }
+          // 其他分頁改了共用的 cookie：不採用通知裡的狀態（可能已過時），重新問伺服器（ADR-0009）
+          this._cookieChanged = true;
+          void this._refetchSession();
         };
       }
     },
@@ -76,76 +89,98 @@ export const useUserStore = defineStore('user', {
       }
     },
 
-    async initializeAuth() {
-      // 只在第一次初始化並建立 WebSocket 連線（_runInitializeAuth 的 finally）。之後路由切換不再呼叫 connect()：
-      // 斷線一律交給 websocketStore 的退避重連（同 Socket.IO 只連一次），換頁時呼叫會繞過退避
-      if (this._initialized) return;
-
-      // App.vue onMounted 與 router beforeEach 會在首次載入時「同時」呼叫此方法，
-      // 而 _initialized 要等 await 全部跑完才在 finally 翻成 true，
-      // 不去重的話兩邊都會各打一次 /auth/session。
-      // 用 in-flight promise 讓併發呼叫共用同一次初始化流程。
+    // 開頁開始查詢登入狀態（ADR-0009，照 NextAuth 前端的模型）：每個分頁只有一個查詢、同時只有一個請求，
+    // 開頁、切回分頁（Vue Query 的 refetchOnWindowFocus）、登入 / 登出 / 收到其他分頁通知時查詢。
+    // 第一次判斷完成才連線 WebSocket，之後換頁不呼叫 connect()：斷線一律交給 websocketStore 的退避重連
+    initializeAuth(): Promise<void> {
+      // App.vue onMounted 與 router beforeEach 會在首次載入時同時呼叫，共用同一次初始化
       if (!this._initPromise) {
-        this._initPromise = this._runInitializeAuth();
+        this._initPromise = new Promise((resolve) => {
+          this._resolveInit = resolve;
+        });
+        this.initBroadcastChannel();
+        this.isLoading = true;
+        const observer = new QueryObserver(queryClient, {
+          queryKey: SESSION_QUERY_KEY,
+          queryFn: ({ signal }) => this._fetchSession(signal),
+          // 失敗時不自動重試，等下次觸發再問；離線時照樣送出（失敗就沿用目前的顯示），不要暫停到恢復連線
+          retry: false,
+          networkMode: 'always',
+          refetchOnReconnect: false,
+        });
+        // 訂閱後才開始查詢，也才會在切回分頁時重新查詢
+        observer.subscribe(() => {});
       }
       return this._initPromise;
     },
 
-    async _runInitializeAuth() {
+    // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
+    // 不只用 invalidateQueries：Vue Query 在還沒有任何結果時（開頁的查詢進行中）不會取消進行中的請求
+    async _refetchSession() {
+      await queryClient.cancelQueries({ queryKey: SESSION_QUERY_KEY });
+      await queryClient.refetchQueries({ queryKey: SESSION_QUERY_KEY });
+    },
+
+    // 每次查詢在這裡套用結果。被取消的請求（之後登入 cookie 改變過）不套用
+    async _fetchSession(signal: AbortSignal): Promise<InitSessionResponse> {
+      try {
+        const session = await apiService.initSession(signal);
+        // 回滾到舊版後端時 authenticated 不帶 user：當作判斷失敗，沿用目前的顯示
+        if (session.status === 'authenticated' && !session.user) throw new Error('Session response without user');
+        this._applySession(session);
+        return session;
+      } catch (error) {
+        if (!signal.aborted) {
+          console.error('Failed to resolve auth state:', error);
+          this._applySessionFailure();
+        }
+        throw error;
+      }
+    },
+
+    // 照伺服器的判斷設定（登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分）
+    _applySession(session: InitSessionResponse) {
+      if (session.status === 'authenticated') {
+        this.setLoggedInUser(session.user);
+        // 只在伺服器的偏好和上次套用的不同時才覆蓋本地：切回分頁時不蓋掉本地還沒存的修改，換人時一定套用
+        const preferences = JSON.stringify(session.user.preferences ?? {});
+        if (preferences !== this._appliedPreferences) {
+          this._appliedPreferences = preferences;
+          this.preferencesVersion++;
+        }
+      } else {
+        this.becomeAnonymous();
+      }
+      this._syncWebSocket(identityOf(session));
+    },
+
+    // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用目前的顯示，什麼都不清除。
+    // 開頁時還沒有顯示，以 user_info（顯示快取）恢復上次的狀態
+    _applySessionFailure() {
+      if (!this._initialized && !this.restoreUserFromStorage()) {
+        this.anonymousName = this.getAnonymousName();
+      }
+      this._syncWebSocket(undefined);
+    },
+
+    // WebSocket 的身分在握手時依 cookie 固定。查詢成功時，伺服器回答的身分和連線用的不同才重連；
+    // 查詢失敗時不知道現在的身分，期間登入 / 登出過才照目前的 cookie 重連
+    _syncWebSocket(identity: string | undefined) {
       const websocketStore = useWebSocketStore();
-      this.initBroadcastChannel();
-      this.isLoading = true;
-      try {
-        // 登入已失效（使用者沒按登出）：伺服器清掉的是所有分頁共用的登入 cookie，當作登出通知其他分頁
-        if (await this._syncSession()) this.notifyLogout();
-      } catch (error) {
-        // 判斷失敗（網路錯誤、5xx、被限流）不代表登入狀態改變：沿用上次的顯示，什麼都不清除
-        console.error('Auth initialization failed:', error);
-        if (!this.restoreUserFromStorage()) {
-          this.anonymousName = this.getAnonymousName();
-        }
-      } finally {
-        this.isLoading = false;
+      const cookieChanged = this._cookieChanged;
+      this._cookieChanged = false;
+      if (!this._initialized) {
+        // 第一次判斷完成才連線：身分在握手時以 cookie 決定，必須等 /auth/session 發好匿名 cookie
         this._initialized = true;
+        this.isLoading = false;
+        this._wsIdentity = identity;
         websocketStore.connect();
+        this._resolveInit?.();
+        return;
       }
-    },
-
-    // 登入狀態以伺服器的判斷為準（ADR-0009）：登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分。
-    // 等待回應期間登入 cookie 改變過（本分頁或其他分頁登入 / 登出），這次的結果（含失敗）是改變前的，再問一次。
-    // 回傳是否清掉了顯示中的登入：user_info 是所有分頁共用的顯示快取，已被其他分頁清掉時代表那個分頁已通知過，
-    // 多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）只由第一個通知
-    async _syncSession({ background = false } = {}): Promise<boolean> {
-      for (;;) {
-        const changes = this._authChanges;
-        try {
-          const session = await apiService.initSession({ background });
-          if (changes !== this._authChanges) continue;
-          // 回滾到舊版後端時 authenticated 不帶 user：當作判斷失敗，沿用目前的顯示
-          if (session.status === 'authenticated' && !session.user) throw new Error('Session response without user');
-          if (session.status === 'authenticated') {
-            this.setLoggedInUser(session.user);
-            return false;
-          }
-          const clearedLogin = localStorage.getItem('user_info') !== null;
-          this.becomeAnonymous();
-          return clearedLogin;
-        } catch (error) {
-          if (changes !== this._authChanges) continue;
-          throw error;
-        }
-      }
-    },
-
-    // 其他分頁登入 / 登出後重新判斷。使用者沒有操作，失敗時不跳轉頁面、不提示，沿用目前的顯示（同初始化）；
-    // cookie 已改變，WebSocket 一律重連換成新身分
-    async _runResync() {
-      try {
-        await this._syncSession({ background: true });
-      } catch (error) {
-        console.error('Failed to resync auth state:', error);
-      } finally {
-        useWebSocketStore().reconnect();
+      if (identity === undefined ? cookieChanged : identity !== this._wsIdentity) {
+        this._wsIdentity = identity;
+        websocketStore.reconnect();
       }
     },
 
@@ -162,36 +197,22 @@ export const useUserStore = defineStore('user', {
     },
 
     async _runLogout() {
-      const websocketStore = useWebSocketStore();
       await apiService.logout();
-      this._authChanges++;
+      // 伺服器已撤銷登入：先清掉顯示（同時通知其他分頁），再重新查詢取得匿名身分，WebSocket 依結果重連。
+      // 查詢失敗時期間登出過，仍照目前的 cookie 重連，不會停留在登入身分
+      this._cookieChanged = true;
       this.becomeAnonymous();
-      try {
-        // 登出後恢復匿名：先向伺服器取得匿名身分（cookie），其他分頁與 WebSocket 才能以它重連
-        await this._syncSession();
-      } catch (error) {
-        console.error('Failed to start anonymous session after logout:', error);
-      } finally {
-        // 即使取得匿名身分失敗也要通知其他分頁並重連，否則 WebSocket 會停留在登入身分。
-        // 伺服器已撤銷 refresh token，重連後會是匿名（或無身分）
-        this.notifyLogout();
-        websocketStore.reconnect();
-      }
+      await this._refetchSession();
     },
 
     async loginWithGoogle(payload: string | { credential?: string; code?: string }) {
-      const websocketStore = useWebSocketStore();
       try {
         const requestPayload = typeof payload === 'string' ? { credential: payload } : payload;
         const response = await apiService.loginWithGoogle(requestPayload);
-        this._authChanges++;
+        // 登入回應已設好 cookie：先照它顯示並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分、套用偏好）
+        this._cookieChanged = true;
         this.setLoggedInUser(response.user);
-
-        // 登入回應已設好 access_token cookie；WebSocket 身分由握手時的 cookie 決定，重連即換成登入身分
-        websocketStore.reconnect();
-
-        this.notifyLogin();
-
+        void this._refetchSession();
       } catch (error) {
         // 登入失敗不動登入狀態（登入按鈕只在未登入時顯示），交給呼叫端提示
         console.error('Google login failed:', error);
@@ -211,6 +232,8 @@ export const useUserStore = defineStore('user', {
       if (!this.user) return;
       try {
         this.user = await apiService.updateMyPreferences(preferences);
+        // 本地已是這份偏好：記為已套用，之後查詢回來同一份時不再覆蓋本地（例如正在編輯的版面）
+        this._appliedPreferences = JSON.stringify(this.user.preferences ?? {});
       } catch (error) {
         console.error('Failed to update preferences:', error);
       }
@@ -219,7 +242,7 @@ export const useUserStore = defineStore('user', {
     setLoggedInUser(user: User) {
       this.user = user;
       this.isLoggedIn = true;
-      localStorage.setItem('user_info', JSON.stringify(user));
+      this._writeUserInfo(user);
     },
 
     becomeAnonymous() {
@@ -230,7 +253,22 @@ export const useUserStore = defineStore('user', {
     clearAuth() {
       this.user = null;
       this.isLoggedIn = false;
-      localStorage.removeItem('user_info');
+      this._appliedPreferences = undefined;   // 再登入時一定套用伺服器的偏好
+      this._writeUserInfo(null);
+    },
+
+    // user_info 是所有分頁共用的登入顯示快取。由改變它的分頁通知其他分頁（ADR-0009）：從有變沒有通知登出、
+    // 從沒有變有通知登入。其他分頁收到後重新查詢，套用時快取已是新的狀態，不會再通知；
+    // 多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）也只由第一個通知
+    _writeUserInfo(user: User | null) {
+      const hadLogin = localStorage.getItem('user_info') !== null;
+      if (user) {
+        localStorage.setItem('user_info', JSON.stringify(user));
+        if (!hadLogin) this.notifyLogin();
+      } else {
+        localStorage.removeItem('user_info');
+        if (hadLogin) this.notifyLogout();
+      }
     },
 
     // 以 localStorage 的 user_info 恢復登入狀態；沒有或格式損壞時回傳 false
