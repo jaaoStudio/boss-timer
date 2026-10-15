@@ -31,6 +31,12 @@ def _set_access_token_cookie(response: Response, user_id: int) -> str:
     return access_token
 
 
+def _delete_login_cookies(response: Response) -> None:
+    # 屬性與設定時相同（_set_access_token_cookie、登入時的 refresh_token）
+    for key in ("access_token", "refresh_token"):
+        response.delete_cookie(key=key, httponly=True, secure=settings.env == "production", samesite="lax")
+
+
 @router.post("/google", response_model=auth_schemas.LoginResponse)
 @rate_limit("10/minute")
 async def login_with_google(
@@ -192,9 +198,7 @@ async def logout(
         # 從資料庫中刪除 refresh token
         auth_service.revoke_refresh_token(db, refresh_token)
 
-    # 清除 cookie
-    response.delete_cookie(key="refresh_token")
-    response.delete_cookie(key="access_token")
+    _delete_login_cookies(response)
 
     return {"message": "Logged out successfully"}
 
@@ -241,8 +245,7 @@ async def init_session(
                 _set_access_token_cookie(response, login.user.id)
             return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}
         # 刪掉失效的登入 cookie：refresh cookie 留著的話，WebSocket 握手與之後的請求都還會拿它判斷
-        response.delete_cookie(key="access_token")
-        response.delete_cookie(key="refresh_token")
+        _delete_login_cookies(response)
 
     identity = resolve_anonymous(cookies)
     if identity.kind == "anon":

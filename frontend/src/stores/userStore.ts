@@ -16,14 +16,12 @@ export interface User {
 interface UserState {
   user: User | null;
   isLoggedIn: boolean;
-  isLoading?: boolean;
   anonymousName: string | null;
   // 帳號偏好套用到本地的次數（App.vue 據此同步各項偏好）
   preferencesVersion: number;
   _channel?: BroadcastChannel;
   _initialized: boolean;
   _initPromise?: Promise<void>;
-  _resolveInit?: () => void;
   // 上次把帳號偏好套用到本地的登入者：換人時才再套用（跨裝置同步，ADR-0009）
   _preferencesUserId?: number;
   // WebSocket 握手時的身分（伺服器回答的 user:{id} / anon:{id} / none）；不確定時為 undefined
@@ -35,15 +33,30 @@ interface UserState {
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
 
-// 讀取共用的登入顯示快取 user_info；沒有或格式損壞時回傳 null
-function readCachedUser(): User | null {
-  const cached = localStorage.getItem('user_info');
-  if (!cached) return null;
+// 第一次判斷完成時讓 initializeAuth() 回傳的 promise 完成
+let resolveInit: (() => void) | undefined;
+
+// 讀取共用的登入顯示快取 user_info 的原始字串；讀不到時當作沒有
+function readCachedUserRaw(): string | null {
   try {
-    return JSON.parse(cached) as User;
+    return localStorage.getItem('user_info');
   } catch {
     return null;
   }
+}
+
+// 解析 user_info；沒有或格式損壞時回傳 null
+function parseCachedUser(raw: string | null): User | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as User;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedUser(): User | null {
+  return parseCachedUser(readCachedUserRaw());
 }
 
 // 寫入 user_info。它只是顯示快取，寫不進去（例如空間滿了）時忽略，不中斷登入狀態的處理
@@ -65,13 +78,11 @@ export const useUserStore = defineStore('user', {
   state: (): UserState => ({
     user: null,
     isLoggedIn: false,
-    isLoading: false,
     anonymousName: null,
     preferencesVersion: 0,
     _channel: undefined,
     _initialized: false,
     _initPromise: undefined,
-    _resolveInit: undefined,
     _preferencesUserId: undefined,
     _wsIdentity: undefined,
     _cookieChanged: false,
@@ -91,7 +102,7 @@ export const useUserStore = defineStore('user', {
         this._channel.onmessage = (event) => {
           if (event.data.type !== 'LOGIN' && event.data.type !== 'LOGOUT') return;
           // 其他分頁改了共用的 cookie：不採用通知裡的狀態（可能已過時），重新問伺服器（ADR-0009）
-          this.resyncAfterCookieChange();
+          void this.resyncAfterCookieChange();
         };
       }
     },
@@ -116,10 +127,9 @@ export const useUserStore = defineStore('user', {
       // App.vue onMounted 與 router beforeEach 會在首次載入時同時呼叫，共用同一次初始化
       if (!this._initPromise) {
         this._initPromise = new Promise((resolve) => {
-          this._resolveInit = resolve;
+          resolveInit = resolve;
         });
         this.initBroadcastChannel();
-        this.isLoading = true;
         const observer = new QueryObserver(queryClient, {
           queryKey: SESSION_QUERY_KEY,
           queryFn: ({ signal }) => this._fetchSession(signal),
@@ -134,10 +144,10 @@ export const useUserStore = defineStore('user', {
       return this._initPromise;
     },
 
-    // 登入 cookie 可能改變了（其他分頁通知、401 換發失敗）：不在前端自己判斷，重新問伺服器（ADR-0009）
-    resyncAfterCookieChange() {
+    // 登入 cookie 改變了（登入、登出、其他分頁通知、401 換發失敗）：不在前端自己判斷，重新問伺服器（ADR-0009）
+    resyncAfterCookieChange(): Promise<void> {
       this._cookieChanged = true;
-      void this._refetchSession();
+      return this._refetchSession();
     },
 
     // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
@@ -217,10 +227,9 @@ export const useUserStore = defineStore('user', {
       if (!this._initialized) {
         // 第一次判斷完成才連線：身分在握手時以 cookie 決定，必須等 /auth/session 發好匿名 cookie
         this._initialized = true;
-        this.isLoading = false;
         this._wsIdentity = identity;
         websocketStore.connect();
-        this._resolveInit?.();
+        resolveInit?.();
         return;
       }
       if (identity === undefined ? cookieChanged : identity !== this._wsIdentity) {
@@ -245,11 +254,10 @@ export const useUserStore = defineStore('user', {
       await apiService.logout();
       // 伺服器已撤銷登入。先只清掉本分頁的畫面，共用的 user_info 等取得匿名身分（cookie）後才清（同時通知其他分頁）：
       // 其他分頁重新查詢時沿用這個匿名身分，原本沒有匿名 cookie 時也不會各自申請一個
-      this._cookieChanged = true;
       this.user = null;
       this.isLoggedIn = false;
-      if (this.anonymousName === null) this.anonymousName = this.getAnonymousName();
-      await this._refetchSession();
+      this._ensureAnonymousName();
+      await this.resyncAfterCookieChange();
       // 查詢成功時已照伺服器的回答設定：匿名就已清掉 user_info 並通知；仍是登入（換發與登出同時發生，ADR-0009 接受的時序）
       // 就照它顯示，與 cookie 一致。查詢失敗時照樣清掉並通知，WebSocket 已因期間登出過而照目前的 cookie 重連
       if (!this.isLoggedIn) this.becomeAnonymous();
@@ -261,21 +269,12 @@ export const useUserStore = defineStore('user', {
         const response = await apiService.loginWithGoogle(requestPayload);
         // 登入回應已設好 cookie：先照它顯示、套用帳號偏好並通知其他分頁，再重新查詢（WebSocket 依結果換成登入身分）。
         // 偏好不等查詢：查詢失敗時本地會留著匿名時的偏好，之後存檔會蓋掉帳號的設定
-        this._cookieChanged = true;
         this._applyServerUser(response.user);
-        void this._refetchSession();
+        void this.resyncAfterCookieChange();
       } catch (error) {
         // 登入失敗不動登入狀態（登入按鈕只在未登入時顯示），交給呼叫端提示
         console.error('Google login failed:', error);
         throw error;
-      }
-    },
-
-    async fetchUser() {
-      try {
-        this.user = await apiService.getMe();
-      } catch (error) {
-        this.user = null;
       }
     },
 
@@ -300,30 +299,28 @@ export const useUserStore = defineStore('user', {
     },
 
     becomeAnonymous() {
-      this.clearAuth();
-      // 已經是匿名時不重新讀取：切回分頁的查詢不會把暱稱欄裡正在輸入的名字改回存的舊值
-      if (this.anonymousName === null) this.anonymousName = this.getAnonymousName();
-    },
-
-    clearAuth() {
       this.user = null;
       this.isLoggedIn = false;
       this._preferencesUserId = undefined;   // 再登入時一定套用帳號的偏好
       this._writeUserInfo(null);
+      this._ensureAnonymousName();
+    },
+
+    // 已經是匿名時不重新讀取：切回分頁的查詢不會把暱稱欄裡正在輸入的名字改回存的舊值
+    _ensureAnonymousName() {
+      if (this.anonymousName === null) this.anonymousName = this.getAnonymousName();
     },
 
     // user_info 是所有分頁共用的登入顯示快取。由改變顯示中的登入者的分頁通知其他分頁（ADR-0009）：
     // 變成沒有登入通知登出，變成另一個登入者（含從沒有變有）通知登入。其他分頁收到後重新查詢，
     // 套用時快取已是新的狀態，不會再通知；多個分頁同時發現登入失效（例如瀏覽器一次還原很多分頁）也只由第一個通知
     _writeUserInfo(user: User | null) {
-      const cached = localStorage.getItem('user_info');
+      const raw = readCachedUserRaw();
+      writeCachedUser(user);
       if (user) {
-        const cachedId = readCachedUser()?.id;
-        writeCachedUser(user);
-        if (cachedId !== user.id) this.notifyLogin();
-      } else {
-        writeCachedUser(null);
-        if (cached !== null) this.notifyLogout();
+        if (parseCachedUser(raw)?.id !== user.id) this.notifyLogin();
+      } else if (raw !== null) {
+        this.notifyLogout();
       }
     },
 

@@ -84,11 +84,6 @@ class ApiService {
     return res.data
   }
 
-  async getMe(): Promise<User> {
-    const res = await this.client.get<User>('/auth/me')
-    return res.data
-  }
-
   async refresh_token(): Promise<{ status?: number }> {
     const res = await this.client.post<{ status?: number }>('auth/refresh')
     return res.data
