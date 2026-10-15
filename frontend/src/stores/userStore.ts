@@ -134,12 +134,11 @@ export const useUserStore = defineStore('user', {
 
     // 每次查詢在這裡套用結果。被取消的請求（之後登入 cookie 改變過）不套用
     async _fetchSession(signal: AbortSignal): Promise<InitSessionResponse> {
+      let session: InitSessionResponse;
       try {
-        const session = await apiService.initSession(signal);
+        session = await apiService.initSession(signal);
         // 回滾到舊版後端時 authenticated 不帶 user：當作判斷失敗，沿用目前的顯示
         if (session.status === 'authenticated' && !session.user) throw new Error('Session response without user');
-        this._applySession(session);
-        return session;
       } catch (error) {
         if (!signal.aborted) {
           console.error('Failed to resolve auth state:', error);
@@ -147,6 +146,9 @@ export const useUserStore = defineStore('user', {
         }
         throw error;
       }
+      // 在請求的錯誤處理之外套用：套用時出錯（例如 localStorage 寫不進去）不是判斷失敗，不走失敗的處理
+      this._applySession(session);
+      return session;
     },
 
     // 照伺服器的判斷設定（登入過期時伺服器會順便換發，登入失效時會清掉舊 cookie、改發匿名身分）
@@ -167,8 +169,9 @@ export const useUserStore = defineStore('user', {
         this.setLoggedInUser({ ...user, preferences: this.user.preferences });
         return;
       }
-      this._preferencesUserId = user.id;
       this.setLoggedInUser(user);
+      // 套用成功才記下：寫入失敗時下一次回答會再套用
+      this._preferencesUserId = user.id;
       this.preferencesVersion++;
     },
 
@@ -216,11 +219,16 @@ export const useUserStore = defineStore('user', {
 
     async _runLogout() {
       await apiService.logout();
-      // 伺服器已撤銷登入：先清掉顯示（同時通知其他分頁），再重新查詢取得匿名身分，WebSocket 依結果重連。
-      // 查詢失敗時期間登出過，仍照目前的 cookie 重連，不會停留在登入身分
+      // 伺服器已撤銷登入。先只清掉本分頁的畫面，共用的 user_info 等取得匿名身分（cookie）後才清（同時通知其他分頁）：
+      // 其他分頁重新查詢時沿用這個匿名身分，原本沒有匿名 cookie 時也不會各自申請一個
       this._cookieChanged = true;
-      this.becomeAnonymous();
+      this.user = null;
+      this.isLoggedIn = false;
+      if (this.anonymousName === null) this.anonymousName = this.getAnonymousName();
       await this._refetchSession();
+      // 查詢成功時已照伺服器的回答設定：匿名就已清掉 user_info 並通知；仍是登入（換發與登出同時發生，ADR-0009 接受的時序）
+      // 就照它顯示，與 cookie 一致。查詢失敗時照樣清掉並通知，WebSocket 已因期間登出過而照目前的 cookie 重連
+      if (!this.isLoggedIn) this.becomeAnonymous();
     },
 
     async loginWithGoogle(payload: string | { credential?: string; code?: string }) {
@@ -249,16 +257,13 @@ export const useUserStore = defineStore('user', {
 
     async updatePreferences(preferences: Record<string, unknown>) {
       if (!this.user) return;
-      // 先寫進這台裝置目前的偏好再存檔（各元件也是先改本地）：本地永遠是使用者最後的意思，回應先後顛倒也不會改回舊值
+      // 先寫進這台裝置目前的偏好再存檔（各元件也是先改本地）：本地永遠是使用者最後的意思，回應先後顛倒也不會改回舊值。
+      // user_info 的偏好也是這台裝置目前的偏好（同各元件存在 localStorage 的收藏、版面），一改就寫入，不等存檔結果。
+      // 只在快取仍是同一個登入者時寫入：其他分頁已登出就不寫回；這不是登入者改變，不經 _writeUserInfo、不通知其他分頁
       this.user = { ...this.user, preferences: { ...this.user.preferences, ...preferences } };
-      const userId = this.user.id;
+      if (readCachedUser()?.id === this.user.id) localStorage.setItem('user_info', JSON.stringify(this.user));
       try {
         await apiService.updateMyPreferences(preferences);
-        // 存檔成功才更新共用的顯示快取（下次開頁判斷失敗時也是新的偏好）。只在快取與本分頁仍是同一個登入者時：
-        // 其他分頁已登出時不寫回；這不是登入者改變，不經 _writeUserInfo、不通知其他分頁
-        if (this.user?.id === userId && readCachedUser()?.id === userId) {
-          localStorage.setItem('user_info', JSON.stringify(this.user));
-        }
       } catch (error) {
         console.error('Failed to update preferences:', error);
       }
@@ -272,7 +277,8 @@ export const useUserStore = defineStore('user', {
 
     becomeAnonymous() {
       this.clearAuth();
-      this.anonymousName = this.getAnonymousName();
+      // 已經是匿名時不重新讀取：切回分頁的查詢不會把暱稱欄裡正在輸入的名字改回存的舊值
+      if (this.anonymousName === null) this.anonymousName = this.getAnonymousName();
     },
 
     clearAuth() {

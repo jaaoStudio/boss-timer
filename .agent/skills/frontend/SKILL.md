@@ -138,8 +138,8 @@ frontend/
 **核心 Actions**:
 - `initializeAuth()` — 開始查詢登入狀態（`/auth/session`，由伺服器判斷），第一次判斷完成後連線 WebSocket（細節見下方「登入狀態的查詢守則」）
 - `loginWithGoogle(payload)` — Google 登入：照登入回應顯示（同時通知其他分頁），再重新查詢；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
-- `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清除顯示（同時通知其他分頁）並重新查詢。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
-- `updatePreferences(preferences)` — 更新使用者偏好設定：先寫進 `user.preferences` 再存檔，成功後更新 `user_info`（快取仍是同一個登入者時）
+- `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清掉本分頁的畫面並重新查詢；取得匿名身分後才清 `user_info`（同時通知其他分頁，讓它們沿用同一個匿名身分），查詢失敗也照樣清掉並通知。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
+- `updatePreferences(preferences)` — 更新使用者偏好設定：先寫進 `user.preferences` 與 `user_info`（快取仍是同一個登入者時）再存檔
 
 #### ⚠️ 登入狀態的查詢守則（ADR-0009，照 NextAuth 前端的模型）
 
@@ -161,7 +161,7 @@ frontend/
    網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線（否則開頁卡住）。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都 `clearAuth()`」。
 
 6. **帳號偏好只在換人時套用到本地**（`_applyServerUser`，CONTEXT.md「跨裝置同步」）
-   伺服器回答（查詢成功或登入回應）的登入者和 `_preferencesUserId` 不同時（開頁、登入、換成另一個人）才套用帳號偏好並遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。同一個人的回答只更新帳號資料、保留目前的 `user.preferences`。`updatePreferences` 先把存的項目寫進 `user.preferences` 再送出（回應先後顛倒也不會改回舊值），成功時只在 `user_info` 快取仍是同一個登入者時直接寫入，不經 `_writeUserInfo`、不通知（其他分頁已登出時不寫回）。**勿改回「每次查詢都同步偏好」**（PR #64 第 8～11 輪：存檔中的先後順序一直出問題；要即時同步得另外把偏好做成獨立查詢）。`clearAuth()` 清掉 `_preferencesUserId`，再登入時一定套用。
+   伺服器回答（查詢成功或登入回應）的登入者和 `_preferencesUserId` 不同時（開頁、登入、換成另一個人）才套用帳號偏好並遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。同一個人的回答只更新帳號資料、保留目前的 `user.preferences`。`updatePreferences` 先把存的項目寫進 `user.preferences` 再送出（回應先後顛倒也不會改回舊值）；`user_info` 的偏好也是這台裝置目前的偏好，一改就寫入、不等存檔結果，只在快取仍是同一個登入者時直接寫入，不經 `_writeUserInfo`、不通知（其他分頁已登出時不寫回）。**勿改回「每次查詢都同步偏好」**（PR #64 第 8～11 輪：存檔中的先後順序一直出問題；要即時同步得另外把偏好做成獨立查詢）。`clearAuth()` 清掉 `_preferencesUserId`，再登入時一定套用。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
