@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, watch } from 'vue';
-import { RouterView } from "vue-router";
+import { RouterView, useRoute, useRouter } from "vue-router";
 import AppFooter from "@/components/AppFooter.vue";
 import MaintenanceBanner from "@/components/ui/MaintenanceBanner.vue"; // 引入元件
 import { useUserStore } from '@/stores/userStore';
@@ -8,8 +8,11 @@ import { useAppInfoStore } from '@/stores/appInfo'; // 引入 store
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference';
 import { useFavoriteBosses } from '@/composables/useFavoriteBosses';
 import { useLayoutConfig } from '@/composables/useLayoutConfig';
+import { canAccess } from '@/router';
 
 const userStore = useUserStore();
+const route = useRoute();
+const router = useRouter();
 const appInfoStore = useAppInfoStore(); // 實例化 store
 const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
@@ -20,6 +23,12 @@ watch(() => userStore.preferencesVersion, () => {
   syncChannelView();
   syncFavoriteBosses();
   syncLayout();
+});
+
+// 登入狀態改變後（登入失效、其他分頁登出、切回分頁時的查詢）不能再停在需要登入的頁面時回首頁。
+// 不管是哪種原因造成的都由這裡處理，interceptor 不跳頁（ADR-0009）
+watch(() => canAccess(route), (allowed) => {
+  if (!allowed) router.push({ name: 'RoomSelection' });
 });
 
 onMounted(async () => {

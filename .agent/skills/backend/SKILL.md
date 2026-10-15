@@ -248,7 +248,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 5. 回傳 `LoginResponse` 包含 user 資訊
 
 ### Token 刷新
-- `POST /auth/refresh` — 從 Cookie 讀取 refresh token → 驗證 → 生成新的 access token
+- `POST /auth/refresh` — 從 Cookie 讀取 refresh token → 驗證 → 生成新的 access token。只供部署切換期間的舊版前端，新前端使用中途遇到 401 改問 `/auth/session`（ADR-0009），日後與 `/auth/validate` 一起刪除
 
 ### Token 驗證
 - `POST /auth/validate` — 支援 `Authorization: Bearer <token>` Header 或 `access_token` Cookie。只供部署切換期間的舊版前端，日後刪除
@@ -360,7 +360,7 @@ ConnectionManager
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
 | POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
-| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
+| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token（只供舊版前端；新前端遇到 401 改問 `/auth/session`，日後刪除） |
 | POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token 有效性（只供舊版前端，日後刪除） |
 | GET | `/auth/me` | Cookie | 60/min | 取得當前使用者資訊 |
 | POST | `/auth/logout` | Cookie | 10/min | 登出 + 撤銷 refresh token |

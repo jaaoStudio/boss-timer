@@ -152,6 +152,17 @@ export const useUserStore = defineStore('user', {
       return this._refetchSession();
     },
 
+    // 使用中途遇到 401：加入目前的登入狀態查詢（/auth/session 會順便換發過期的 access token），回傳伺服器的回答，
+    // 查詢失敗時回傳 null。401 不代表 cookie 被別人改過，不取消進行中的查詢：同一個分頁同時好幾個 401 只問一次（ADR-0009）
+    async revalidateSession(): Promise<InitSessionResponse | null> {
+      // 加入的查詢若被取消重發（期間 cookie 改變過），等重發的那次
+      do {
+        await queryClient.refetchQueries({ queryKey: SESSION_QUERY_KEY }, { cancelRefetch: false });
+      } while (queryClient.isFetching({ queryKey: SESSION_QUERY_KEY }) > 0);
+      const state = queryClient.getQueryState<InitSessionResponse>(SESSION_QUERY_KEY);
+      return state?.status === 'success' ? state.data ?? null : null;
+    },
+
     // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
     // 不只用 invalidateQueries：Vue Query 在還沒有任何結果時（開頁的查詢進行中）不會取消進行中的請求
     async _refetchSession() {

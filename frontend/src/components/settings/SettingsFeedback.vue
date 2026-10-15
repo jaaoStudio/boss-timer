@@ -159,6 +159,7 @@ import ApiService, {
   type FeedbackType,
 } from '@/services/apiService'
 import { showMessage } from '@/composables/useElementPlus'
+import { isHandledGlobally } from '@/axios/handlingErrors'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -234,8 +235,8 @@ const load = async () => {
   try {
     const res = await ApiService.listFeedback(sortBy.value)
     items.value = res.items
-  } catch {
-    showMessage.error(t('settings.feedback.loadFailed'))
+  } catch (error) {
+    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -255,6 +256,8 @@ const submit = async () => {
     showMessage.success(t('settings.feedback.submitSuccess'))
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
+    if (isHandledGlobally(e)) return
+    // 全域只處理限流器的 429；每日提交上限也是 429，由這裡提示
     if (err?.response?.status === 429) {
       showMessage.warning(t('settings.feedback.rateLimited'))
     } else {
@@ -272,8 +275,8 @@ const vote = async (item: FeedbackItem) => {
     const res = await ApiService.voteFeedback(item.id)
     item.voted_by_me = res.voted
     item.vote_count = res.vote_count
-  } catch {
-    showMessage.error(t('settings.feedback.voteFailed'))
+  } catch (error) {
+    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.voteFailed'))
   } finally {
     votingId.value = null
   }
@@ -284,8 +287,8 @@ const updateStatus = async (item: FeedbackItem, status: FeedbackStatus) => {
     const updated = await ApiService.updateFeedbackStatus(item.id, status)
     item.status = updated.status
     showMessage.success(t('settings.feedback.statusUpdated'))
-  } catch {
-    showMessage.error(t('settings.feedback.statusUpdateFailed'))
+  } catch (error) {
+    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.statusUpdateFailed'))
   }
 }
 
@@ -307,8 +310,8 @@ const remove = async (item: FeedbackItem) => {
     await ApiService.deleteFeedback(item.id)
     items.value = items.value.filter(i => i.id !== item.id)
     showMessage.success(t('settings.feedback.deleteSuccess'))
-  } catch {
-    showMessage.error(t('settings.feedback.deleteFailed'))
+  } catch (error) {
+    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.deleteFailed'))
   }
 }
 

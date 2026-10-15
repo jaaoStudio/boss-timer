@@ -78,6 +78,7 @@ import { useRoomStore } from '@/stores/roomStore'
 import { useRecordHistoryStore } from '@/stores/recordHistoryStore'
 import { isAxiosError } from 'axios'
 import { showMessage } from '@/composables/useElementPlus'
+import { isHandledGlobally } from '@/axios/handlingErrors'
 import { ElMessageBox } from 'element-plus'
 import ApiService from '@/services/apiService'
 
@@ -113,8 +114,8 @@ const addBoss = async () => {
     bossStore.addCustomBossType(result)
     form.value = { name: '', min_respawn_minutes: null, max_respawn_minutes: null }
     showMessage.success(t('settings.customBoss.addSuccess'))
-  } catch {
-    showMessage.error(t('settings.customBoss.addFailed'))
+  } catch (error) {
+    if (!isHandledGlobally(error)) showMessage.error(t('settings.customBoss.addFailed'))
   } finally {
     adding.value = false
   }
@@ -155,7 +156,7 @@ const deleteBoss = async (id: number) => {
       removeLocally(id)
     } else {
       bossStore.unmarkSelfDeletingBossType(id)
-      showMessage.error(t('settings.customBoss.deleteFailed'))
+      if (!isHandledGlobally(err)) showMessage.error(t('settings.customBoss.deleteFailed'))
     }
   } finally {
     deletingId.value = null

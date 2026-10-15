@@ -159,7 +159,7 @@ def rate_limit(limit_value: str, personal_key_func=None):
 
     return decorator
 
-# 自定義速率限制超過時的例外處理函式
+# 自定義速率限制超過時的例外處理函式。前端以 detail 開頭的 "Rate limit exceeded" 辨認限流器的 429（handlingErrors.ts），勿改這個開頭
 async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
     return JSONResponse(
         status_code=429,

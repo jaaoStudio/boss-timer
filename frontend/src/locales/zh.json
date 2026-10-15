@@ -321,6 +321,7 @@
     "section9Content": "若您對於您的個人資料有任何疑問、或希望請求刪除，請透過電子郵件聯繫我們："
   },
   "globalErrors": {
+    "sessionExpired": "登入已失效，請重新登入",
     "rateLimitExceeded": "操作太頻繁，請稍後再試",
     "recordNotFound": "找不到此紀錄（可能已被刪除）"
   },

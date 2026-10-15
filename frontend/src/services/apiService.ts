@@ -84,11 +84,6 @@ class ApiService {
     return res.data
   }
 
-  async refresh_token(): Promise<{ status?: number }> {
-    const res = await this.client.post<{ status?: number }>('auth/refresh')
-    return res.data
-  }
-
   async updateMyPreferences(preferences: Record<string, unknown>): Promise<User> {
     const res = await this.client.put<User>('/auth/me/preferences', preferences)
     return res.data

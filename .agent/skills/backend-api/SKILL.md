@@ -120,7 +120,7 @@ async def get_room_state(db, room_id) -> dict:
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
 | POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
-| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
+| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token（只供舊版前端；新前端遇到 401 改問 `/auth/session`，日後刪除） |
 | POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token（只供舊版前端，日後刪除） |
 | GET | `/auth/me` | Cookie | 60/min | 取得使用者資訊 |
 | POST | `/auth/logout` | Cookie | 10/min | 登出 |
