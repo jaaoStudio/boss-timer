@@ -159,7 +159,7 @@ import ApiService, {
   type FeedbackType,
 } from '@/services/apiService'
 import { showMessage } from '@/composables/useElementPlus'
-import { isHandledGlobally } from '@/axios/handlingErrors'
+import { isHandledGlobally, showFailure } from '@/axios/handlingErrors'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -236,7 +236,7 @@ const load = async () => {
     const res = await ApiService.listFeedback(sortBy.value)
     items.value = res.items
   } catch (error) {
-    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.loadFailed'))
+    showFailure(error, t('settings.feedback.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -276,7 +276,7 @@ const vote = async (item: FeedbackItem) => {
     item.voted_by_me = res.voted
     item.vote_count = res.vote_count
   } catch (error) {
-    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.voteFailed'))
+    showFailure(error, t('settings.feedback.voteFailed'))
   } finally {
     votingId.value = null
   }
@@ -288,7 +288,7 @@ const updateStatus = async (item: FeedbackItem, status: FeedbackStatus) => {
     item.status = updated.status
     showMessage.success(t('settings.feedback.statusUpdated'))
   } catch (error) {
-    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.statusUpdateFailed'))
+    showFailure(error, t('settings.feedback.statusUpdateFailed'))
   }
 }
 
@@ -311,7 +311,7 @@ const remove = async (item: FeedbackItem) => {
     items.value = items.value.filter(i => i.id !== item.id)
     showMessage.success(t('settings.feedback.deleteSuccess'))
   } catch (error) {
-    if (!isHandledGlobally(error)) showMessage.error(t('settings.feedback.deleteFailed'))
+    showFailure(error, t('settings.feedback.deleteFailed'))
   }
 }
 

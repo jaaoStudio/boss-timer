@@ -61,7 +61,7 @@ import { useI18n } from 'vue-i18n'
 import { ElMessageBox, ElMessage } from 'element-plus'
 import { subDays, format } from 'date-fns'
 import apiService from '@/services/apiService'
-import { isHandledGlobally } from '@/axios/handlingErrors'
+import { showFailure } from '@/axios/handlingErrors'
 
 const { t, locale } = useI18n()
 const bossStore = useBossStore()
@@ -171,8 +171,8 @@ const handleDelete = async (recordId: number) => {
     await apiService.deleteBossRecord(roomStore.roomId, recordId)
     ElMessage.success(t('recordHistory.deleteSuccess'))
   } catch (err: unknown) {
-    if (err !== 'cancel' && !isHandledGlobally(err)) {
-      ElMessage.error(t('recordHistory.deleteFailed'))
+    if (err !== 'cancel') {
+      showFailure(err, t('recordHistory.deleteFailed'))
       console.error(err)
     }
   } finally {

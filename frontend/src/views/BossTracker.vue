@@ -74,8 +74,7 @@ import RecommendedChannels from '@/components/channel/RecommendedChannels.vue'
 import RecordHistory from '@/components/record/RecordHistory.vue'
 import LayoutItemWrapper from '@/components/layout/LayoutItemWrapper.vue'
 import EditModeToolbar from '@/components/layout/EditModeToolbar.vue'
-import { showMessage } from '@/composables/useElementPlus'
-import { isHandledGlobally } from '@/axios/handlingErrors'
+import { isNavigatedGlobally, showFailure } from '@/axios/handlingErrors'
 import { useI18n } from 'vue-i18n'
 import { useBossAlerts } from '@/composables/useBossAlerts'
 import { useLayoutConfig } from '@/composables/useLayoutConfig'
@@ -105,13 +104,10 @@ onMounted(async () => {
   try {
     await enter(props.roomId)
   } catch (error) {
-    if (isHandledGlobally(error)) {
-      // 全域已跳到維護 / 錯誤頁時不再導回首頁；只提示時（例如被限流）照樣離開房間頁
-      if (router.currentRoute.value.name === 'BossTracker') await router.push({ name: 'RoomSelection' })
-      return
-    }
-    await router.push({ name: 'RoomSelection' })
-    showMessage.error(
+    // 全域已跳到其他頁（維護頁、錯誤頁）時不再導回首頁，否則會蓋掉那次跳轉
+    if (!isNavigatedGlobally(error)) await router.push({ name: 'RoomSelection' })
+    showFailure(
+      error,
       error instanceof RoomNotFoundError
         ? t('bossTracker.roomNotFound')
         : t('bossTracker.failedToEnter')

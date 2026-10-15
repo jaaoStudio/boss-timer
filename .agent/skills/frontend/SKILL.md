@@ -148,7 +148,7 @@ frontend/
    以 TanStack Vue Query 的單一查詢（`['auth', 'session']`，`QueryObserver` 訂閱）呼叫 `apiService.initSession()`，結果在 `_fetchSession` 套用：`authenticated` → `_applyServerUser(user)`（處理帳號偏好，見第 6 條，勿直接呼叫 `setLoggedInUser`）；`anonymous` → `becomeAnonymous()`。access token 過期時伺服器會以 refresh token 順便換發，登入失效時會清掉舊的登入 cookie、改發匿名身分。**勿在前端自己換發或重新驗證**（已移除 `tryRefreshToken()`、`validateToken()`）。
 
 2. **每個分頁只有一個查詢，何時查詢是固定的**
-   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求中斷、結果不套用到畫面，但回應標頭已到的話瀏覽器仍會套用 Set-Cookie），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
+   開頁；切回分頁（`refetchOnWindowFocus`，`QueryClient` 要經 `VueQueryPlugin` 掛載才會生效）；前景時每 20 分鐘（`refetchInterval`，讓 access token 不會在正常使用時到期）；本分頁登入、登出，或收到其他分頁的 `LOGIN` / `LOGOUT` 時呼叫 `_refetchSession()`：先 `cancelQueries` 取消進行中的請求（是 cookie 改變前送出的；`queryFn` 有傳 `signal`，取消時請求中斷、結果不套用到畫面，但回應標頭已到的話瀏覽器仍會套用 Set-Cookie），再重新查詢。只用 `invalidateQueries` 不夠：查詢還沒有任何結果時，Vue Query 不會取消進行中的請求。`App.vue` 的 `onMounted` 與 router `beforeEach` 首次載入時會同時呼叫 `initializeAuth()`，以 `_initPromise` 共用同一次初始化。
 
 3. **WebSocket 只在身分不同時重連**（`_syncWebSocket`）
    開頁第一次判斷完成（成功或失敗）才 `connect()`。之後查詢成功時，伺服器回答的身分（`user:{id}` / `anon:{id}` / `none`）和 `_wsIdentity` 不同才 `reconnect()`；查詢失敗時，期間登入 / 登出過（`_cookieChanged`）才照目前的 cookie 重連。
@@ -157,7 +157,7 @@ frontend/
    `user_info` 是所有分頁共用的顯示快取：變成沒有登入廣播 `LOGOUT`，變成另一個登入者（含從沒有變有）廣播 `LOGIN`。登入、登出、發現登入失效都由這一條處理；收到通知的分頁重新查詢時快取已是新狀態，不會再通知，多個分頁同時發現登入失效也只由第一個通知。`user_info` 寫不進去（`writeCachedUser` 回傳 false）時不通知：快取沒變，否則分頁之間會互相觸發。**勿另外呼叫 `notifyLogin()` / `notifyLogout()`。** `LOGIN` 仍帶 `user`，只給部署切換期間的舊版前端用。
 
 5. **判斷失敗不改變登入狀態**
-   網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線；請求有 10 秒逾時，網路卡住沒有回應時也不會讓開頁一直等。套用結果出錯時仍以 `finally` 完成初始化，`user_info` 寫不進去（`writeCachedUser`）只記錄、不中斷。使用中途遇到 401 時 interceptor 呼叫 `revalidateSession()`（加入目前的查詢、不取消），仍是登入就重送一次，勿在前端自己換發（已移除 `refresh_token()`）或清除登入。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都清除登入」。
+   網路錯誤、5xx、429 不代表登入失效：沿用目前的顯示（開頁時以 `restoreUserFromStorage()` 從 `user_info` 恢復，沒有就顯示匿名），**什麼都不清除、不通知**，也不自動重試（`retry: false`），等下一次觸發再問。查詢帶 `skipGlobalErrorHandler`，不跳維護 / 錯誤頁、不提示；伺服器真的掛掉時，`App.vue` 接著的 `checkMaintenanceStatus()` 會帶到維護頁或錯誤頁。`networkMode: 'always'`：離線時照樣送出、失敗就沿用顯示，不要暫停到恢復連線；請求有 10 秒逾時，網路卡住沒有回應時也不會讓開頁一直等。套用結果出錯時仍以 `finally` 完成初始化，`user_info` 寫不進去（`writeCachedUser`）只記錄、不中斷。使用中途遇到 401 時 interceptor 呼叫 `recheckSession()`（取消進行中的、重新查詢），**不重送**，勿在前端自己換發（已移除 `refresh_token()`）或清除登入。後端 IP 天花板會讓同 IP 的人互相影響（見 ADR-0007），勿改回「任何錯誤都清除登入」。
 
 6. **帳號偏好只在換人時套用到本地**（`_applyServerUser`，CONTEXT.md「跨裝置同步」）
    伺服器回答（查詢成功或登入回應）的登入者和 `_preferencesUserId` 不同時（開頁、登入、換成另一個人）才套用帳號偏好並遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。同一個人的回答只更新帳號資料、保留目前的 `user.preferences`。`updatePreferences` 先把存的項目寫進 `user.preferences` 再送出（回應先後顛倒也不會改回舊值）；`user_info` 的偏好也是這台裝置目前的偏好，一改就寫入、不等存檔結果，只在快取仍是同一個登入者時直接寫入，不經 `_writeUserInfo`、不通知（其他分頁已登出時不寫回）。**勿改回「每次查詢都同步偏好」**（PR #64 第 8～11 輪：存檔中的先後順序一直出問題；要即時同步得另外把偏好做成獨立查詢）。`becomeAnonymous()` 清掉 `_preferencesUserId`，再登入時一定套用。
@@ -371,8 +371,8 @@ class ApiService {
 
 ### Axios 設定
 - **Base URL**: 由環境變數 `VITE_APP_BASE_URL` 控制
-- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中，ADR-0009「使用中途遇到 401」)：網路錯誤與 503 跳維護頁、5xx 跳錯誤頁、限流器的 429 提示（以 detail 開頭 `Rate limit exceeded` 辨認，其他 429 交給呼叫端）、401 問 `/auth/session` 後重送或提示「登入已失效」；呼叫端自己取消的請求不處理。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
-- **呼叫端的失敗提示**: catch 裡先問 `isHandledGlobally(error)`，已由全域處理（跳頁或已提示）就不再顯示自己的提示，同一個錯誤不會出現兩個提示
+- **攔截器**: 全域回應錯誤處理 (在 `handlingErrors.ts` 中，ADR-0009「使用中途遇到 401」)：網路錯誤與 503 跳維護頁、5xx 跳錯誤頁、限流器的 429 提示（以 detail 開頭 `Rate limit exceeded` 辨認，其他 429 交給呼叫端）、401 重新查詢登入狀態、登入失效時提示「登入已失效」並回首頁（不重送，多個 401 共用一次確認；`skipUnauthorizedCheck` 的請求例外）；呼叫端自己取消的請求不處理。登入狀態的查詢（`initSession`）帶 `skipGlobalErrorHandler: true`，失敗由呼叫端處理
+- **呼叫端的失敗提示**: 一律用 `showFailure(error, 訊息)`（勿直接 `showMessage.error`），全域已處理（跳頁或已提示）就不再顯示，同一個錯誤不會出現兩個提示。要導頁前先問 `isNavigatedGlobally(error)`，全域已跳頁就不要再導頁
 - **認證**: Cookie-based (HttpOnly)，無需手動帶 Token
 
 ---

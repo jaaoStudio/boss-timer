@@ -151,7 +151,7 @@ import { useNotification } from '@/composables/useNotification'
 import { useSound } from '@/composables/useSound'
 import { VideoPlay, InfoFilled } from '@element-plus/icons-vue'
 import { showMessage } from '@/composables/useElementPlus'
-import { isHandledGlobally } from '@/axios/handlingErrors'
+import { showFailure } from '@/axios/handlingErrors'
 import apiService from '@/services/apiService'
 import { useRoomStore, type RoomSettings } from '@/stores/roomStore'
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference'
@@ -239,7 +239,7 @@ const saveWebhookSettings = async (changes: RoomSettings) => {
     console.log(e)
     // 存檔失敗時把剛改的欄位還原成伺服器的值，避免畫面與實際設定不一致
     if (roomStore.roomSettings) applyRoomSettings(roomStore.roomSettings, Object.keys(changes) as WebhookField[])
-    if (!isHandledGlobally(e)) showMessage.error(t('settings.webhookUpdateFailed'))
+    showFailure(e, t('settings.webhookUpdateFailed'))
   }
 }
 

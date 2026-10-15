@@ -11,8 +11,8 @@ declare module 'axios' {
   interface AxiosRequestConfig {
     // 失敗由呼叫端處理：不跳轉頁面、不顯示提示
     skipGlobalErrorHandler?: boolean
-    // 遇到 401 後重送的請求：再遇到 401 就不再處理，避免一直重送
-    _retriedAfterUnauthorized?: boolean
+    // 401 不代表登入狀態有問題的請求（例如 Google 登入的憑證無效）：不走 401 的登入確認
+    skipUnauthorizedCheck?: boolean
   }
 }
 
@@ -54,8 +54,7 @@ const setAxiosInterceptor = (axiosInstance: AxiosClient) => {
     (response: AxiosResponse) => response,
     (error: AxiosError) => {
       if (error.config?.skipGlobalErrorHandler) return Promise.reject(error)
-      // 401 且重送成功時，呼叫端拿到重送的回應
-      return handleError(axiosInstance, error)
+      return handleError(error)
     },
   )
 }

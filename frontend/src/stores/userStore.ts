@@ -33,6 +33,8 @@ interface UserState {
 }
 
 const SESSION_QUERY_KEY = ['auth', 'session'] as const;
+// 必須短於 access token 的效期（30 分鐘）
+const SESSION_REFETCH_INTERVAL_MS = 20 * 60 * 1000;
 
 // 讀取共用的登入顯示快取 user_info 的原始字串；讀不到時當作沒有
 function readCachedUserRaw(): string | null {
@@ -139,6 +141,9 @@ export const useUserStore = defineStore('user', {
           retry: false,
           networkMode: 'always',
           refetchOnReconnect: false,
+          // 分頁在前景時定期查詢，伺服器會順便換發 access token（30 分鐘到期），正常使用時不會遇到 401（照 NextAuth 的
+          // refetchInterval）。在背景時不查，切回來時本來就會查
+          refetchInterval: SESSION_REFETCH_INTERVAL_MS,
         });
         // 訂閱後才開始查詢，也才會在切回分頁時重新查詢
         observer.subscribe(() => {});
@@ -152,15 +157,10 @@ export const useUserStore = defineStore('user', {
       return this._refetchSession();
     },
 
-    // 使用中途遇到 401：加入目前的登入狀態查詢（/auth/session 會順便換發過期的 access token），回傳伺服器的回答，
-    // 查詢失敗時回傳 null。401 不代表 cookie 被別人改過，不取消進行中的查詢：同一個分頁同時好幾個 401 只問一次（ADR-0009）
-    async revalidateSession(): Promise<InitSessionResponse | null> {
-      // 加入的查詢若被取消重發（期間 cookie 改變過），等重發的那次
-      do {
-        await queryClient.refetchQueries({ queryKey: SESSION_QUERY_KEY }, { cancelRefetch: false });
-      } while (queryClient.isFetching({ queryKey: SESSION_QUERY_KEY }) > 0);
-      const state = queryClient.getQueryState<InitSessionResponse>(SESSION_QUERY_KEY);
-      return state?.status === 'success' ? state.data ?? null : null;
+    // 使用中途遇到 401：重新問伺服器（ADR-0009）。進行中的查詢可能是 access token 到期前送出的，取消後再問；
+    // 伺服器回答登入失效就照一般規則改為匿名、通知其他分頁
+    recheckSession(): Promise<void> {
+      return this._refetchSession();
     },
 
     // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
