@@ -8,35 +8,15 @@ import uuid
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_login_user_key
+from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
 from app.config import settings
 from app.utils import anonymous_id
 from app.utils.identity import has_login_cookies, resolve_anonymous, resolve_login
+from app.utils.login_cookies import cookie_attrs, delete_login_cookies, set_access_token_cookie
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
-
-
-def _cookie_attrs() -> dict:
-    # 所有 cookie 設定與刪除共用的屬性：刪除時屬性要與設定時相同才刪得掉
-    return {"httponly": True, "secure": settings.env == "production", "samesite": "lax"}
-
-
-def _set_access_token_cookie(response: Response, user_id: int) -> str:
-    access_token = auth_service.create_access_token(data={"sub": str(user_id)})
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        max_age=settings.access_token_expire_minutes * 60,
-        **_cookie_attrs(),
-    )
-    return access_token
-
-
-def _delete_login_cookies(response: Response, keys: tuple[str, ...] = ("access_token", "refresh_token")) -> None:
-    for key in keys:
-        response.delete_cookie(key=key, **_cookie_attrs())
 
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
@@ -56,9 +36,10 @@ async def login_with_google(
     elif login_data.credential:
         payload = auth_service.verify_google_token(login_data.credential)
 
+    # 憑證無效回 400 而不是 401：401 在整個後端只代表登入失效，前端遇到 401 會照登入失效處理（ADR-0009）
     if not payload:
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid Google credential or code",
         )
 
@@ -98,10 +79,10 @@ async def login_with_google(
         key="refresh_token",
         value=refresh_token,
         max_age=settings.refresh_token_expire_days * 24 * 60 * 60,  # 轉換為秒
-        **_cookie_attrs(),
+        **cookie_attrs(),
     )
 
-    access_token = _set_access_token_cookie(response, user.id)
+    access_token = set_access_token_cookie(response, user.id)
 
     return {
         "access_token": access_token,
@@ -111,7 +92,7 @@ async def login_with_google(
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@rate_limit("30/minute", personal_key_func=get_login_user_key)
+@rate_limit("30/minute")
 async def refresh_token(
         request: Request,
         response: Response,
@@ -132,10 +113,10 @@ async def refresh_token(
     user_id = auth_service.verify_refresh_token(db, refresh_token)
     if not user_id:
         rejected = JSONResponse(status_code=status.HTTP_401_UNAUTHORIZED, content={"detail": "Invalid refresh token"})
-        _delete_login_cookies(rejected, keys=("refresh_token",))
+        delete_login_cookies(rejected, keys=("refresh_token",))
         return rejected
 
-    new_access_token = _set_access_token_cookie(response, user_id)
+    new_access_token = set_access_token_cookie(response, user_id)
     return {
         "access_token": new_access_token,
         "token_type": "bearer"
@@ -176,7 +157,7 @@ async def validate_token(
 
 @router.get("/me", response_model=auth_schemas.User)
 @rate_limit("60/minute")
-async def read_users_me(request: Request, current_user: models.User = Depends(auth_service.get_current_user)):
+async def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
@@ -198,7 +179,7 @@ async def logout(
         # 從資料庫中刪除 refresh token
         auth_service.revoke_refresh_token(db, refresh_token)
 
-    _delete_login_cookies(response)
+    delete_login_cookies(response)
 
     return {"message": "Logged out successfully"}
 
@@ -208,7 +189,7 @@ async def logout(
 async def update_preferences(
         request: Request,
         preferences: Dict[str, Any],
-        current_user: models.User = Depends(auth_service.get_current_user),
+        current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
     """
@@ -221,7 +202,7 @@ async def update_preferences(
 
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
-@rate_limit("60/minute", personal_key_func=get_login_user_key)
+@rate_limit("60/minute")
 async def init_session(
         request: Request,
         response: Response,
@@ -241,11 +222,11 @@ async def init_session(
     if has_login_cookies(cookies):
         # resolve_login 會查資料庫（同步）：每次開頁與跨分頁重新判斷都會呼叫，放進 threadpool 免得卡住 WebSocket 等其他工作
         if login := await run_in_threadpool(resolve_login, db, cookies):
-            if login.from_refresh_token:
-                _set_access_token_cookie(response, login.user.id)
+            if login.renew_access_token:
+                set_access_token_cookie(response, login.user.id)
             return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}
         # 刪掉失效的登入 cookie：refresh cookie 留著的話，WebSocket 握手與之後的請求都還會拿它判斷
-        _delete_login_cookies(response)
+        delete_login_cookies(response)
 
     identity = resolve_anonymous(cookies)
     if identity.kind == "anon":
@@ -258,6 +239,6 @@ async def init_session(
         key=anonymous_id.COOKIE_NAME,
         value=anonymous_id.sign(session_id),
         max_age=365 * 24 * 60 * 60,  # 一年
-        **_cookie_attrs(),
+        **cookie_attrs(),
     )
     return {"status": "anonymous", "anonymous_user_id": session_id}

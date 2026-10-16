@@ -1,5 +1,5 @@
 # app/services/auth_service.py
-from fastapi import Depends, HTTPException, status, Cookie
+from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
@@ -7,7 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
 
-from app.database import models, database
+from app.database import models
 from app.schemas import auth as auth_schemas
 from app.config import settings
 
@@ -220,19 +220,6 @@ def get_current_user_from_token(token: str, db: Session) -> models.User:
     if user is None:
         raise credentials_exception
     return user
-
-
-def get_current_user(access_token: str | None = Cookie(None), db: Session = Depends(database.get_db)) -> models.User:
-    """
-    從 access_token cookie 中解析 JWT 並獲取當前使用者。
-    """
-    if access_token is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    return get_current_user_from_token(access_token, db)
 
 
 def update_user_preferences(db: Session, user: models.User, preferences: dict) -> models.User:

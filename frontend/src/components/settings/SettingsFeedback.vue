@@ -159,6 +159,7 @@ import ApiService, {
   type FeedbackType,
 } from '@/services/apiService'
 import { showMessage } from '@/composables/useElementPlus'
+import { isHandledGlobally, showFailure } from '@/axios/handlingErrors'
 
 const { t, locale } = useI18n()
 const userStore = useUserStore()
@@ -234,8 +235,8 @@ const load = async () => {
   try {
     const res = await ApiService.listFeedback(sortBy.value)
     items.value = res.items
-  } catch {
-    showMessage.error(t('settings.feedback.loadFailed'))
+  } catch (error) {
+    showFailure(error, t('settings.feedback.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -255,10 +256,11 @@ const submit = async () => {
     showMessage.success(t('settings.feedback.submitSuccess'))
   } catch (e: unknown) {
     const err = e as { response?: { status?: number } }
-    if (err?.response?.status === 429) {
+    // 每日提交上限的 429（code: feedback_daily_limit）全域不處理，由這裡提示；其他 429 全域已提示「操作太頻繁」
+    if (err?.response?.status === 429 && !isHandledGlobally(e)) {
       showMessage.warning(t('settings.feedback.rateLimited'))
     } else {
-      showMessage.error(t('settings.feedback.submitFailed'))
+      showFailure(e, t('settings.feedback.submitFailed'))
     }
   } finally {
     submitting.value = false
@@ -272,8 +274,8 @@ const vote = async (item: FeedbackItem) => {
     const res = await ApiService.voteFeedback(item.id)
     item.voted_by_me = res.voted
     item.vote_count = res.vote_count
-  } catch {
-    showMessage.error(t('settings.feedback.voteFailed'))
+  } catch (error) {
+    showFailure(error, t('settings.feedback.voteFailed'))
   } finally {
     votingId.value = null
   }
@@ -284,8 +286,8 @@ const updateStatus = async (item: FeedbackItem, status: FeedbackStatus) => {
     const updated = await ApiService.updateFeedbackStatus(item.id, status)
     item.status = updated.status
     showMessage.success(t('settings.feedback.statusUpdated'))
-  } catch {
-    showMessage.error(t('settings.feedback.statusUpdateFailed'))
+  } catch (error) {
+    showFailure(error, t('settings.feedback.statusUpdateFailed'))
   }
 }
 
@@ -307,8 +309,8 @@ const remove = async (item: FeedbackItem) => {
     await ApiService.deleteFeedback(item.id)
     items.value = items.value.filter(i => i.id !== item.id)
     showMessage.success(t('settings.feedback.deleteSuccess'))
-  } catch {
-    showMessage.error(t('settings.feedback.deleteFailed'))
+  } catch (error) {
+    showFailure(error, t('settings.feedback.deleteFailed'))
   }
 }
 

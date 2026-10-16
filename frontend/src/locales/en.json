@@ -321,6 +321,7 @@
     "section9Content": "If you have any questions about your personal data or wish to request its deletion, please contact us via email at:"
   },
   "globalErrors": {
+    "sessionExpired": "Your session has expired. Please sign in again.",
     "rateLimitExceeded": "Operating too fast, please try again later",
     "recordNotFound": "Record not found (may have been deleted)"
   },

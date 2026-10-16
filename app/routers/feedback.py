@@ -1,12 +1,12 @@
 # app/routers/feedback.py
 from typing import Optional
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from app.database import models
 from app.database.database import get_db
-from app.dependencies import get_current_admin_user, rate_limit
+from app.dependencies import get_current_admin_user, get_current_user, get_optional_user, rate_limit
 from app.schemas.feedback import (
     FeedbackCreate,
     FeedbackListResponse,
@@ -14,7 +14,6 @@ from app.schemas.feedback import (
     FeedbackStatusUpdate,
     FeedbackVoteResponse,
 )
-from app.services.auth_service import get_current_user_from_token
 from app.services.feedback_service import (
     FeedbackNotFound,
     FeedbackNotVotable,
@@ -26,38 +25,13 @@ from app.services.feedback_service import (
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-def _get_optional_user(
-    access_token: Optional[str] = Cookie(None),
-    db: Session = Depends(get_db),
-) -> Optional[models.User]:
-    """匿名用戶回傳 None，登入用戶回傳 User。"""
-    if not access_token:
-        return None
-    try:
-        return get_current_user_from_token(access_token, db)
-    except HTTPException:
-        return None
-
-
-def _require_user(
-    access_token: Optional[str] = Cookie(None),
-    db: Session = Depends(get_db),
-) -> models.User:
-    if not access_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Login required",
-        )
-    return get_current_user_from_token(access_token, db)
-
-
 @router.get("/", response_model=FeedbackListResponse)
 @rate_limit("60/minute")
 async def list_feedback(
     request: Request,
     sort: str = Query("votes", pattern="^(votes|newest)$"),
     db: Session = Depends(get_db),
-    viewer: Optional[models.User] = Depends(_get_optional_user),
+    viewer: Optional[models.User] = Depends(get_optional_user),
 ):
     """取得回饋清單（匿名可看已核准項目，登入後可額外看到自己的 pending/rejected）。"""
     items = FeedbackService.list_feedback(
@@ -75,13 +49,14 @@ async def create_feedback(
     request: Request,
     payload: FeedbackCreate,
     db: Session = Depends(get_db),
-    user: models.User = Depends(_require_user),
+    user: models.User = Depends(get_current_user),
 ):
     """建立回饋（pending 狀態，需 admin 審核）。"""
     try:
         item = FeedbackService.create_feedback(db, user_id=user.id, payload=payload)
     except FeedbackRateLimited as e:
-        raise HTTPException(status_code=429, detail=str(e))
+        # 帶 code：前端全域只略過這個 429（其他 429 一律提示「操作太頻繁」），由回饋頁提示每日上限
+        raise HTTPException(status_code=429, detail={"code": "feedback_daily_limit", "message": str(e)})
 
     return FeedbackResponse(
         id=item.id,
@@ -102,7 +77,7 @@ async def toggle_vote(
     request: Request,
     feedback_id: int,
     db: Session = Depends(get_db),
-    user: models.User = Depends(_require_user),
+    user: models.User = Depends(get_current_user),
 ):
     """投票或取消投票（toggle）。"""
     try:

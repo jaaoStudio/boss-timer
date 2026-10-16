@@ -146,10 +146,24 @@ export const useUserStore = defineStore('user', {
       return this._initPromise;
     },
 
-    // 登入 cookie 改變了（登入、登出、其他分頁通知、401 換發失敗）：不在前端自己判斷，重新問伺服器（ADR-0009）
+    // 登入 cookie 改變了（登入、登出、其他分頁通知）：不在前端自己判斷，重新問伺服器（ADR-0009）
     resyncAfterCookieChange(): Promise<void> {
       this._cookieChanged = true;
       return this._refetchSession();
+    },
+
+    // 使用中途遇到 401：需要登入的 API 在 access token 過期時會自己換發，401 代表伺服器已判斷登入失效（ADR-0009），
+    // 不再確認，照登出的順序處理。回傳是否當成登入失效處理：同時好幾個 401 只有第一個會處理
+    handleLoginLost(): boolean {
+      // 其他分頁剛登入 / 登出（例如在其他分頁按了登出）、正在重新查詢：401 是預期中的結果，交給查詢結果處理
+      if (this._cookieChanged) return false;
+      if (!this.isLoggedIn) {
+        // 顯示為匿名，卻仍帶著失效的登入 cookie（例如開頁查詢失敗）：重新查詢讓 /auth/session 清掉，之後的請求才不會一直 401
+        void this._refetchSession();
+        return false;
+      }
+      void this._clearLoginAfterResync();
+      return true;
     },
 
     // 登入 cookie 改變後重新查詢：進行中的請求是改變前送出的，取消後再問。
@@ -254,8 +268,12 @@ export const useUserStore = defineStore('user', {
 
     async _runLogout() {
       await apiService.logout();
-      // 伺服器已撤銷登入。先只清掉本分頁的畫面，共用的 user_info 等取得匿名身分（cookie）後才清（同時通知其他分頁）：
-      // 其他分頁重新查詢時沿用這個匿名身分，原本沒有匿名 cookie 時也不會各自申請一個
+      await this._clearLoginAfterResync();
+    },
+
+    // 登出成功或登入失效後：先只清掉本分頁的畫面，共用的 user_info 等取得匿名身分（cookie）後才清（同時通知其他分頁）。
+    // 其他分頁重新查詢時沿用這個匿名身分，原本沒有匿名 cookie 時也不會各自申請一個
+    async _clearLoginAfterResync() {
       this.user = null;
       this.isLoggedIn = false;
       this._ensureAnonymousName();

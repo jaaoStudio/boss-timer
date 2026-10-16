@@ -44,7 +44,7 @@ import { ElMessageBox } from 'element-plus'
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference'
 import { useBossStore } from '@/stores/bossStore'
 import { useRoomStore } from '@/stores/roomStore'
-import { showMessage } from '@/composables/useElementPlus'
+import { showFailure } from '@/axios/handlingErrors'
 import apiService from '@/services/apiService'
 import ChannelOverview from './ChannelOverview.vue'
 import ChannelTimeline from './ChannelTimeline.vue'
@@ -84,8 +84,8 @@ async function handleClear() {
   isClearing.value = true
   try {
     await apiService.clearBossTypeRecords(roomId.value, selectedBossTypeId.value)
-  } catch {
-    showMessage.error(t('channelOverview.clearFailed'))
+  } catch (error) {
+    showFailure(error, t('channelOverview.clearFailed'))
   } finally {
     isClearing.value = false
   }

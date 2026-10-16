@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from "vue-router";
-import type { Router } from 'vue-router';
+import type { RouteLocationNormalized, Router } from 'vue-router';
 import { useUserStore } from '@/stores/userStore'; // 引入 userStore
 
 const router: Router = createRouter({
@@ -60,17 +60,19 @@ const router: Router = createRouter({
   ],
 });
 
+// 目前的登入狀態能否停在這個頁面：需要登入的頁面要已登入，管理員頁面要是管理員
+export function canAccess(route: Pick<RouteLocationNormalized, 'meta'>): boolean {
+  const userStore = useUserStore();
+  if (route.meta.requiresAuth && !userStore.isLoggedIn) return false;
+  if (route.meta.requiresAdmin && !userStore.isAdmin) return false;
+  return true;
+}
+
 router.beforeEach(async (to, _from, next) => {
   const userStore = useUserStore();
   await userStore.initializeAuth(); // 確保用戶認證狀態已載入
-
-  if (to.meta.requiresAuth && !userStore.isLoggedIn) {
-    next({ name: 'RoomSelection' }); // 未登入，導向登入頁
-  } else if (to.meta.requiresAdmin && !userStore.isAdmin) {
-    next({ name: 'RoomSelection' }); // 非管理員，導向首頁
-  } else {
-    next();
-  }
+  if (canAccess(to)) next();
+  else next({ name: 'RoomSelection' });
 });
 
 export default router;

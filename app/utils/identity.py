@@ -1,7 +1,7 @@
 """
 判斷請求者身分（登入者、限流 key、匿名身分發放）的唯一入口（見 docs/adr/0007、0009）。
 
-需要完整的 User 物件時改用 auth_service.get_current_user_from_token；兩者都不要自己解析 JWT 或讀 cookie 原值。
+需要登入的 API 用 dependencies.get_current_user / get_optional_user；都不要自己解析 JWT 或讀 cookie 原值。
 """
 from dataclasses import dataclass
 from typing import Literal, Optional
@@ -41,8 +41,8 @@ def resolve_anonymous(cookies: dict[str, str]) -> Identity:
 @dataclass(frozen=True)
 class Login:
     user: models.User
-    # access token 無效、以 refresh token 認出：/auth/session 要換發 access token
-    from_refresh_token: bool
+    # access token 無效、以 refresh token 認出：要換發 access token（/auth/session 與需要登入的 API 在回應裡換發）
+    renew_access_token: bool
 
 
 def has_login_cookies(cookies: dict[str, str]) -> bool:
@@ -55,17 +55,18 @@ def _get_user(db: Session, user_id: str | int) -> Optional[models.User]:
 
 def resolve_login(db: Session, cookies: dict[str, str]) -> Optional[Login]:
     """
-    登入者的判斷，/auth/session 與 WebSocket 握手共用，兩邊不會判斷出不同結果（ADR-0009）：
+    登入者的判斷，/auth/session、需要登入的 API（dependencies.get_current_user）與 WebSocket 握手共用，
+    三處不會判斷出不同結果（ADR-0009）：
     1. access token 有效且使用者仍存在 → 登入者
     2. 否則 refresh token 有效（資料庫確認未撤銷；使用者刪除時一併刪除）→ 登入者，access token 需要換發
     3. 否則 None：登入已失效或從未登入
     """
     access_user = auth_service.decode_token_user_id(cookies.get("access_token"))
     if access_user and (user := _get_user(db, access_user)):
-        return Login(user, from_refresh_token=False)
+        return Login(user, renew_access_token=False)
     refreshed_user = auth_service.verify_refresh_token(db, cookies.get("refresh_token"))
     if refreshed_user and (user := _get_user(db, refreshed_user)):
-        return Login(user, from_refresh_token=True)
+        return Login(user, renew_access_token=True)
     return None
 
 

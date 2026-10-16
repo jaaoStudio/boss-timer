@@ -1,8 +1,9 @@
 # app/dependencies.py
 import ipaddress
+from typing import Optional
 from functools import lru_cache
 
-from fastapi import Depends, status, HTTPException, Request
+from fastapi import Depends, status, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
 from limits import parse_many
@@ -13,8 +14,12 @@ from starlette.requests import HTTPConnection
 
 from app.database import models
 from app.websocket.manager import ConnectionManager
-from app.services.auth_service import decode_token, decode_token_user_id, get_current_user
-from app.utils.identity import Identity, resolve_identity
+from sqlalchemy.orm import Session
+
+from app.database.database import get_db
+from app.services.auth_service import decode_token_user_id
+from app.utils.identity import Identity, has_login_cookies, resolve_identity, resolve_login
+from app.utils.login_cookies import set_access_token_cookie
 
 # IP 天花板 = 個人額度 × 200（見 docs/adr/0007）。匿名身分有簽章、無法任意編造後，
 # 天花板只是最後防線，放寬到能容納學校、行動網路 CGNAT 等大量玩家共用一個 IP
@@ -79,8 +84,18 @@ def get_ip_ceiling_key(request: Request) -> str:
 
 
 def get_user_identifier(request: Request) -> str:
-    """slowapi 的預設 key_func：個人額度，見 personal_limit_key。"""
-    return personal_limit_key(resolve_identity(request), request)
+    """
+    slowapi 的 key_func：個人額度，見 personal_limit_key。access token 無效時改以 refresh token 裡的使用者計算：
+    需要登入的 API 與 /auth/session 在 access token 過期時照樣以登入者處理並換發（ADR-0009），
+    若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到（ADR-0007）。
+    只解開 refresh token、不查資料庫：以使用者而不是 token 本身（jti）計算，舊的或已撤銷的 token 才不會各拿一份額度
+    （每次登入都會產生新的 jti，輪流使用就能繞過每日上限）
+    """
+    identity = resolve_identity(request)
+    if identity.kind != "user":
+        if refresh_user := decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh"):
+            return f"user:{refresh_user}"
+    return personal_limit_key(identity, request)
 
 limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
 
@@ -129,21 +144,7 @@ def scale_limit(limit_value: str, factor: int) -> str:
     )
 
 
-def get_login_user_key(request: Request) -> str:
-    """
-    /auth/session、/auth/refresh 的個人額度 key：access token 的使用者 → 這個 refresh token（jti）→ 一般規則。
-    呼叫者的 access token 常已過期，若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到。
-    只解開 refresh token、不查資料庫，所以以 token 本身計算、不以裡面的使用者：拿到舊的或被撤銷的 refresh token
-    重送，只會用掉那個 token 的額度，不會擋到使用者目前的登入。
-    """
-    if resolve_identity(request).kind != "user":
-        payload = decode_token(request.cookies.get("refresh_token"), token_type="refresh")
-        if payload and payload.get("jti"):
-            return f"refresh:{payload['jti']}"
-    return get_user_identifier(request)
-
-
-def rate_limit(limit_value: str, personal_key_func=None):
+def rate_limit(limit_value: str):
     """
     雙層限流（見 docs/adr/0007）：
     - 個人額度：limit_value，以登入身分或伺服器簽發的匿名身分計算（都沒有時以 IP），維持公平；
@@ -151,7 +152,7 @@ def rate_limit(limit_value: str, personal_key_func=None):
     - IP 天花板：limit_value × IP_CEILING_MULTIPLIER，以真實 IP（IPv6 以 /64）計算，是最後防線：
       擋同一個 IP 申請大量身分後灌爆；登入者改以自己的身分計算，不受同 IP 其他人影響
     """
-    personal = limiter.limit(limit_value, key_func=personal_key_func)
+    personal = limiter.limit(limit_value)
     ceiling = limiter.limit(scale_limit(limit_value, IP_CEILING_MULTIPLIER), key_func=get_ip_ceiling_key)
 
     def decorator(func):
@@ -171,6 +172,38 @@ _connection_manager = ConnectionManager()
 
 def get_connection_manager() -> ConnectionManager:
     return _connection_manager
+
+
+def get_optional_user(request: Request, response: Response, db: Session = Depends(get_db)) -> Optional[models.User]:
+    """
+    需要知道登入者的 API：與 /auth/session、WebSocket 握手同一個判斷（resolve_login，ADR-0009）。
+    access token 過期、refresh token 有效時在這次回應換發 access token，請求照常成功：前端不必讓 token 保持有效，
+    401 只代表登入真的失效。沒有登入 cookie 回 None；有登入 cookie 但登入已失效回 401。resolve_login 會查資料庫，同步 def 由 FastAPI 放進 threadpool
+    """
+    if not has_login_cookies(request.cookies):
+        return None
+    login = resolve_login(db, request.cookies)
+    if login is None:
+        # 帶著登入 cookie 但登入已失效：回 401 讓前端照登入失效處理，不悄悄當成匿名（畫面仍顯示登入，結果卻是匿名的）
+        raise _not_authenticated()
+    if login.renew_access_token:
+        set_access_token_cookie(response, login.user.id)
+    return login.user
+
+
+def get_current_user(user: Optional[models.User] = Depends(get_optional_user)) -> models.User:
+    """需要登入的 API：判斷同 get_optional_user，未登入或登入已失效回 401（前端當成登入失效處理）。"""
+    if user is None:
+        raise _not_authenticated()
+    return user
+
+
+def _not_authenticated() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
 
 
 async def get_current_admin_user(current_user: models.User = Depends(get_current_user)) -> models.User:

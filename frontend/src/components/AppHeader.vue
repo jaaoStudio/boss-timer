@@ -51,6 +51,7 @@
 import { storeToRefs } from 'pinia'
 import { useRoomStore } from '@/stores/roomStore'
 import { useUserStore } from '@/stores/userStore'
+import { showFailure } from '@/axios/handlingErrors'
 import { UsersIcon } from '@heroicons/vue/24/outline'
 import RoomManager from '@/components/room/RoomManager.vue'
 import GoogleLoginButton from "@/components/ui/GoogleLoginButton.vue"
@@ -74,6 +75,7 @@ const handleLoginSuccess = async (response: { code?: string; credential?: string
     await userStore.loginWithGoogle(payload)
   } catch (error) {
     console.error("Backend login failed:", error)
+    showFailure(error, t('appHeader.loginFailed'))
   }
 }
 

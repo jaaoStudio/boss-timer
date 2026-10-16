@@ -5,14 +5,16 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
+from fastapi import HTTPException, Response
 from starlette.requests import Request
 from starlette.websockets import WebSocket
 
 import app.dependencies as deps
 from app.config import settings
 from app.database import models
-from app.dependencies import get_login_user_key
-from app.routers import auth
+from app.dependencies import get_user_identifier
+from app.routers import auth, feedback
+from app.services.feedback_service import FeedbackRateLimited, FeedbackService
 from app.utils import anonymous_id
 from app.utils import identity as identity_module
 from app.utils.identity import Identity, resolve_identity
@@ -20,6 +22,7 @@ from tests.helpers import make_limited_app, set_cookies
 
 app = make_limited_app()
 app.include_router(auth.router)
+app.include_router(feedback.router)
 client = TestClient(app)
 
 
@@ -112,17 +115,17 @@ def test_websocket_identity_is_not_cached(login):
     assert getattr(ws.state, "identity", None) is None
 
 
-def test_login_rate_limit_is_keyed_by_login_user():
-    # access token 過期時以 refresh token 計算，不退回 IP（同 IP 的人不會互相擋到）
-    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "refresh:current"
-    # 以 token 本身計算：重送舊的或被撤銷的 refresh token，用不到同一個使用者目前登入的額度
-    assert get_login_user_key(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "refresh:revoked"
+def test_personal_rate_limit_uses_refresh_token_user_when_access_token_is_invalid():
+    # access token 過期時以 refresh token 裡的使用者計算，不退回 IP（同 IP 的人不會互相擋到）
+    assert get_user_identifier(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "user:7"
+    # 以使用者而不是 token 本身計算：舊的或被撤銷的 token 不會各拿一份額度
+    assert get_user_identifier(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "user:7"
     both = f"access_token={token('access', '42')}; refresh_token={token('refresh', '7')}".encode()
-    assert get_login_user_key(http_request(both)) == "user:42"
+    assert get_user_identifier(http_request(both)) == "user:42"
     # 拿 access token 冒充 refresh token：不算，退回一般的個人額度 key
     request = Request({"type": "http", "client": ("203.0.113.9", 0),
                        "headers": [(b"cookie", f"refresh_token={token('access', '7')}".encode())]})
-    assert get_login_user_key(request) == "ip:203.0.113.9"
+    assert get_user_identifier(request) == "ip:203.0.113.9"
 
 
 # --- /auth/session ---
@@ -241,3 +244,76 @@ def test_anonymous_websocket_handshake_does_not_touch_the_database(monkeypatch):
     ws = WebSocket({"type": "websocket", "headers": [(b"cookie", f"{anonymous_id.COOKIE_NAME}={signed}".encode())]},
                    receive=None, send=None)
     assert resolve_identity(ws).kind == "anon"
+
+
+# --- 需要登入的 API（get_current_user / get_optional_user）---
+
+def get_me(**cookies: str):
+    set_cookies(client, **cookies)
+    return client.get("/auth/me", headers={"CF-Connecting-IP": "203.0.113.2"})
+
+
+def test_login_required_api_renews_expired_access_token(login):
+    # access token 過期、refresh token 有效：伺服器在這次回應換發，請求照常成功（ADR-0009「使用中途遇到 401」）
+    login()
+    res = get_me(refresh_token=VALID_REFRESH)
+    assert res.status_code == 200 and res.json()["id"] == 42
+    assert identity_module.auth_service.decode_token_user_id(res.cookies.get("access_token")) == "42"
+
+
+def test_login_required_api_does_not_renew_valid_access_token(login):
+    login()
+    res = get_me(access_token=token("access"))
+    assert res.status_code == 200 and res.headers.get("set-cookie") is None
+
+
+@pytest.mark.parametrize("cookies", [
+    {},
+    {"refresh_token": REVOKED_REFRESH},   # 被撤銷（例如在其他裝置登入）：401 就是登入失效
+    {"access_token": "garbage"},
+])
+def test_login_required_api_rejects_lost_login(login, cookies):
+    login()
+    assert get_me(**cookies).status_code == 401
+
+
+def test_optional_user_renews_expired_access_token(login):
+    # 例如回饋清單：access token 過期時仍以登入者身分載入，並換發
+    login()
+    response = Response()
+    user = deps.get_optional_user(http_request(f"refresh_token={VALID_REFRESH}".encode()), response, db=None)
+    assert user is not None and user.id == 42
+    assert "access_token=" in response.headers.get("set-cookie", "")
+    assert deps.get_optional_user(http_request(), Response(), db=None) is None   # 沒有登入 cookie：匿名
+
+
+def test_optional_user_rejects_lost_login(login):
+    # 帶著登入 cookie 但登入已失效：401，前端照登入失效處理，不悄悄當成匿名
+    login()
+    with pytest.raises(HTTPException) as exc:
+        deps.get_optional_user(http_request(f"refresh_token={REVOKED_REFRESH}".encode()), Response(), db=None)
+    assert exc.value.status_code == 401
+
+
+# --- 前端依賴的錯誤約定（ADR-0009「使用中途遇到 401」）---
+
+def test_invalid_google_credential_is_400_not_401(monkeypatch):
+    # 401 在整個後端只代表登入失效，前端遇到 401 會當成登入失效處理
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: None)
+    set_cookies(client)
+    res = client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.3"})
+    assert res.status_code == 400
+
+
+def test_feedback_daily_limit_429_carries_code(monkeypatch, login):
+    # 前端全域只略過帶這個 code 的 429，由回饋頁提示每日上限；改了這個約定，使用者只會看到「操作太頻繁」
+    login()
+
+    def over_limit(db, user_id, payload):
+        raise FeedbackRateLimited("每日上限")
+
+    monkeypatch.setattr(FeedbackService, "create_feedback", staticmethod(over_limit))
+    set_cookies(client, access_token=token("access"))
+    res = client.post("/feedback/", json={"type": "bug", "title": "t"}, headers={"CF-Connecting-IP": "203.0.113.4"})
+    assert res.status_code == 429
+    assert res.json()["detail"]["code"] == "feedback_daily_limit"

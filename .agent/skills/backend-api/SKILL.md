@@ -120,7 +120,7 @@ async def get_room_state(db, room_id) -> dict:
 | Method | Path | Auth | Rate Limit | 說明 |
 |---|---|---|---|---|
 | POST | `/auth/google` | 無 | 10/min | Google 登入/註冊 |
-| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token |
+| POST | `/auth/refresh` | Cookie | 30/min | 刷新 access token（只供舊版前端；新前端遇到 401 改問 `/auth/session`，日後刪除） |
 | POST | `/auth/validate` | Header/Cookie | 60/min | 驗證 token（只供舊版前端，日後刪除） |
 | GET | `/auth/me` | Cookie | 60/min | 取得使用者資訊 |
 | POST | `/auth/logout` | Cookie | 10/min | 登出 |
@@ -160,7 +160,7 @@ async def get_room_state(db, room_id) -> dict:
 | DELETE | `/feedback/{id}` | Admin | 30/min | 硬刪除（CASCADE 刪 votes） |
 
 > 路由註冊在 `main.py`，受 `check_maintenance_mode` dependency 保護。
-> `/feedback/` GET 對匿名開放；其他 endpoint 用自訂 `_require_user` / `get_current_admin_user` 強制登入。
+> `/feedback/` GET 用 `dependencies.get_optional_user`（未登入可看；帶著失效的登入 cookie 回 401）；其他 endpoint 用 `dependencies.get_current_user` / `get_current_admin_user` 強制登入（ADR-0009「使用中途遇到 401」）。每日提交上限回 429 並帶 `detail.code = "feedback_daily_limit"`，前端全域略過這個 429、由回饋頁提示。
 
 ---
 
@@ -176,7 +176,7 @@ async def create_room(request: Request, ...):   # 必須有 request 參數
 
 | 層 | key | 額度 | 用途 |
 |---|---|---|---|
-| 個人額度 | `get_user_identifier`：`user:{id}` → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
+| 個人額度 | `get_user_identifier`：`user:{id}` → access token 無效時 refresh token 裡的使用者 `user:{id}`（只解開不查資料庫，不以 jti 計算） → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
 | IP 天花板 | `get_ip_ceiling_key`：登入者 `user:{id}`（登入者無法換身分、不受同 IP 影響），否則 IP key | `limit_value` × `IP_CEILING_MULTIPLIER`（200） | 最後防線，擋大量申請新身分與灌爆 |
 
 **IP key**（`get_ip_rate_limit_key`）：`ip:{真實 IP}`；IPv6 縮成 /64（不縮到 /56：行動網路常替每支手機各配一段 /64，縮太粗會把不相干的使用者算在一起），IPv4-mapped IPv6 視為 IPv4。
@@ -242,7 +242,7 @@ except Exception as e:
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
 | 撞到發放上限 | 不發放、**不回 429**（拿不到身分的結果相同，429 只會讓前端當成判斷失敗、沿用上次的顯示） | `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流） |
 
-- 個人額度用 `get_login_user_key`：access token 的使用者 → 這個 refresh token（`refresh:{jti}`）→ 一般規則。呼叫者的 access token 常已過期，退回匿名或 IP 會讓同 IP 的登入者互相擋到；不查資料庫，所以以 token 本身計算、不以裡面的使用者，重送舊的或被撤銷的 refresh token 擋不到使用者目前的登入
+- 個人額度（所有 API 共用 `get_user_identifier`）：access token 的使用者 → refresh token 裡的使用者（`user:{id}`）→ 一般規則。需要登入的 API 與 `/auth/session` 在 access token 過期時照樣以登入者處理，退回匿名或 IP 會讓同 IP 的登入者互相擋到。**勿改成以 refresh token 的 jti 計算**：不查資料庫，舊的、已撤銷的 token 會各拿一份額度（PR #70 第 5 輪）
 - **勿把換發或清 cookie 的判斷搬回前端**：前端每多處理一種失敗，就多一個與伺服器判斷不一致的可能
 
 ### 匿名使用者
@@ -258,6 +258,5 @@ except Exception as e:
 - **沒有任何端點要求「必須有身分」**（ADR-0007 更新）：`none` 只是限流改以 IP 計算。原本的 `verify_user_session` 門檻已移除——它擋不了濫用（打一次 `/auth/session` 就有身分），卻會在拿不到身分時讓前端的 401 處理把匿名使用者踢出房間
 - `/auth/session`：登入有效 → 不發匿名身分；`anon` → 沿用；否則發放新身分（見上方表格）。**不換發舊 cookie 的 UUID**：匿名 UUID 會廣播給房間所有人，無法確認送來的人是本人
 - 新發經 `anonymous_id_mint_allowed()` 計入每個 IP 的發放上限 `ANONYMOUS_ID_MINT_LIMIT`（100/hour），超過時回 `anonymous_user_id: null`（這次沒有身分、以 IP 限流，見上方表格）
-- `/auth/refresh` 的個人額度與 `/auth/session` 相同，用 `get_login_user_key`
 - `resolve_identity()` 只在 HTTP 請求上快取；WebSocket 的結果由呼叫端存在該連線的 `Connection`，函式本身不快取
-- 需要完整 User 物件時用 `auth_service.get_current_user_from_token()`；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**
+- **需要登入的 API 用 `dependencies.get_current_user`（未登入回 401）或 `get_optional_user`（未登入回 None）**：以 `resolve_login` 判斷，與 `/auth/session`、WebSocket 握手相同，access token 過期、refresh token 有效時在這次回應換發 access token，所以 401 只代表登入真的失效（前端當成登入失效處理，ADR-0009「使用中途遇到 401」）。勿改回只看 access token；JWT 一律經 `decode_token_user_id()`（檢查 access / refresh 類型）。**勿自己解析 JWT 或讀 cookie 原值**

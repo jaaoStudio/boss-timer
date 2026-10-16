@@ -74,7 +74,7 @@ import RecommendedChannels from '@/components/channel/RecommendedChannels.vue'
 import RecordHistory from '@/components/record/RecordHistory.vue'
 import LayoutItemWrapper from '@/components/layout/LayoutItemWrapper.vue'
 import EditModeToolbar from '@/components/layout/EditModeToolbar.vue'
-import { showMessage } from '@/composables/useElementPlus'
+import { isNavigatedGlobally, showFailure } from '@/axios/handlingErrors'
 import { useI18n } from 'vue-i18n'
 import { useBossAlerts } from '@/composables/useBossAlerts'
 import { useLayoutConfig } from '@/composables/useLayoutConfig'
@@ -104,8 +104,10 @@ onMounted(async () => {
   try {
     await enter(props.roomId)
   } catch (error) {
-    await router.push({ name: 'RoomSelection' })
-    showMessage.error(
+    // 全域已跳到其他頁（維護頁、錯誤頁）時不再導回首頁，否則會蓋掉那次跳轉
+    if (!isNavigatedGlobally(error)) await router.push({ name: 'RoomSelection' })
+    showFailure(
+      error,
       error instanceof RoomNotFoundError
         ? t('bossTracker.roomNotFound')
         : t('bossTracker.failedToEnter')

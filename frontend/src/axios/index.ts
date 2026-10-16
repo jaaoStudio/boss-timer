@@ -51,8 +51,8 @@ const setAxiosInterceptor = (axiosInstance: AxiosClient) => {
   axiosInstance.interceptors.response.use(
     (response: AxiosResponse) => response,
     (error: AxiosError) => {
-      if (!error.config?.skipGlobalErrorHandler) handleError(axiosInstance, error)
-      return Promise.reject(error)
+      if (error.config?.skipGlobalErrorHandler) return Promise.reject(error)
+      return handleError(error)
     },
   )
 }

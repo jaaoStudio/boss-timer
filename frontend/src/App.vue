@@ -1,6 +1,6 @@
 <script setup>
 import { onMounted, watch } from 'vue';
-import { RouterView } from "vue-router";
+import { RouterView, useRoute, useRouter } from "vue-router";
 import AppFooter from "@/components/AppFooter.vue";
 import MaintenanceBanner from "@/components/ui/MaintenanceBanner.vue"; // 引入元件
 import { useUserStore } from '@/stores/userStore';
@@ -8,8 +8,11 @@ import { useAppInfoStore } from '@/stores/appInfo'; // 引入 store
 import { useChannelViewPreference } from '@/composables/useChannelViewPreference';
 import { useFavoriteBosses } from '@/composables/useFavoriteBosses';
 import { useLayoutConfig } from '@/composables/useLayoutConfig';
+import { canAccess } from '@/router';
 
 const userStore = useUserStore();
+const route = useRoute();
+const router = useRouter();
 const appInfoStore = useAppInfoStore(); // 實例化 store
 const { syncFromUser: syncChannelView } = useChannelViewPreference();
 const { syncFromUser: syncFavoriteBosses } = useFavoriteBosses();
@@ -20,6 +23,12 @@ watch(() => userStore.preferencesVersion, () => {
   syncChannelView();
   syncFavoriteBosses();
   syncLayout();
+});
+
+// 登入狀態改變後（登入失效、其他分頁登出、切回分頁時的查詢）不能再停在需要登入的頁面時回首頁，不論原因（ADR-0009）。
+// 使用中途遇到 401 而發現登入失效的分頁，interceptor 另外會提示並回首頁
+watch(() => canAccess(route), (allowed) => {
+  if (!allowed) router.push({ name: 'RoomSelection' });
 });
 
 onMounted(async () => {

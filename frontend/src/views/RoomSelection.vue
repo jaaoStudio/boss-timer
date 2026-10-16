@@ -126,6 +126,7 @@ import { useRoomStore } from '@/stores/roomStore';
 import { useUserStore } from '@/stores/userStore';
 import apiService from '@/services/apiService';
 import { showMessage } from "@/composables/useElementPlus";
+import { showFailure } from '@/axios/handlingErrors';
 import GoogleLoginButton from "@/components/ui/GoogleLoginButton.vue";
 import { useI18n } from 'vue-i18n';
 import LanguageIcon from "@/assets/icons/LanguageIcon.vue";
@@ -186,7 +187,7 @@ const joinRecentRoom = async (roomId) => {
       showMessage.warning(t('recentRooms.roomExpired'));
       removeRecentRoom(roomId);
     } else {
-      showMessage.error(t('roomSelection.errors.joinFailed'));
+      showFailure(error, t('roomSelection.errors.joinFailed'));
     }
   } finally {
     joiningRoomId.value = '';
@@ -217,7 +218,7 @@ const handleLoginSuccess = async (response) => {
     showMessage.success(t('roomSelection.toasts.loginSuccess'));
   } catch (error) {
     console.error("Login error:", error);
-    showMessage.error(t('roomSelection.toasts.loginFailed'));
+    showFailure(error, t('roomSelection.toasts.loginFailed'));
   }
 };
 
@@ -235,7 +236,7 @@ const handleLogout = async () => {
     showMessage.info(t('roomSelection.toasts.logoutSuccess'));
   } catch (error) {
     console.error("Logout error:", error);
-    showMessage.error(t('roomSelection.errors.logoutFailed'));
+    showFailure(error, t('roomSelection.errors.logoutFailed'));
   } finally {
     loggingOut = false;
   }
@@ -256,7 +257,7 @@ const createRoom = async () => {
     router.push({ name: 'BossTracker', params: { roomId: newRoom.room_id } });
   } catch (error) {
     console.error('Error creating room:', error);
-    showMessage.error(t('roomSelection.errors.createFailed'));
+    showFailure(error, t('roomSelection.errors.createFailed'));
   } finally {
     isCreating.value = false;
   }

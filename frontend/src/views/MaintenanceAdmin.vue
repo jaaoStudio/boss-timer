@@ -44,6 +44,7 @@ import { ref, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import apiService from '@/services/apiService';
 import { showMessage } from '@/composables/useElementPlus';
+import { showFailure } from '@/axios/handlingErrors';
 import { useAppInfoStore } from '@/stores/appInfo';
 
 const { t } = useI18n();
@@ -70,7 +71,7 @@ const updateMaintenanceConfig = async () => {
   } catch (error: unknown) {
     console.error('更新維護配置失敗:', error);
     const e = error as { response?: { data?: { detail?: string } }; message?: string }
-    showMessage.error(t('maintenanceAdmin.updateFailed') + (e.response?.data?.detail ?? e.message ?? String(error)));
+    showFailure(error, t('maintenanceAdmin.updateFailed') + (e.response?.data?.detail ?? e.message ?? String(error)));
   }
 };
 </script>

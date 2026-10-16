@@ -1,77 +1,90 @@
-import type { AxiosError, AxiosInstance, AxiosRequestConfig } from 'axios'
-import router from '@/router/index'
+import axios, { type AxiosError } from 'axios'
+import router, { canAccess } from '@/router/index'
 import { useUserStore } from '@/stores/userStore'
 import { showMessage } from '@/composables/useElementPlus'
-import apiService from '@/services/apiService'
 import i18n from '@/i18n'
 
-export const handleError = (axiosInstance: AxiosInstance, error: AxiosError): void | Promise<unknown> => {
+// 已由全域處理的錯誤：navigated = 已跳到其他頁（維護頁、錯誤頁、登入失效回首頁），notified = 已提示
+const handledErrors = new WeakMap<object, 'navigated' | 'notified'>()
+
+/** 這個錯誤是否已由全域處理（跳頁或已提示） */
+export const isHandledGlobally = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && handledErrors.has(error)
+
+/** 全域處理是否已跳到其他頁：呼叫端不要再導頁，否則會蓋掉這次跳轉 */
+export const isNavigatedGlobally = (error: unknown): boolean =>
+  typeof error === 'object' && error !== null && handledErrors.get(error) === 'navigated'
+
+/**
+ * 呼叫端的失敗提示一律經這裡：全域已處理過（跳頁或已提示）就不再顯示，同一個錯誤不會有兩個提示，
+ * 也不會把提示顯示在維護頁上
+ */
+export const showFailure = (error: unknown, message: string): void => {
+  if (!isHandledGlobally(error)) showMessage.error(message)
+}
+
+/**
+ * 全域錯誤處理（ADR-0009「使用中途遇到 401」）：只處理呼叫端處理不了、或需要全站一致的結果，
+ * 處理過的記在 handledErrors，之後一律丟出原本的錯誤
+ */
+export const handleError = (error: AxiosError): Promise<never> => {
+  // 呼叫端自己取消的請求（例如換篩選條件中斷載入）不是錯誤
+  if (!axios.isCancel(error)) {
+    const handled = error.response?.status === 401 ? handleUnauthorized() : handleGlobally(error)
+    if (handled) handledErrors.set(error, handled)
+  }
+  return Promise.reject(error)
+}
+
+const handleGlobally = (error: AxiosError): 'navigated' | 'notified' | undefined => {
   if (!error.response) {
     console.error('Network Error:', error)
-    if (router.currentRoute.value.name !== 'Maintenance') {
-      router.push({ name: 'Maintenance' })
+    return goTo('Maintenance')
+  }
+  const { status } = error.response
+  const detail = (error.response.data as { detail?: unknown } | undefined)?.detail
+  // 429 一律提示「操作太頻繁」（含 Cloudflare / nginx 回的）；只有回饋的每日提交上限帶 code，由回饋頁提示
+  const code = typeof detail === 'object' && detail !== null ? (detail as { code?: unknown }).code : undefined
+  if (status === 429 && code !== 'feedback_daily_limit') {
+    showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
+    return 'notified'
+  }
+  if (status === 503) return goTo('Maintenance')
+  if (status >= 500) return goTo('Error')
+  if (status === 404 && detail === 'Record not found') {
+    showMessage.warning(i18n.global.t('globalErrors.recordNotFound'))
+    return 'notified'
+  }
+  return undefined
+}
+
+/**
+ * 使用中途遇到 401：需要登入的 API 在 access token 過期時會自己換發，401 代表伺服器已判斷登入失效（ADR-0009），不再確認。
+ * 原本顯示為登入時照登出的順序改為匿名、提示並退回首頁（CONTEXT.md「登入失效」）；需要登入的頁面由 App.vue 跳頁。
+ * 不是登入失效的 401（已經是匿名、其他分頁剛登入 / 登出而正在重新查詢）不處理，由呼叫端提示失敗
+ */
+const handleUnauthorized = (): 'navigated' | undefined => {
+  if (!useUserStore().handleLoginLost()) return undefined
+  showMessage.warning(i18n.global.t('globalErrors.sessionExpired'))
+  const current = router.currentRoute.value
+  // 需要登入的頁面由 App.vue 跳頁；已在維護頁、錯誤頁（同時送出的其他請求已跳過去）時不蓋掉
+  const stay = ['RoomSelection', 'Maintenance', 'Error']
+  if (!globalNavigation && canAccess(current) && !stay.includes(current.name as string)) router.push({ name: 'RoomSelection' })
+  return 'navigated'
+}
+
+// 進行中的全域跳頁（維護頁、錯誤頁）：router.currentRoute 要等跳完才會改變，之後的 401 不可蓋掉它
+let globalNavigation: Promise<unknown> | undefined
+
+const goTo = (name: 'Maintenance' | 'Error'): 'navigated' => {
+  if (router.currentRoute.value.name !== name) {
+    const navigation = router.push({ name })
+    globalNavigation = navigation
+    // 失敗也要清掉（例如斷線時維護頁的程式碼載不下來），用 then 的兩個參數，不留下沒處理的 rejection
+    const clear = () => {
+      if (globalNavigation === navigation) globalNavigation = undefined
     }
-    return
+    void navigation.then(clear, clear)
   }
-
-  switch (error.response.status) {
-    case 401:
-      return handleUnauthorized(axiosInstance, error)
-    case 404:
-      if (
-        error.response.data &&
-        (error.response.data as { detail?: string }).detail === 'Record not found'
-      ) {
-        showMessage.warning(i18n.global.t('globalErrors.recordNotFound'))
-      }
-      break
-    case 429:
-      showMessage.warning(i18n.global.t('globalErrors.rateLimitExceeded'))
-      break
-    case 503:
-      handleServiceUnavailable()
-      break
-    default:
-      if (error.response.status >= 500) handleServerError()
-      break
-  }
-}
-
-const handleUnauthorized = (axiosInstance: AxiosInstance, error: AxiosError): Promise<unknown> | void => {
-  const originalRequestConfig = error.config as AxiosRequestConfig | undefined
-  if (
-    error.response?.status === 401 &&
-    originalRequestConfig?.url !== 'auth/refresh'
-  ) {
-    console.log('error', error)
-    return callRefreshToken(axiosInstance, originalRequestConfig!)
-  } else {
-    router.push({ name: 'RoomSelection' })
-    showMessage.error('請先登入')
-  }
-}
-
-const callRefreshToken = async (axiosInstance: AxiosInstance, originalRequestConfig: AxiosRequestConfig) => {
-  const userStore = useUserStore()
-  const result = await apiService.refresh_token()
-  if (result.status === 401) {
-    // 不在前端自己清除登入：重新問伺服器，由它清 cookie、決定身分，WebSocket 與其他分頁照結果處理（ADR-0009）
-    void userStore.resyncAfterCookieChange()
-    await router.push({ name: 'RoomSelection' })
-    showMessage.warning('連線過期, 請重新登入！')
-    return
-  }
-  return axiosInstance.request(originalRequestConfig)
-}
-
-const handleServiceUnavailable = () => {
-  if (router.currentRoute.value.name !== 'Maintenance') {
-    router.push({ name: 'Maintenance' })
-  }
-}
-
-const handleServerError = () => {
-  if (router.currentRoute.value.name !== 'Error') {
-    router.push({ name: 'Error' })
-  }
+  return 'navigated'
 }
