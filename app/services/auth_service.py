@@ -1,6 +1,8 @@
 # app/services/auth_service.py
 from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from sqlalchemy import case, func, literal, update
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -235,17 +237,17 @@ def update_user_preferences(db: Session, user: models.User, preferences: dict) -
     if not filtered_preferences:
         return user  # 沒有有效的偏好設定要更新
 
-    # 如果 user.preferences 是 None，初始化為一個空字典
-    if user.preferences is None:
-        user.preferences = {}
-
-    # 確保我們是在一個字典上操作，以防 user.preferences 不是字典
-    current_preferences = user.preferences.copy() if isinstance(user.preferences, dict) else {}
-
-    # 合併新的偏好設定
-    current_preferences.update(filtered_preferences)
-    user.preferences = current_preferences
-
+    # 在資料庫的同一個 UPDATE 裡合併這次存的項目（#68）：讀出整份、改一項、整份寫回的話，兩個同時的存檔
+    # 各自讀到舊的整份，後寫的會丟掉先寫的那一項。原本不是物件（NULL 或舊的錯誤資料）時從空物件開始
+    current = case(
+        (func.jsonb_typeof(models.User.preferences) == "object", models.User.preferences),
+        else_=literal({}, JSONB),
+    )
+    db.execute(
+        update(models.User)
+        .where(models.User.id == user.id)
+        .values(preferences=current.op("||")(literal(filtered_preferences, JSONB)))
+    )
     db.commit()
     db.refresh(user)
     return user

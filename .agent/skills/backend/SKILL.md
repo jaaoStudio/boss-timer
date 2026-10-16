@@ -350,6 +350,7 @@ ConnectionManager
 ### auth_service.py 模式
 - Google Token 驗證: 支援 credential (ID Token 直接驗證) 和 code (Authorization Code 交換)
 - 用戶偏好白名單: `ALLOWED_PREFERENCE_KEYS = {"showRecordHistory", "channelViewMode", "favoriteBossIds", "bossTrackerLayout"}`
+- 偏好存檔在資料庫的同一個 `UPDATE` 裡以 jsonb `||` 合併這次存的項目（`update_user_preferences`，#68）。**勿改回讀出整份、改一項、整份寫回**：兩個同時的存檔會丟掉其中一項（`tests/test_preferences.py`）
 - 防止任意 JSON 注入
 
 ---
