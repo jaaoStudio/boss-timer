@@ -53,7 +53,7 @@ interface RecordData {
   respawn_min_time?: string | null
   respawn_max_time?: string | null
   recorder?: {
-    display_name: string
+    display_name: string | null
   } | null
   recorder_info?: {
     anonymous_name?: string
