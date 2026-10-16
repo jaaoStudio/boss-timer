@@ -16,5 +16,7 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"],
+  // 測試由 vitest 執行（vitest.config.ts），不在 app 的型別檢查裡
+  "exclude": ["src/**/__tests__/**"]
 }
