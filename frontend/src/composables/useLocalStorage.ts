@@ -21,5 +21,11 @@ export function useLocalStorage<T>(
     localStorage.setItem(key, JSON.stringify(val))
   }, { deep: true })
 
+  // 其他分頁改了同一個 key 就跟著更新（storage 事件只送到其他分頁）：同一台裝置的分頁之間，
+  // 舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）。key 為 null 代表其他分頁清空了 localStorage
+  window.addEventListener('storage', (event) => {
+    if (event.storageArea === localStorage && (event.key === key || event.key === null)) state.value = load()
+  })
+
   return state
 }

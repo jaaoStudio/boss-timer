@@ -80,7 +80,7 @@ frontend/
     │   └── handlingErrors.ts     # 全域 Axios 錯誤處理
     │
     ├── composables/              # Vue Composables (可複用邏輯)
-    │   ├── useLocalStorage.ts    # 通用 localStorage 基礎層 (load/deserialize/watch-persist)
+    │   ├── useLocalStorage.ts    # 通用 localStorage 基礎層 (load/deserialize/watch-persist；其他分頁改了同一個 key 時跟著更新)
     │   ├── useBossAlerts.ts      # Boss 重生提醒 (通知 + 音效排程)
     │   ├── useNotification.ts    # 瀏覽器 Notification API 封裝
     │   ├── useSound.ts           # Web Audio API 音效播放 (含多種音色)
@@ -281,6 +281,11 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 ---
 
 ## Composables 模式
+
+### `useLocalStorage`（同一台裝置的分頁之間同步）
+- 監聽 `storage` 事件（只送到其他分頁）：其他分頁改了同一個 key 就重新讀取。收藏 Boss、頻道檢視、設定、最近房間都經它，舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）
+- `useLayoutConfig` 直接讀寫 `localStorage`，另外監聽 `boss_tracker_layout`；**正在編輯版面時不套用**，不蓋掉還沒存的修改
+- 測試：`src/composables/__tests__/crossTabPreferences.test.ts`
 
 ### `useSettings`
 - **Singleton 模式**: 模組層級的 `ref` 確保所有元件共享同一份設定
