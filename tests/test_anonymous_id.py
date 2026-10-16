@@ -13,7 +13,8 @@ import app.dependencies as deps
 from app.config import settings
 from app.database import models
 from app.dependencies import get_user_identifier
-from app.routers import auth
+from app.routers import auth, feedback
+from app.services.feedback_service import FeedbackRateLimited, FeedbackService
 from app.utils import anonymous_id
 from app.utils import identity as identity_module
 from app.utils.identity import Identity, resolve_identity
@@ -21,6 +22,7 @@ from tests.helpers import make_limited_app, set_cookies
 
 app = make_limited_app()
 app.include_router(auth.router)
+app.include_router(feedback.router)
 client = TestClient(app)
 
 
@@ -291,3 +293,27 @@ def test_optional_user_rejects_lost_login(login):
     with pytest.raises(HTTPException) as exc:
         deps.get_optional_user(http_request(f"refresh_token={REVOKED_REFRESH}".encode()), Response(), db=None)
     assert exc.value.status_code == 401
+
+
+# --- 前端依賴的錯誤約定（ADR-0009「使用中途遇到 401」）---
+
+def test_invalid_google_credential_is_400_not_401(monkeypatch):
+    # 401 在整個後端只代表登入失效，前端遇到 401 會當成登入失效處理
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: None)
+    set_cookies(client)
+    res = client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.3"})
+    assert res.status_code == 400
+
+
+def test_feedback_daily_limit_429_carries_code(monkeypatch, login):
+    # 前端全域只略過帶這個 code 的 429，由回饋頁提示每日上限；改了這個約定，使用者只會看到「操作太頻繁」
+    login()
+
+    def over_limit(db, user_id, payload):
+        raise FeedbackRateLimited("每日上限")
+
+    monkeypatch.setattr(FeedbackService, "create_feedback", staticmethod(over_limit))
+    set_cookies(client, access_token=token("access"))
+    res = client.post("/feedback/", json={"type": "bug", "title": "t"}, headers={"CF-Connecting-IP": "203.0.113.4"})
+    assert res.status_code == 429
+    assert res.json()["detail"]["code"] == "feedback_daily_limit"

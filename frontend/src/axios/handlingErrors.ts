@@ -80,9 +80,11 @@ const goTo = (name: 'Maintenance' | 'Error'): 'navigated' => {
   if (router.currentRoute.value.name !== name) {
     const navigation = router.push({ name })
     globalNavigation = navigation
-    void navigation.finally(() => {
+    // 失敗也要清掉（例如斷線時維護頁的程式碼載不下來），用 then 的兩個參數，不留下沒處理的 rejection
+    const clear = () => {
       if (globalNavigation === navigation) globalNavigation = undefined
-    })
+    }
+    void navigation.then(clear, clear)
   }
   return 'navigated'
 }

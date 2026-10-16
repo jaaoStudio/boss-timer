@@ -162,6 +162,9 @@ frontend/
 6. **帳號偏好只在換人時套用到本地**（`_applyServerUser`，CONTEXT.md「跨裝置同步」）
    伺服器回答（查詢成功或登入回應）的登入者和 `_preferencesUserId` 不同時（開頁、登入、換成另一個人）才套用帳號偏好並遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。同一個人的回答只更新帳號資料、保留目前的 `user.preferences`。`updatePreferences` 先把存的項目寫進 `user.preferences` 再送出（回應先後顛倒也不會改回舊值）；`user_info` 的偏好也是這台裝置目前的偏好，一改就寫入、不等存檔結果，只在快取仍是同一個登入者時直接寫入，不經 `_writeUserInfo`、不通知（其他分頁已登出時不寫回）。**勿改回「每次查詢都同步偏好」**（PR #64 第 8～11 輪：存檔中的先後順序一直出問題；要即時同步得另外把偏好做成獨立查詢）。`becomeAnonymous()` 清掉 `_preferencesUserId`，再登入時一定套用。
 
+7. **改這段邏輯前，先寫一個會失敗的測試**
+   上面每一條規則都對應 `userStore` / `handlingErrors.ts` 的一個測試（#71，Vitest）。修 bug 或改規則時先寫重現的測試、確認失敗，再改程式。#59、#60 的審查約 20 輪多數是「兩件事剛好同時發生」的時序問題，靠審查推演一直收斂不了。#71 完成前這條尚未生效（還沒有測試框架）。
+
 ### `roomStore` — 房間狀態
 **風格**: Options API
 
