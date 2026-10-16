@@ -46,7 +46,7 @@ const flush = async () => {
   for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 0))
 }
 
-// 回答最新一個還沒回答的查詢
+// 回答最早送出、還沒回答的查詢
 async function answer(result: Session | Error) {
   await flush()
   const request = pending.shift()
