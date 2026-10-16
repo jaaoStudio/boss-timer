@@ -31,6 +31,7 @@ Boss Timer 前端是一個 **Vue 3 + Vite** 單頁應用 (SPA)，提供房間制
 | Google 登入 | vue3-google-login + vue3-google-signin | — |
 | 分析 | Google Tag Manager (@gtm-support/vue-gtm) + Microsoft Clarity | — |
 | TypeScript | ^5.8 | — |
+| 測試 | Vitest + jsdom（只測登入同步等不需要畫面的邏輯，#71） | ^3.2 |
 | 自動組件引入 | unplugin-auto-import + unplugin-vue-components (Element Plus Resolver) | — |
 
 ---
@@ -57,6 +58,8 @@ frontend/
     ├── style.css                 # 全域 CSS / Tailwind 入口
     ├── i18n.ts                   # vue-i18n 設定 (自動偵測瀏覽器語系)
     ├── queryClient.ts            # TanStack Vue Query 的 QueryClient（main.ts 以 VueQueryPlugin 掛載）
+    ├── stores/__tests__/         # userStore 的規則測試（Vitest）
+    ├── axios/__tests__/          # 全域錯誤處理的規則測試（Vitest）
     │
     ├── router/
     │   └── index.ts              # 路由定義 + beforeEach 守衛 (認證 + 權限檢查)
@@ -163,7 +166,7 @@ frontend/
    伺服器回答（查詢成功或登入回應）的登入者和 `_preferencesUserId` 不同時（開頁、登入、換成另一個人）才套用帳號偏好並遞增 `preferencesVersion`，`App.vue` 據此呼叫各 composable 的 `syncFromUser()`。同一個人的回答只更新帳號資料、保留目前的 `user.preferences`。`updatePreferences` 先把存的項目寫進 `user.preferences` 再送出（回應先後顛倒也不會改回舊值）；`user_info` 的偏好也是這台裝置目前的偏好，一改就寫入、不等存檔結果，只在快取仍是同一個登入者時直接寫入，不經 `_writeUserInfo`、不通知（其他分頁已登出時不寫回）。**勿改回「每次查詢都同步偏好」**（PR #64 第 8～11 輪：存檔中的先後順序一直出問題；要即時同步得另外把偏好做成獨立查詢）。`becomeAnonymous()` 清掉 `_preferencesUserId`，再登入時一定套用。
 
 7. **改這段邏輯前，先寫一個會失敗的測試**
-   上面每一條規則都對應 `userStore` / `handlingErrors.ts` 的一個測試（#71，Vitest）。修 bug 或改規則時先寫重現的測試、確認失敗，再改程式。#59、#60 的審查約 20 輪多數是「兩件事剛好同時發生」的時序問題，靠審查推演一直收斂不了。#71 完成前這條尚未生效（還沒有測試框架）。
+   上面每一條規則都對應 `src/stores/__tests__/userStore.test.ts` / `src/axios/__tests__/handlingErrors.test.ts` 的一組測試（`describe` 的編號對應規則）。修 bug 或改規則時先寫重現的測試、確認失敗，再改程式。#59、#60 的審查約 20 輪多數是「兩件事剛好同時發生」的時序問題，靠審查推演一直收斂不了。測試以假的 `apiService` / `websocketStore` / `BroadcastChannel` 控制每次 `/auth/session` 何時、回答什麼（`answer()`），時序情境照這個寫法加。
 
 ### `roomStore` — 房間狀態
 **風格**: Options API
@@ -553,8 +556,8 @@ const { t } = useI18n()
 - **Proxy**: `/api` → `https://localhost:1254` (去除 `/api` 前綴)
 
 ### 建置與型別檢查
-- `npm run build` = `npm run typecheck && vite build` — **build 前強制跑 `vue-tsc --noEmit -p tsconfig.app.json`**，型別錯誤會讓 build（含 Docker/CI）直接失敗
-- 單獨檢查型別：`npm run typecheck`
+- `npm run build` = `npm run typecheck && npm run test && vite build` — **build 前強制跑型別檢查（`vue-tsc --noEmit -p tsconfig.app.json`）與測試（`vitest run`）**，任一失敗都會讓 build（含 Docker/CI）直接失敗
+- 單獨檢查型別：`npm run typecheck`；單獨跑測試：`npm test`（設定在 `vitest.config.ts`，只載入 `@` alias、jsdom 環境；測試檔在 `src/**/__tests__/`，不在 app 的型別檢查裡）
 
 ### 插件
 - `@vitejs/plugin-vue` — Vue SFC 支援
