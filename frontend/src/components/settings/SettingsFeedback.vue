@@ -114,7 +114,7 @@
             <img
               v-if="item.creator?.avatar_url"
               :src="item.creator.avatar_url"
-              :alt="item.creator.display_name"
+              :alt="item.creator.display_name ?? ''"
               class="w-4 h-4 rounded-full"
               referrerpolicy="no-referrer"
             />

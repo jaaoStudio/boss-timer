@@ -45,7 +45,7 @@ export interface FeedbackItem {
   voted_by_me: boolean
   creator: {
     id: number
-    display_name: string
+    display_name: string | null
     avatar_url: string | null
   } | null
 }

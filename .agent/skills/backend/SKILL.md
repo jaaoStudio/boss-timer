@@ -267,7 +267,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 ### 連線建立
 - Endpoint: `ws://<host>/api/ws/`
-- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，以 `run_in_threadpool` 呼叫；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無（登入者的判斷與 `/auth/session` 共用 `resolve_login()`，ADR-0009）。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
+- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，以 `run_in_threadpool` 呼叫；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無（登入者的判斷與 `/auth/session` 共用 `resolve_login()`，ADR-0009；查資料庫失敗時記 error log、退回只看 access token，否則照匿名，不讓登入者完全連不上，#61）。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
 - 使用全域 Singleton `ConnectionManager` 管理所有連線
 
 ### 訊息格式 (JSON)
