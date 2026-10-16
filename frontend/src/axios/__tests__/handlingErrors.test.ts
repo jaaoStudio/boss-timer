@@ -97,10 +97,14 @@ describe('8. 401 代表登入失效', () => {
 
   it('跳往維護頁的導頁還在進行時，晚到的 401 不蓋掉它', async () => {
     userStore.handleLoginLost.mockReturnValue(true)
-    router.push.mockReturnValue(new Promise(() => {}))   // 維護頁還在載入
+    let finish!: () => void
+    router.push.mockReturnValue(new Promise<void>((resolve) => { finish = resolve }))   // 維護頁還在載入
     await handled(httpError())
     router.push.mockClear()
     await handled(httpError(401))
     expect(router.push).not.toHaveBeenCalled()
+    // 讓跳頁完成：handlingErrors 的「跳頁進行中」是模組層級狀態，不清掉會影響之後的測試
+    finish()
+    await new Promise((r) => setTimeout(r, 0))
   })
 })
