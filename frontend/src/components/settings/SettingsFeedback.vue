@@ -114,11 +114,11 @@
             <img
               v-if="item.creator?.avatar_url"
               :src="item.creator.avatar_url"
-              :alt="item.creator.display_name ?? ''"
+              :alt="item.creator.display_name || t('settings.feedback.anonymous')"
               class="w-4 h-4 rounded-full"
               referrerpolicy="no-referrer"
             />
-            <span>{{ item.creator?.display_name ?? t('settings.feedback.anonymous') }}</span>
+            <span>{{ item.creator?.display_name || t('settings.feedback.anonymous') }}</span>
             <span>·</span>
             <span>{{ formatRelativeTime(item.created_at) }}</span>
           </div>

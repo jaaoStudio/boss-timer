@@ -148,11 +148,11 @@ async def websocket_endpoint(
     try:
         identity = await run_in_threadpool(resolve_identity, websocket)
     except Exception:
-        # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次連線，前端照一般斷線退避重連，
-        # 資料庫恢復後就照完整判斷連上。勿退回較低的身分：身分在握手時固定，前端看到的身分沒變就不會重連，
-        # 會一直以錯的身分回報
+        # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
+        # 前端看到 1006），前端照一般斷線退避重連，資料庫恢復後就照完整判斷連上。勿退回較低的身分：
+        # 身分在握手時固定，前端看到的身分沒變就不會重連，會一直以錯的身分回報
         logging.error("WebSocket handshake identity lookup failed", exc_info=True)
-        await websocket.close(code=1011)
+        await websocket.close()
         return
     conn = Connection(identity, limit_keys(identity, websocket))
     # 先檢查握手頻率、再檢查同時連線數，勿對調：對調的話被連線數擋下的嘗試不會計入握手頻率，
