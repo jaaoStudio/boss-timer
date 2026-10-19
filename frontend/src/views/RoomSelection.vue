@@ -109,7 +109,7 @@
         <div v-else class="flex items-center justify-center space-x-4">
           <img :src="userStore.user.avatar_url" alt="User Avatar" class="w-10 h-10 rounded-full" v-if="userStore.user && userStore.user.avatar_url"/>
           <div>
-            <p class="text-gray-900 dark:text-white font-medium">{{ t('roomSelection.welcome', { name: userStore.user.display_name }) }}</p>
+            <p class="text-gray-900 dark:text-white font-medium">{{ userStore.user.display_name ? t('roomSelection.welcome', { name: userStore.user.display_name }) : t('roomSelection.welcomeBack') }}</p>
             <a @click="handleLogout" class="text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] cursor-pointer">{{ t('roomSelection.signOut') }}</a>
           </div>
         </div>

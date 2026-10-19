@@ -14,6 +14,7 @@
     "anonymousNicknamePlaceholder": "Please enter your nickname",
     "loginPrompt": "Log in to sync your settings and history",
     "welcome": "Welcome, {name}!",
+    "welcomeBack": "Welcome back!",
     "signOut": "Not you? Sign out",
     "errors": {
       "enterRoomCode": "Please enter a room code.",

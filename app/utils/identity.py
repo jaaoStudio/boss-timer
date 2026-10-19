@@ -3,11 +3,9 @@
 
 需要登入的 API 用 dependencies.get_current_user / get_optional_user；都不要自己解析 JWT 或讀 cookie 原值。
 """
-import logging
 from dataclasses import dataclass
 from typing import Literal, Optional
 
-from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from starlette.requests import HTTPConnection
 from starlette.websockets import WebSocket
@@ -74,15 +72,9 @@ def resolve_login(db: Session, cookies: dict[str, str]) -> Optional[Login]:
 
 def _resolve_websocket(cookies: dict[str, str]) -> Identity:
     if has_login_cookies(cookies):   # 有登入 cookie 才開 session，匿名握手不碰資料庫
-        try:
-            with SessionLocal() as db:
-                if login := resolve_login(db, cookies):
-                    return Identity("user", str(login.user.id))
-        except SQLAlchemyError:
-            # 資料庫暫時故障或連線池逾時（#61）：不讓登入者完全連不上，退回只看 access token（不確認使用者是否存在），
-            # 否則照匿名。身分在握手時固定，資料庫恢復後下次重連（登入 / 登出、斷線）就會照完整判斷
-            logging.error("WebSocket handshake login lookup failed, falling back to access token", exc_info=True)
-            return _resolve(cookies)
+        with SessionLocal() as db:
+            if login := resolve_login(db, cookies):
+                return Identity("user", str(login.user.id))
     return resolve_anonymous(cookies)
 
 

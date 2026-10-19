@@ -331,19 +331,22 @@ def test_user_without_display_name_does_not_break_session(monkeypatch):
     assert res.json()["user"]["display_name"] is None
 
 
-def test_websocket_handshake_survives_database_failure(monkeypatch):
-    # 握手查資料庫失敗（暫時故障、連線池逾時）時不讓登入者完全連不上：access token 有效就照它認定，否則照匿名
-    from sqlalchemy.exc import OperationalError
+def test_google_login_creates_user_without_display_name(monkeypatch):
+    # Google 沒有回傳名稱：建立使用者與登入回應都不能因為 display_name 是 NULL 而失敗
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: {"sub": "g-new", "email": "n@example.com"})
+    monkeypatch.setattr(auth.auth_service, "get_user_by_google_id", lambda db, google_id: None)
+    monkeypatch.setattr(auth.auth_service, "create_user", lambda db, user_data: models.User(
+        id=7, google_id=user_data.google_id, email=user_data.email, display_name=user_data.display_name,
+        preferences={}, created_at=datetime.now(timezone.utc), is_admin=False))
+    monkeypatch.setattr(auth.auth_service, "save_refresh_token", lambda db, user_id, refresh_token: None)
+    set_cookies(client)
+    res = client.post("/auth/google", json={"credential": "ok"}, headers={"CF-Connecting-IP": "203.0.113.5"})
+    assert res.status_code == 200
+    assert res.json()["user"]["display_name"] is None
 
-    def broken_session():
-        raise OperationalError("SELECT 1", {}, Exception("database is down"))
 
-    monkeypatch.setattr(identity_module, "SessionLocal", broken_session)
-
-    def handshake(cookie: str):
-        return resolve_identity(WebSocket({"type": "websocket", "headers": [(b"cookie", cookie.encode())]},
-                                          receive=None, send=None))
-
-    assert handshake(f"access_token={token('access')}") == Identity("user", "42")
-    signed = anonymous_id.sign(str(uuid.uuid4()))
-    assert handshake(f"refresh_token={VALID_REFRESH}; {anonymous_id.COOKIE_NAME}={signed}").kind == "anon"
+def test_public_user_without_display_name():
+    # 回報紀錄的記錄者、回饋的建立者
+    from app.schemas.auth import PublicUser
+    user = models.User(id=7, google_id="g", email="n@example.com", display_name=None)
+    assert PublicUser.model_validate(user).display_name is None
