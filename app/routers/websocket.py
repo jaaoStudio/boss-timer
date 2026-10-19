@@ -142,16 +142,19 @@ async def _reject_connection(websocket: WebSocket) -> None:
 
 # 握手查資料庫失敗的完整錯誤堆疊，一分鐘最多記一次（#76）：資料庫故障期間大量分頁一直退避重連，log 會被同樣的堆疊洗版
 HANDSHAKE_TRACEBACK_INTERVAL_SECONDS = 60
-_last_handshake_traceback = 0.0
+_last_handshake_traceback: Optional[float] = None   # 還沒記過；time.monotonic() 從開機算起，不能用 0 當起點
 
 
-def _log_handshake_failure() -> None:
+def _log_handshake_failure(error: Exception) -> None:
     global _last_handshake_traceback
     now = time.monotonic()
-    full = now - _last_handshake_traceback >= HANDSHAKE_TRACEBACK_INTERVAL_SECONDS
+    full = _last_handshake_traceback is None or now - _last_handshake_traceback >= HANDSHAKE_TRACEBACK_INTERVAL_SECONDS
     if full:
         _last_handshake_traceback = now
-    logging.error("WebSocket handshake identity lookup failed", exc_info=full)
+        logging.error("WebSocket handshake identity lookup failed", exc_info=error)
+    else:
+        # 只記一行也帶上錯誤類型與訊息：同一分鐘內換成別的錯誤時才分得出來
+        logging.error("WebSocket handshake identity lookup failed: %r", error)
 
 
 @router.websocket("/")
@@ -162,11 +165,11 @@ async def websocket_endpoint(
     # 有登入 cookie 時會查資料庫，放到 threadpool，不卡住其他連線
     try:
         identity = await run_in_threadpool(resolve_identity, websocket)
-    except Exception:
+    except Exception as error:
         # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
         # 前端看到 1006），前端照一般斷線退避重連，資料庫恢復後就照完整判斷連上。勿退回較低的身分：
         # 身分在握手時固定，前端看到的身分沒變就不會重連，會一直以錯的身分回報
-        _log_handshake_failure()
+        _log_handshake_failure(error)
         await websocket.close()
         return
     conn = Connection(identity, limit_keys(identity, websocket))

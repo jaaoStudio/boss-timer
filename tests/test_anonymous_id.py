@@ -404,3 +404,13 @@ def test_update_last_login_keeps_values_google_did_not_send():
     user = models.User(id=7, google_id="g", email="n@example.com", display_name="小明", avatar_url="https://old")
     auth.auth_service.update_user_last_login(_NoopSession(), user, display_name=None, avatar_url="https://new")
     assert user.display_name == "小明" and user.avatar_url == "https://new"
+
+
+def test_blank_google_name_does_not_overwrite_or_store_blank(monkeypatch):
+    # 只有空白的名稱等於沒有名稱：不蓋掉原本的名稱，建立時存成 NULL
+    existing = models.User(id=7, google_id="g", email="n@example.com", display_name="小明", avatar_url=None,
+                           preferences={}, created_at=datetime.now(timezone.utc), is_admin=False)
+    seen = _google_login(monkeypatch, {"sub": "g", "email": "n@example.com", "name": "   "}, existing)
+    assert seen["updated"][0] is None
+    seen = _google_login(monkeypatch, {"sub": "g-new", "email": "b@example.com", "name": "  名字  "})
+    assert seen["created"].display_name == "名字"

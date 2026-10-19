@@ -42,7 +42,7 @@ app/
 ├── maintenance.json       # 維護模式開關設定檔 (JSON)
 │
 ├── database/
-│   ├── database.py        # SQLAlchemy engine（pool_pre_ping=True、connect_timeout 5 秒）、SessionLocal、Base、get_db()
+│   ├── database.py        # SQLAlchemy engine（pool_pre_ping=True、connect_timeout 5 秒、TCP keepalive / tcp_user_timeout 10 秒）、SessionLocal、Base、get_db()
 │   └── models.py          # ORM 模型定義 (User, Room, BossType, BossRecord, FeedbackItem, FeedbackVote, RefreshToken)
 │
 ├── schemas/

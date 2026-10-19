@@ -9,9 +9,18 @@ engine = create_engine(
     pool_pre_ping=True,
     pool_size=10,
     max_overflow=20,
-    # 連不上資料庫主機時最多等 5 秒（預設要等作業系統的 TCP 逾時，約 2 分鐘）：WebSocket 握手與同步 API 都在
-    # threadpool 裡查資料庫，故障期間每次都卡住一條執行緒，會拖住其他端點（#76）
-    connect_args={"connect_timeout": 5},
+    # 資料庫連不上或網路中斷時，不讓查詢卡住執行緒好幾分鐘（#76）：
+    # - connect_timeout：建立新連線最多等 5 秒（預設要等作業系統的 TCP 逾時，約 2 分鐘）
+    # - tcp_user_timeout / keepalives：已經在連線池裡的連線遇到封包被丟掉時，送出的資料 10 秒沒有回應就放棄
+    #   （預設要等 TCP 重傳逾時，約 15 分鐘；pool_pre_ping 的 SELECT 1 就會卡在這裡）
+    connect_args={
+        "connect_timeout": 5,
+        "tcp_user_timeout": 10_000,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 3,
+    },
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()

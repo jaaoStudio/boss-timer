@@ -46,8 +46,9 @@ async def login_with_google(
     google_id = payload.get("sub")
     email = payload.get("email")
     # 截斷到欄位長度：超過時建立使用者會丟 DataError、回 500，這個人永遠登入不了（#77）
-    name = payload.get("name")
-    display_name = name[:models.User.display_name.type.length] if name else None
+    # 只有空白的名稱等於沒有名稱，不蓋掉原本的名稱（#77）
+    name = (payload.get("name") or "").strip()
+    display_name = name[:models.User.display_name.type.length] or None
     avatar_url = payload.get("picture")
 
     if not google_id or not email:
