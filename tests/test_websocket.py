@@ -29,22 +29,33 @@ app.include_router(ws_router.router)
 client = TestClient(app)
 
 
+def off_event_loop() -> None:
+    """在 threadpool 執行緒裡沒有執行中的 event loop；在 event loop 上呼叫就讓測試失敗"""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    raise AssertionError("在 event loop 上查了同步的資料庫")
+
+
 @pytest.fixture(autouse=True)
 def recorded_identities(monkeypatch):
     """不連資料庫：房間一律存在；回報只記下伺服器端身分，並廣播 ok 讓測試知道已處理。"""
     manager = ConnectionManager()
     app.dependency_overrides[get_connection_manager] = lambda: manager
-    monkeypatch.setattr(ws_router.room_service, "get_room_by_id", lambda db, room_id: True)
-    monkeypatch.setattr(ws_router.room_service, "update_room_last_active", lambda db, room_id: None)
-    monkeypatch.setattr(ws_router.room_service, "get_room_state", lambda db, room_id: {"type": "room_state"})
+    # 假的資料庫操作都檢查不在 event loop 上執行（ADR-0010）：在 event loop 上查同步的資料庫會卡住所有連線
+    monkeypatch.setattr(ws_router.room_service, "get_room_by_id", lambda db, room_id: off_event_loop() or True)
+    monkeypatch.setattr(ws_router.room_service, "update_room_last_active", lambda db, room_id: off_event_loop())
+    monkeypatch.setattr(ws_router.room_service, "get_room_state", lambda db, room_id: off_event_loop() or {"type": "room_state"})
 
     recorded: list[Identity] = []
 
-    async def fake_record(db, record, identity, manager):
+    def fake_record(db, record, identity):
+        off_event_loop()
         recorded.append(identity)
-        await manager.broadcast_to_room(record.room_id, {"type": "ok"})
+        return {"type": "ok"}   # 回報成功時要廣播給房間的訊息
 
-    monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss_from_websocket", staticmethod(fake_record))
+    monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss", staticmethod(fake_record))
     # 在 with client 內，所有連線共用同一個 portal（同一個 event loop），與正式環境相同；
     # 否則每條連線各自一個 loop，廣播跨 loop 放進送出佇列不是 thread-safe
     with client:
@@ -132,7 +143,7 @@ def test_recorder_info_comes_from_server_identity():
     def create(identity, **recorder_info):
         payload = BossRecordCreate(room_id=ROOM, channel=1, boss_type_id=1, status="killed",
                                    recorder_info=recorder_info or None)
-        return asyncio.run(BossService._create_boss_record(db, payload, times, identity))
+        return BossService._create_boss_record(db, payload, times, identity)
 
     anon = str(uuid.uuid4())
     forged = create(Identity("anon", anon), anonymous_id="victim-uuid", anonymous_name="小明")

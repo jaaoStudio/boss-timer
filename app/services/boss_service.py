@@ -5,7 +5,6 @@ import logging
 from typing import Optional, List
 from app.database.models import Room, BossRecord, BossType
 from app.schemas.boss import BossRecordResponse, BossRecordCreate
-from app.websocket.manager import ConnectionManager
 from app.services.notification_policy import NotificationPolicy
 from app.utils.identity import Identity
 
@@ -44,7 +43,7 @@ class BossService:
         return rows[:limit], has_more
 
     @staticmethod
-    async def _validate_room_exists(db: Session, room_id: str) -> Room:
+    def _validate_room_exists(db: Session, room_id: str) -> Room:
         """驗證房間是否存在"""
         room = db.query(Room).filter(Room.room_id == room_id, Room.is_active == True).first()
         if not room:
@@ -52,7 +51,7 @@ class BossService:
         return room  # type: ignore
 
     @staticmethod
-    async def _get_boss_type_by_id(db: Session, boss_type_id: int) -> BossType:
+    def _get_boss_type_by_id(db: Session, boss_type_id: int) -> BossType:
         """驗證 BOSS 類型是否存在"""
         boss_type = db.query(BossType).filter(BossType.id == boss_type_id).first()
         if not boss_type:
@@ -60,7 +59,7 @@ class BossService:
         return boss_type  # type: ignore
 
     @staticmethod
-    async def _calculate_respawn_times(
+    def _calculate_respawn_times(
             db: Session,
             record: BossRecordCreate,
             boss_type: BossType
@@ -85,7 +84,7 @@ class BossService:
         }
 
     @staticmethod
-    async def _create_boss_record(
+    def _create_boss_record(
             db: Session,
             record: BossRecordCreate,
             respawn_times: dict,
@@ -127,38 +126,29 @@ class BossService:
         return boss_record
 
     @staticmethod
-    async def record_boss_from_websocket(db: Session, record: BossRecordCreate, identity: Identity, manager: ConnectionManager):
-        """Handles boss recording initiated from a WebSocket message."""
-        try:
-            room = await BossService._validate_room_exists(db, record.room_id)
-            room.last_active = datetime.now(timezone.utc)
-            boss_type = await BossService._get_boss_type_by_id(db, record.boss_type_id)
-            respawn_times = await BossService._calculate_respawn_times(db, record, boss_type)
-            boss_record = await BossService._create_boss_record(db, record, respawn_times, identity)
+    def record_boss(db: Session, record: BossRecordCreate, identity: Identity) -> Optional[dict]:
+        """
+        寫入 WebSocket 回報的紀錄並排程 Discord 通知，回傳要廣播給房間的 boss_update 訊息。
+        同步執行、會查資料庫：呼叫端以 run_in_threadpool 執行，廣播在 event loop 上做（ADR-0010）
+        """
+        room = BossService._validate_room_exists(db, record.room_id)
+        room.last_active = datetime.now(timezone.utc)
+        boss_type = BossService._get_boss_type_by_id(db, record.boss_type_id)
+        respawn_times = BossService._calculate_respawn_times(db, record, boss_type)
+        boss_record = BossService._create_boss_record(db, record, respawn_times, identity)
 
-            record_with_recorder = db.query(BossRecord).options(
-                joinedload(BossRecord.recorder),
-                joinedload(BossRecord.boss_type)
-            ).filter(BossRecord.id == boss_record.id).first()
+        record_with_recorder = db.query(BossRecord).options(
+            joinedload(BossRecord.recorder),
+            joinedload(BossRecord.boss_type)
+        ).filter(BossRecord.id == boss_record.id).first()
 
-            if not record_with_recorder:
-                logging.error(f"Could not find boss_record with id {boss_record.id} to broadcast update.")
-                return
+        if not record_with_recorder:
+            logging.error(f"Could not find boss_record with id {boss_record.id} to broadcast update.")
+            return None
 
-            response_data = BossRecordResponse.model_validate(record_with_recorder)
-            await manager.broadcast_to_room(
-                room_id=record.room_id,
-                message={
-                    "type": "boss_update",
-                    "data": response_data.model_dump(mode='json')
-                }
-            )
-            logging.info(f"Broadcasted boss_update from websocket for room {record.room_id}")
-
-            NotificationPolicy.notify(record_with_recorder, room, db)
-
-        except HTTPException as e:
-            raise e
-        except Exception as e:
-            logging.error(f"Error in record_boss_from_websocket: {e}")
-            raise e
+        message = {
+            "type": "boss_update",
+            "data": BossRecordResponse.model_validate(record_with_recorder).model_dump(mode='json'),
+        }
+        NotificationPolicy.notify(record_with_recorder, room, db)
+        return message

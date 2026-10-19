@@ -1,6 +1,5 @@
 # app/routers/auth.py
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Header, Cookie
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
@@ -21,7 +20,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 @router.post("/google", response_model=auth_schemas.LoginResponse)
 @rate_limit("10/minute")
-async def login_with_google(
+def login_with_google(
         request: Request,
         login_data: auth_schemas.GoogleLoginRequest,
         response: Response,
@@ -96,7 +95,7 @@ async def login_with_google(
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
 @rate_limit("30/minute")
-async def refresh_token(
+def refresh_token(
         request: Request,
         response: Response,
         db: Session = Depends(get_db)
@@ -128,7 +127,7 @@ async def refresh_token(
 
 @router.post("/validate", response_model=auth_schemas.ValidateResponse)
 @rate_limit("60/minute")
-async def validate_token(
+def validate_token(
         request: Request,
         authorization: str = Header(None),
         access_token: str = Cookie(None),
@@ -160,7 +159,7 @@ async def validate_token(
 
 @router.get("/me", response_model=auth_schemas.User)
 @rate_limit("60/minute")
-async def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
+def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
@@ -169,7 +168,7 @@ async def read_users_me(request: Request, current_user: models.User = Depends(ge
 
 @router.post("/logout")
 @rate_limit("10/minute")
-async def logout(
+def logout(
         request: Request,
         response: Response,
         db: Session = Depends(get_db)
@@ -189,7 +188,7 @@ async def logout(
 
 @router.put("/me/preferences", response_model=auth_schemas.User)
 @rate_limit("30/minute")
-async def update_preferences(
+def update_preferences(
         request: Request,
         preferences: Dict[str, Any],
         current_user: models.User = Depends(get_current_user),
@@ -206,7 +205,7 @@ async def update_preferences(
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
 @rate_limit("60/minute")
-async def init_session(
+def init_session(
         request: Request,
         response: Response,
         db: Session = Depends(get_db),
@@ -223,8 +222,7 @@ async def init_session(
     """
     cookies = request.cookies
     if has_login_cookies(cookies):
-        # resolve_login 會查資料庫（同步）：每次開頁與跨分頁重新判斷都會呼叫，放進 threadpool 免得卡住 WebSocket 等其他工作
-        if login := await run_in_threadpool(resolve_login, db, cookies):
+        if login := resolve_login(db, cookies):
             if login.renew_access_token:
                 set_access_token_cookie(response, login.user.id)
             return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}

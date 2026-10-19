@@ -1,5 +1,6 @@
 
 import json
+from anyio import from_thread
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from pydantic import BaseModel
 import os
@@ -56,7 +57,7 @@ async def get_maintenance_info(request: Request):
 
 @router.post("/maintenance-config", response_model=MaintenanceConfigUpdate)
 @rate_limit("10/minute")
-async def update_maintenance_config(
+def update_maintenance_config(
     request: Request,
     config: MaintenanceConfigUpdate,
     current_user: models.User = Depends(get_current_admin_user),
@@ -72,8 +73,8 @@ async def update_maintenance_config(
             json.dump(config.model_dump(), f, ensure_ascii=False, indent=2)
         logging.info(f"Maintenance config updated by admin {current_user.email}: {config.model_dump()}")
 
-        # 立即透過 WebSocket 廣播更新的狀態
-        await manager.broadcast_to_all({
+        # 立即透過 WebSocket 廣播更新的狀態：同步端點在 threadpool 執行，回到 event loop 上廣播（ADR-0010）
+        from_thread.run(manager.broadcast_to_all, {
             "type": "maintenance_status_update",
             "data": config.model_dump()
         })

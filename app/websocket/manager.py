@@ -1,4 +1,5 @@
 # app/websocket/manager.py
+from anyio import from_thread
 import json
 import logging
 import asyncio
@@ -129,6 +130,13 @@ class ConnectionManager:
     # 廣播只把訊息放進每條連線的送出佇列、不等待送出，呼叫端不會被慢的連線拖住
     async def broadcast_to_room(self, room_id: str, message: dict):
         self._enqueue_all(self.room_subscriptions.get(room_id, ()), message)
+
+    def broadcast_to_room_from_thread(self, room_id: str, message: dict) -> None:
+        """
+        在 threadpool 裡執行的同步端點（def）要廣播時用：回到 event loop 上執行，manager 的狀態只在 event loop 上操作
+        （送出佇列是 asyncio.Queue，不是 thread-safe，ADR-0010）
+        """
+        from_thread.run(self.broadcast_to_room, room_id, message)
 
     async def broadcast_to_all(self, message: dict):
         """Broadcasts a message to all connected WebSocket clients."""

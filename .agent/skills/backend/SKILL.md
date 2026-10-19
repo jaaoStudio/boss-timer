@@ -336,8 +336,8 @@ ConnectionManager
 
 ### boss_service.py 模式
 - 使用 **靜態方法類** (`BossService`) 聚合相關邏輯
-- 方法鏈: `_validate_room_exists` → `_get_boss_type_by_id` → `_calculate_respawn_times` → `_create_boss_record`
-- 建立記錄後立即廣播到房間
+- 方法鏈（全部同步）: `_validate_room_exists` → `_get_boss_type_by_id` → `_calculate_respawn_times` → `_create_boss_record`
+- `record_boss(db, record, identity)` 寫入紀錄並回傳 `boss_update` 訊息；WebSocket handler 以 `run_in_threadpool` 呼叫，再在 event loop 上廣播（ADR-0010）
 - 建立完成後呼叫 `NotificationPolicy.notify(record, room, db)` 處理推播（Discord 失敗不影響主流程）
 
 ### room_service.py 模式
@@ -459,6 +459,7 @@ ConnectionManager
 ## 開發慣例與守則
 
 ### 新增 API 端點
+0. 用到資料庫的端點宣告成 `def`，勿在 `async def` 裡直接查詢（ADR-0010，見 backend-api skill）
 1. 在 `schemas/` 定義 Pydantic 輸入/輸出模型
 2. 在 `services/` 實作業務邏輯
 3. 在 `routers/` 註冊路由，調用 Service，處理例外
@@ -486,7 +487,7 @@ ConnectionManager
 - 新增訊息類型: 在 `routers/websocket.py` 的 `handle_message()` 中加入新的 `if msg_type == "..."` 分支
 - 廣播: 使用 `manager.broadcast_to_room()` 或 `manager.broadcast_to_all()`
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
-- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 在每個需要 DB 的 message handler 內短暫取用，用完即還給 pool
+- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 短暫取用，用完即還給 pool。**查資料庫的部分寫成同步函式、以 `run_in_threadpool` 執行**（`_load_room_state`、`_record_boss`，session 在函式裡開），handler 本身留在 event loop 上操作 `ConnectionManager`（它的狀態不是 thread-safe，勿整段丟進 threadpool，ADR-0010）
 - **`ping` 訊息**在進入 `SessionLocal` 之前回 `pong` 並 `continue`，不觸碰 DB
 
 ### 錯誤處理

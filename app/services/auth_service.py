@@ -8,6 +8,7 @@ from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 import secrets
+from functools import partial
 
 from app.database import models
 from app.schemas import auth as auth_schemas
@@ -19,6 +20,10 @@ from google.auth.transport import requests
 import requests as python_requests
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/token")
+
+
+# 呼叫 Google 的逾時：Google 卡住時不讓請求一直佔著 threadpool 的執行緒（ADR-0010；google-auth 抓憑證預設要等 120 秒）
+GOOGLE_TIMEOUT_SECONDS = 10
 
 
 def exchange_google_code(code: str) -> Optional[dict]:
@@ -35,7 +40,7 @@ def exchange_google_code(code: str) -> Optional[dict]:
     }
     
     try:
-        response = python_requests.post(token_url, data=data)
+        response = python_requests.post(token_url, data=data, timeout=GOOGLE_TIMEOUT_SECONDS)
         response.raise_for_status()
         tokens = response.json()
         id_token_str = tokens.get("id_token")
@@ -55,7 +60,7 @@ def verify_google_token(token: str) -> Optional[dict]:
     """
     try:
         payload = id_token.verify_oauth2_token(
-            token, requests.Request(), settings.google_client_id
+            token, partial(requests.Request(), timeout=GOOGLE_TIMEOUT_SECONDS), settings.google_client_id
         )
         return payload
     except ValueError:

@@ -8,7 +8,6 @@ from typing import Optional, Callable, Awaitable
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
 
 from app.database.database import SessionLocal
 from app.services import room_service, boss_service
@@ -42,27 +41,42 @@ class Connection:
     limit_keys: tuple[str, str]
 
 
-Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, Connection], Awaitable[None]]
+Handler = Callable[[WebSocket, dict, Optional[str], ConnectionManager, Connection], Awaitable[None]]
+
+# 處理訊息的 handler 在 event loop 上執行，ConnectionManager 只在 event loop 上操作；查資料庫的部分放進
+# threadpool（run_in_threadpool），各自開 session，不卡住所有連線（ADR-0010）
 
 
-async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
-    if not room_service.get_room_by_id(db, room_id):
+def _load_room_state(room_id: str) -> Optional[dict]:
+    with SessionLocal() as db:
+        if not room_service.get_room_by_id(db, room_id):
+            return None
+        room_service.update_room_last_active(db, room_id)
+        return room_service.get_room_state(db, room_id)
+
+
+def _record_boss(record: BossRecordCreate, identity: Identity) -> Optional[dict]:
+    with SessionLocal() as db:
+        return boss_service.BossService.record_boss(db, record, identity)
+
+
+async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
+    # 取得初始狀態成功後才訂閱：出錯時（例如資料庫故障）連線保留，但不留在房間裡卻沒有初始狀態
+    initial_state = await run_in_threadpool(_load_room_state, room_id)
+    if initial_state is None:
         manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
         return
-    room_service.update_room_last_active(db, room_id)
-    # 取得初始狀態成功後才訂閱：出錯時（例如資料庫故障）連線保留，但不留在房間裡卻沒有初始狀態
-    initial_state = room_service.get_room_state(db, room_id)
     manager.subscribe_to_room(websocket, room_id)
     manager.send(websocket, initial_state)
     await manager.broadcast_user_count(room_id)
 
 
-async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
+async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
     manager.unsubscribe_from_room(websocket)
     await manager.broadcast_user_count(room_id)
 
 
-async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
+async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
     current_room = manager.socket_to_room.get(websocket)
     if not current_room or current_room != room_id:
         manager.send(websocket, {"type": "error", "code": "record_rejected", "message": "You are not in this room"})
@@ -72,7 +86,9 @@ async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Opti
         return
     try:
         record_create = BossRecordCreate(**payload)
-        await boss_service.BossService.record_boss_from_websocket(db, record_create, conn.identity, manager)
+        message = await run_in_threadpool(_record_boss, record_create, conn.identity)
+        if message:
+            await manager.broadcast_to_room(room_id=record_create.room_id, message=message)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
         manager.send(websocket, {"type": "error", "code": "record_rejected", "message": str(e)})
@@ -85,7 +101,7 @@ _HANDLERS: dict[str, Handler] = {
 }
 
 
-async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager, conn: Connection) -> None:
+async def handle_message(websocket: WebSocket, message: dict, manager: ConnectionManager, conn: Connection) -> None:
     msg_type = message.get("type")
     if not msg_type:
         logging.warning("Received message without type")
@@ -102,7 +118,7 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         logging.warning(f"Received message type '{msg_type}' without a valid room_id")
         return
 
-    await handler(websocket, payload, room_id, db, manager, conn)
+    await handler(websocket, payload, room_id, manager, conn)
 
 
 async def _receive_message(websocket: WebSocket) -> Optional[dict]:
@@ -218,8 +234,7 @@ async def websocket_endpoint(
                 continue
 
             try:
-                with SessionLocal() as db:
-                    await handle_message(websocket, message, db, manager, conn)
+                await handle_message(websocket, message, manager, conn)
             except Exception:
                 # 照 Socket.IO：單則訊息處理出錯不關閉連線。關閉的話前端重連後 hello 會重置退避，
                 # 每次都送 join_room、每次都出錯（例如資料庫故障），變成每秒重連一次

@@ -14,7 +14,7 @@ router = APIRouter(prefix="/room", tags=["rooms"])
 
 @router.post("/", response_model=RoomResponse)
 @rate_limit("15/minute;50/day")
-async def create_room(
+def create_room(
         request: Request,
         db: Session = Depends(get_db)
 ):
@@ -31,7 +31,7 @@ async def create_room(
 
 @router.get("/{room_id}/exists", response_model=RoomExists)
 @rate_limit("15/minute")
-async def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
+def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
                             db: Session = Depends(get_db)):
     """檢查房間是否存在"""
     try:
@@ -61,7 +61,7 @@ async def check_room_exists(request: Request, room_id: str= Path(..., min_length
 
 @router.patch("/{room_id}/settings", response_model=RoomResponse)
 @rate_limit("30/minute")
-async def update_room_settings(
+def update_room_settings(
         request: Request,
         settings_data: RoomSettingsUpdate,
         room_id: str = Path(..., min_length=10, max_length=10),
@@ -87,7 +87,7 @@ async def update_room_settings(
         raise HTTPException(status_code=500, detail="Failed to update room settings")
 
     # Webhook 設定為整個房間共用，同步給其他開著設定視窗的成員
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room.room_id,
         message={"type": "room_settings_updated", "data": response.model_dump(mode='json')},
     )

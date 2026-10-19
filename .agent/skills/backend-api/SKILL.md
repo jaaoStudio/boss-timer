@@ -46,6 +46,8 @@ app/
 
 ## 新增 API 端點的標準步驟
 
+> ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查。呼叫外部服務一律設逾時
+
 1. **定義 Schema** (`schemas/`): 建立 Pydantic 輸入/輸出模型
 2. **實作 Service** (`services/`): 實作業務邏輯（不含 HTTP 細節）
 3. **建立 Router** (`routers/`): 註冊路由，調用 Service，處理例外
@@ -96,15 +98,15 @@ class RoomSettingsUpdate(BaseModel):
 ```python
 class BossService:
     @staticmethod
-    async def _validate_room_exists(db, room_id) -> Room: ...
+    def _validate_room_exists(db, room_id) -> Room: ...
 
     @staticmethod
-    async def record_boss_from_websocket(db, record, user_id, manager): ...
+    def record_boss(db, record, identity) -> Optional[dict]: ...   # 回傳要廣播的訊息，廣播由呼叫端在 event loop 上做
 ```
 
 **`room_service.py` 模式（函式直接導出）**:
 ```python
-async def get_room_state(db, room_id) -> dict:
+def get_room_state(db, room_id) -> dict:
     # 使用 joinedload 避免 N+1 查詢
     records = db.query(BossRecord).options(
         joinedload(BossRecord.recorder),
@@ -171,7 +173,7 @@ async def get_room_state(db, room_id) -> dict:
 ```python
 @router.post("/", response_model=RoomResponse)
 @rate_limit("15/minute;50/day")   # 多條上限以 ; 分隔
-async def create_room(request: Request, ...):   # 必須有 request 參數
+def create_room(request: Request, ...):   # 必須有 request 參數；用到資料庫的端點宣告成 def（ADR-0010）
 ```
 
 | 層 | key | 額度 | 用途 |

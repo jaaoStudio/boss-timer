@@ -24,14 +24,14 @@ router = APIRouter(prefix="/boss", tags=["boss"])
 
 @router.get("/boss-types", response_model=List[BossTypeResponse])
 @rate_limit("15/minute")
-async def get_boss_types(request: Request, db: Session = Depends(get_db)):
+def get_boss_types(request: Request, db: Session = Depends(get_db)):
     """取得全域 Boss 種類（不含房間自訂）"""
     return db.query(BossType).filter(BossType.room_id == None).all()
 
 
 @router.post("/room/{room_id}/boss-types", response_model=BossTypeResponse)
 @rate_limit("30/minute")
-async def create_custom_boss_type(
+def create_custom_boss_type(
     request: Request,
     room_id: str,
     payload: CustomBossTypeCreate,
@@ -54,7 +54,7 @@ async def create_custom_boss_type(
     db.refresh(custom)
 
     response = BossTypeResponse.model_validate(custom)
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={"type": "boss_type_added", "data": response.model_dump(mode='json')},
     )
@@ -63,7 +63,7 @@ async def create_custom_boss_type(
 
 @router.delete("/room/{room_id}/boss-types/{boss_type_id}")
 @rate_limit("30/minute")
-async def delete_custom_boss_type(
+def delete_custom_boss_type(
     request: Request,
     room_id: str,
     boss_type_id: int,
@@ -96,7 +96,7 @@ async def delete_custom_boss_type(
     db.delete(boss)
     db.commit()
 
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={
             "type": "boss_type_deleted",
@@ -107,7 +107,7 @@ async def delete_custom_boss_type(
 
 @router.get("/room/{room_id}/records", response_model=BossRecordHistoryPage)
 @rate_limit("60/minute")
-async def list_boss_records(
+def list_boss_records(
     request: Request,
     room_id: str,
     before_id: Optional[int] = Query(None, ge=1),
@@ -140,7 +140,7 @@ async def list_boss_records(
 
 @router.delete("/room/{room_id}/records/{record_id}")
 @rate_limit("15/minute")
-async def delete_boss_record(
+def delete_boss_record(
     request: Request,
     room_id: str,
     record_id: int,
@@ -177,7 +177,7 @@ async def delete_boss_record(
     replacement = get_effective_record(db, room_id, last_cleared_at, channel, boss_type_id) if room else None
 
     # 4. WebSocket Broadcast
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={
             "type": "record_deleted",
@@ -194,7 +194,7 @@ async def delete_boss_record(
 
 @router.post("/room/{room_id}/boss-types/{boss_type_id}/clear")
 @rate_limit("10/minute")
-async def clear_boss_type_records(
+def clear_boss_type_records(
     request: Request,
     room_id: str,
     boss_type_id: int,
@@ -238,7 +238,7 @@ async def clear_boss_type_records(
     )
     db.commit()
 
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={
             "type": "boss_type_cleared",
