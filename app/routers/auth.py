@@ -45,7 +45,10 @@ async def login_with_google(
 
     google_id = payload.get("sub")
     email = payload.get("email")
-    display_name = payload.get("name")
+    # 截斷到欄位長度：超過時建立使用者會丟 DataError、回 500，這個人永遠登入不了（#77）
+    # 只有空白的名稱等於沒有名稱，不蓋掉原本的名稱（#77）
+    name = (payload.get("name") or "").strip()
+    display_name = name[:models.User.display_name.type.length] or None
     avatar_url = payload.get("picture")
 
     if not google_id or not email:
@@ -67,7 +70,7 @@ async def login_with_google(
         user = auth_service.create_user(db, user_data=user_create)
     else:
         # 更新最後登入時間
-        user = auth_service.update_user_last_login(db, user)
+        user = auth_service.update_user_last_login(db, user, display_name=display_name, avatar_url=avatar_url)
 
     refresh_token = auth_service.create_refresh_token(data={"sub": str(user.id)})
 

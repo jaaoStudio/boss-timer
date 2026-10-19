@@ -425,3 +425,39 @@ def test_handshake_database_failure_is_logged_and_rejected(monkeypatch, caplog):
         with open_socket(access_token=access_token()) as ws:
             ws.receive_json()
     assert "handshake identity lookup failed" in caplog.text
+
+
+def test_handshake_failure_logs_full_traceback_at_most_once_a_minute(monkeypatch, caplog):
+    # 資料庫故障期間大量分頁一直退避重連（#76）：完整的錯誤堆疊一分鐘只記一次，其餘一行，log 不被洗版
+    from sqlalchemy.exc import OperationalError
+
+    def broken_session():
+        raise OperationalError("SELECT 1", {}, Exception("database is down"))
+
+    monkeypatch.setattr(identity_module, "SessionLocal", broken_session)
+    monkeypatch.setattr(ws_router, "_last_handshake_traceback", None)
+    for _ in range(3):
+        with pytest.raises(WebSocketDisconnect):
+            with open_socket(access_token=access_token()) as ws:
+                ws.receive_json()
+    failures = [r for r in caplog.records if "handshake identity lookup failed" in r.getMessage()]
+    assert len(failures) == 3
+    assert sum(1 for r in failures if r.exc_info) == 1
+    # 只記一行的也要看得出是什麼錯誤：同一分鐘內換成別的錯誤時才分得出來
+    assert all("OperationalError" in r.getMessage() for r in failures if not r.exc_info)
+
+
+def test_first_handshake_failure_after_boot_logs_full_traceback(monkeypatch, caplog):
+    # time.monotonic() 從開機算起：剛開機不到一分鐘、還沒記過時，第一次失敗也要記完整堆疊
+    from sqlalchemy.exc import OperationalError
+
+    def broken_session():
+        raise OperationalError("SELECT 1", {}, Exception("database is down"))
+
+    monkeypatch.setattr(identity_module, "SessionLocal", broken_session)
+    monkeypatch.setattr(ws_router, "_last_handshake_traceback", None)   # 還沒記過（模組載入時的值）
+    monkeypatch.setattr(ws_router.time, "monotonic", lambda: 30.0)
+    with pytest.raises(WebSocketDisconnect):
+        with open_socket(access_token=access_token()) as ws:
+            ws.receive_json()
+    assert any(r.exc_info for r in caplog.records if "handshake identity lookup failed" in r.getMessage())

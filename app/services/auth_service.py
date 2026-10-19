@@ -81,11 +81,18 @@ def create_user(db: Session, user_data: auth_schemas.UserCreate) -> models.User:
     return db_user
 
 
-def update_user_last_login(db: Session, user: models.User) -> models.User:
+def update_user_last_login(
+        db: Session, user: models.User, display_name: Optional[str] = None, avatar_url: Optional[str] = None
+) -> models.User:
     """
-    更新使用者最後登入時間。
+    更新使用者最後登入時間，並同步 Google 回傳的名稱與頭像（#77）：第一次登入時沒有名稱、或之後改了名字 / 頭像的人
+    下次登入就會更新。Google 沒有回傳的欄位保留原值。
     """
     user.last_login_at = datetime.now(timezone.utc)
+    if display_name:
+        user.display_name = display_name
+    if avatar_url:
+        user.avatar_url = avatar_url
     db.commit()
     db.refresh(user)
     return user
