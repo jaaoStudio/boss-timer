@@ -25,7 +25,8 @@ class NotificationPolicy:
 
         boss_name = record.boss_type.name_zh
         channel = record.channel
-        recorder_name = record.recorder.display_name if record.recorder else "訪客"
+        # 沒有名稱的登入者（Google 沒有回傳名稱，#65）與匿名記錄者一樣顯示「訪客」
+        recorder_name = (record.recorder.display_name if record.recorder else None) or "訪客"
         action_text = (
             "擊殺了" if record.status == "killed"
             else "標記存活" if record.status == "alive"

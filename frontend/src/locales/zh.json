@@ -14,6 +14,7 @@
     "anonymousNicknamePlaceholder": "請輸入您的暱稱",
     "loginPrompt": "登入以同步您的設定與歷史紀錄",
     "welcome": "歡迎，{name}！",
+    "welcomeBack": "歡迎回來！",
     "signOut": "不是您？登出",
     "errors": {
       "enterRoomCode": "請輸入房間代碼。",

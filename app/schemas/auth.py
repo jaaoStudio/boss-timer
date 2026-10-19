@@ -32,7 +32,7 @@ class User(BaseModel):
     id: int
     google_id: str
     email: str
-    display_name: str
+    display_name: Optional[str] = None   # Google 沒有回傳名稱時是 NULL（#65）
     avatar_url: Optional[str] = None
     preferences: dict = {}
     created_at: datetime
@@ -45,7 +45,7 @@ class User(BaseModel):
 class PublicUser(BaseModel):
     """Public-facing user info — hides google_id, email, is_admin."""
     id: int
-    display_name: str
+    display_name: Optional[str] = None   # Google 沒有回傳名稱時是 NULL（#65）
     avatar_url: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -61,7 +61,7 @@ class RecorderInfo(BaseModel):
 class UserCreate(BaseModel):
     google_id: str
     email: str
-    display_name: str
+    display_name: Optional[str] = None   # Google 沒有回傳名稱時是 NULL（#65）
     avatar_url: Optional[str] = None
 
 

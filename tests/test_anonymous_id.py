@@ -317,3 +317,36 @@ def test_feedback_daily_limit_429_carries_code(monkeypatch, login):
     res = client.post("/feedback/", json={"type": "bug", "title": "t"}, headers={"CF-Connecting-IP": "203.0.113.4"})
     assert res.status_code == 429
     assert res.json()["detail"]["code"] == "feedback_daily_limit"
+
+
+# --- 登入者資料與握手的容錯（#65、#61）---
+
+def test_user_without_display_name_does_not_break_session(monkeypatch):
+    # Google 沒有回傳名稱時 display_name 是 NULL：所有回傳使用者的端點都不能因此 500（開頁會跳錯誤頁）
+    monkeypatch.setattr(identity_module, "_get_user", lambda db, user_id: models.User(
+        id=42, google_id="g", email="a@example.com", display_name=None, preferences={},
+        created_at=datetime.now(timezone.utc), is_admin=False))
+    res = init_session(access_token=token("access"))
+    assert res.status_code == 200
+    assert res.json()["user"]["display_name"] is None
+
+
+def test_google_login_creates_user_without_display_name(monkeypatch):
+    # Google 沒有回傳名稱：建立使用者與登入回應都不能因為 display_name 是 NULL 而失敗
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: {"sub": "g-new", "email": "n@example.com"})
+    monkeypatch.setattr(auth.auth_service, "get_user_by_google_id", lambda db, google_id: None)
+    monkeypatch.setattr(auth.auth_service, "create_user", lambda db, user_data: models.User(
+        id=7, google_id=user_data.google_id, email=user_data.email, display_name=user_data.display_name,
+        preferences={}, created_at=datetime.now(timezone.utc), is_admin=False))
+    monkeypatch.setattr(auth.auth_service, "save_refresh_token", lambda db, user_id, refresh_token: None)
+    set_cookies(client)
+    res = client.post("/auth/google", json={"credential": "ok"}, headers={"CF-Connecting-IP": "203.0.113.5"})
+    assert res.status_code == 200
+    assert res.json()["user"]["display_name"] is None
+
+
+def test_public_user_without_display_name():
+    # 回報紀錄的記錄者、回饋的建立者
+    from app.schemas.auth import PublicUser
+    user = models.User(id=7, google_id="g", email="n@example.com", display_name=None)
+    assert PublicUser.model_validate(user).display_name is None

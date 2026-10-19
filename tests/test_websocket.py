@@ -410,3 +410,18 @@ def test_ping_from_old_frontend_is_answered_with_pong():
     with connect(str(uuid.uuid4())) as ws:
         ws.send_json({"type": "ping"})
         assert ws.receive_json() == {"type": "pong"}
+
+
+def test_handshake_database_failure_is_logged_and_rejected(monkeypatch, caplog):
+    # 握手查資料庫失敗（#61）：記錄 error log 後拒絕這次連線，前端照一般斷線退避重連，資料庫恢復後照完整判斷連上。
+    # 不可退回較低的身分：身分在握手時固定，前端看到的身分沒變就不會重連，會一直以錯的身分回報
+    from sqlalchemy.exc import OperationalError
+
+    def broken_session():
+        raise OperationalError("SELECT 1", {}, Exception("database is down"))
+
+    monkeypatch.setattr(identity_module, "SessionLocal", broken_session)
+    with pytest.raises(WebSocketDisconnect):
+        with open_socket(access_token=access_token()) as ws:
+            ws.receive_json()
+    assert "handshake identity lookup failed" in caplog.text
