@@ -207,7 +207,14 @@ docker compose run --rm "boss_service_${SLOT}" alembic upgrade head
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, DeclarativeBase
 
-engine = create_engine(settings.database_url, pool_pre_ping=True)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,
+    pool_size=10,
+    max_overflow=20,
+    # 連不上資料庫主機時最多等 5 秒（預設約 2 分鐘的 TCP 逾時會卡住 threadpool，#76）
+    connect_args={"connect_timeout": 5},
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 class Base(DeclarativeBase):

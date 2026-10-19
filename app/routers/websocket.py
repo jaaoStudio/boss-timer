@@ -1,6 +1,7 @@
 # app/routers/websocket.py
 import json
 import logging
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
@@ -139,6 +140,20 @@ async def _reject_connection(websocket: WebSocket) -> None:
     await websocket.close(code=CLOSE_CODE_LIMITED, reason="connection_limited")
 
 
+# 握手查資料庫失敗的完整錯誤堆疊，一分鐘最多記一次（#76）：資料庫故障期間大量分頁一直退避重連，log 會被同樣的堆疊洗版
+HANDSHAKE_TRACEBACK_INTERVAL_SECONDS = 60
+_last_handshake_traceback = 0.0
+
+
+def _log_handshake_failure() -> None:
+    global _last_handshake_traceback
+    now = time.monotonic()
+    full = now - _last_handshake_traceback >= HANDSHAKE_TRACEBACK_INTERVAL_SECONDS
+    if full:
+        _last_handshake_traceback = now
+    logging.error("WebSocket handshake identity lookup failed", exc_info=full)
+
+
 @router.websocket("/")
 async def websocket_endpoint(
     websocket: WebSocket,
@@ -151,7 +166,7 @@ async def websocket_endpoint(
         # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
         # 前端看到 1006），前端照一般斷線退避重連，資料庫恢復後就照完整判斷連上。勿退回較低的身分：
         # 身分在握手時固定，前端看到的身分沒變就不會重連，會一直以錯的身分回報
-        logging.error("WebSocket handshake identity lookup failed", exc_info=True)
+        _log_handshake_failure()
         await websocket.close()
         return
     conn = Connection(identity, limit_keys(identity, websocket))

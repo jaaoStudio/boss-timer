@@ -425,3 +425,21 @@ def test_handshake_database_failure_is_logged_and_rejected(monkeypatch, caplog):
         with open_socket(access_token=access_token()) as ws:
             ws.receive_json()
     assert "handshake identity lookup failed" in caplog.text
+
+
+def test_handshake_failure_logs_full_traceback_at_most_once_a_minute(monkeypatch, caplog):
+    # 資料庫故障期間大量分頁一直退避重連（#76）：完整的錯誤堆疊一分鐘只記一次，其餘一行，log 不被洗版
+    from sqlalchemy.exc import OperationalError
+
+    def broken_session():
+        raise OperationalError("SELECT 1", {}, Exception("database is down"))
+
+    monkeypatch.setattr(identity_module, "SessionLocal", broken_session)
+    monkeypatch.setattr(ws_router, "_last_handshake_traceback", 0.0)
+    for _ in range(3):
+        with pytest.raises(WebSocketDisconnect):
+            with open_socket(access_token=access_token()) as ws:
+                ws.receive_json()
+    failures = [r for r in caplog.records if "handshake identity lookup failed" in r.getMessage()]
+    assert len(failures) == 3
+    assert sum(1 for r in failures if r.exc_info) == 1

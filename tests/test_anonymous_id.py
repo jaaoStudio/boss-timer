@@ -350,3 +350,57 @@ def test_public_user_without_display_name():
     from app.schemas.auth import PublicUser
     user = models.User(id=7, google_id="g", email="n@example.com", display_name=None)
     assert PublicUser.model_validate(user).display_name is None
+
+
+# --- 登入時同步 Google 的名稱與頭像（#77）---
+
+class _NoopSession:
+    def commit(self):
+        pass
+
+    def refresh(self, obj):
+        pass
+
+
+def _google_login(monkeypatch, payload, existing=None):
+    """以 Google 登入，回傳伺服器拿去建立或更新的資料。"""
+    seen = {}
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: payload)
+    monkeypatch.setattr(auth.auth_service, "get_user_by_google_id", lambda db, google_id: existing)
+
+    def create_user(db, user_data):
+        seen["created"] = user_data
+        return models.User(id=7, google_id=user_data.google_id, email=user_data.email, display_name=user_data.display_name,
+                           avatar_url=user_data.avatar_url, preferences={}, created_at=datetime.now(timezone.utc), is_admin=False)
+
+    def update_login(db, user, display_name=None, avatar_url=None):
+        seen["updated"] = (display_name, avatar_url)
+        return user
+
+    monkeypatch.setattr(auth.auth_service, "create_user", create_user)
+    monkeypatch.setattr(auth.auth_service, "update_user_last_login", update_login)
+    monkeypatch.setattr(auth.auth_service, "save_refresh_token", lambda db, user_id, refresh_token: None)
+    set_cookies(client)
+    res = client.post("/auth/google", json={"credential": "ok"}, headers={"CF-Connecting-IP": "203.0.113.6"})
+    assert res.status_code == 200
+    return seen
+
+
+def test_existing_user_login_passes_google_name_and_picture(monkeypatch):
+    # 第一次登入時沒有名稱、之後 Google 有了，或改了名字 / 頭像：登入時更新
+    existing = models.User(id=7, google_id="g", email="n@example.com", display_name=None, avatar_url=None,
+                           preferences={}, created_at=datetime.now(timezone.utc), is_admin=False)
+    seen = _google_login(monkeypatch, {"sub": "g", "email": "n@example.com", "name": "小明", "picture": "https://p"}, existing)
+    assert seen["updated"] == ("小明", "https://p")
+
+
+def test_google_name_is_truncated_to_column_length(monkeypatch):
+    # users.display_name 是 String(100)：超過時建立使用者會丟 DataError、回 500，這個人永遠登入不了
+    seen = _google_login(monkeypatch, {"sub": "g-long", "email": "l@example.com", "name": "名" * 150})
+    assert len(seen["created"].display_name) == 100
+
+
+def test_update_last_login_keeps_values_google_did_not_send():
+    user = models.User(id=7, google_id="g", email="n@example.com", display_name="小明", avatar_url="https://old")
+    auth.auth_service.update_user_last_login(_NoopSession(), user, display_name=None, avatar_url="https://new")
+    assert user.display_name == "小明" and user.avatar_url == "https://new"
