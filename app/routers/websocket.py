@@ -9,10 +9,10 @@ from typing import Optional, Callable, Awaitable
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
 from starlette.concurrency import run_in_threadpool
 
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, db_lock
 from app.services import room_service, boss_service
 from app.dependencies import IP_CEILING_MULTIPLIER, check_dual_limit, get_connection_manager, limit_keys
-from app.utils.identity import Identity, resolve_identity
+from app.utils.identity import Identity, has_login_cookies, resolve_identity
 from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
 
@@ -64,13 +64,15 @@ def _record_boss(record: BossRecordCreate, identity: Identity, manager: Connecti
 
 
 async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
+    # 讀房間狀態與訂閱都在資料庫鎖裡：別人的回報要等訂閱好才寫得進去，不會在兩者之間廣播而漏接（ADR-0010）。
     # 取得初始狀態成功後才訂閱：出錯時（例如資料庫故障）連線保留，但不留在房間裡卻沒有初始狀態
-    initial_state = await run_in_threadpool(_load_room_state, room_id)
-    if initial_state is None:
-        manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
-        return
-    manager.subscribe_to_room(websocket, room_id)
-    manager.send(websocket, initial_state)
+    async with db_lock():
+        initial_state = await run_in_threadpool(_load_room_state, room_id)
+        if initial_state is None:
+            manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
+            return
+        manager.subscribe_to_room(websocket, room_id)
+        manager.send(websocket, initial_state)
     await manager.broadcast_user_count(room_id)
 
 
@@ -89,7 +91,8 @@ async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Opti
         return
     try:
         record_create = BossRecordCreate(**payload)
-        await run_in_threadpool(_record_boss, record_create, conn.identity, manager)
+        async with db_lock():
+            await run_in_threadpool(_record_boss, record_create, conn.identity, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
         manager.send(websocket, {"type": "error", "code": "record_rejected", "message": str(e)})
@@ -181,7 +184,11 @@ async def websocket_endpoint(
 ):
     # 有登入 cookie 時會查資料庫，放到 threadpool，不卡住其他連線
     try:
-        identity = await run_in_threadpool(resolve_identity, websocket)
+        if has_login_cookies(websocket.cookies):
+            async with db_lock():
+                identity = await run_in_threadpool(resolve_identity, websocket)
+        else:
+            identity = resolve_identity(websocket)   # 匿名握手不查資料庫
     except Exception as error:
         # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
         # 前端看到 1006），前端照一般斷線退避重連，資料庫恢復後就照完整判斷連上。勿退回較低的身分：

@@ -48,7 +48,7 @@ app/
 
 > ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查（含 `async def` 裡不可直接開 `SessionLocal()`）。呼叫外部服務一律設逾時
 >
-> ⚠️ **資料庫通道一次只跑一個**（`configure_database_lane()`，lifespan 設定）：同步端點、同步 dependency、`run_in_threadpool` / `anyio.to_thread` 都在同一個執行緒限制下依序執行，不在 event loop 上。程式隱含依賴「資料庫操作依序執行」，勿把限制調大或改用 `asyncio.to_thread`（另一個執行緒池，不受限制）。**在通道裡不可再等另一件也要走通道的事**（互相等待而卡死）；回到 event loop 只用來廣播（`manager.*_from_thread`）。會等外部服務的呼叫（Google）走自己的 `CapacityLimiter`，不佔通道（`/auth/google`）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列），以後放寬通道時用得上；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（臨時容器即可），平常跳過
+> ⚠️ **資料庫工作依序執行：一把鎖住整個請求**（`app/database/database.py` 的 `db_lock()`，ADR-0010）：`get_db` 是 async dependency，請求開始拿鎖、結束才放開，段與段之間不會插進別的請求；等鎖時在 event loop 上等、不佔執行緒與連線。不經 `get_db` 的資料庫工作（WebSocket、背景工作）要自己 `async with db_lock():` 再 `run_in_threadpool`。**拿著鎖時不可再等另一件也要拿鎖的事**（互相等待而卡死），也不要在鎖裡等外部服務（`/auth/google` 不依賴 `get_db`，Google 在鎖外、資料庫那段才拿鎖）。勿改回「把 threadpool 限成一次一個」（交接名額不嚴格、單位是一段，見 ADR-0010）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列）；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（臨時容器即可），平常跳過
 
 1. **定義 Schema** (`schemas/`): 建立 Pydantic 輸入/輸出模型
 2. **實作 Service** (`services/`): 實作業務邏輯（不含 HTTP 細節）

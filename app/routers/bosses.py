@@ -22,6 +22,13 @@ from app.websocket.manager import ConnectionManager
 router = APIRouter(prefix="/boss", tags=["boss"])
 
 
+def _revoke_alerts(records) -> None:
+    """撤銷這些紀錄排程中的 Discord 預警，一次呼叫送出：逐筆撤銷時換輪可能要對 broker 送上百次，期間拿著資料庫鎖（ADR-0010）"""
+    task_ids = [task_id for record in records for task_id in (record.celery_task_ids or {}).values() if task_id]
+    if task_ids:
+        celery_app.control.revoke(task_ids, terminate=False)
+
+
 @router.get("/boss-types", response_model=List[BossTypeResponse])
 @rate_limit("15/minute")
 def get_boss_types(request: Request, db: Session = Depends(get_db)):
@@ -84,11 +91,7 @@ def delete_custom_boss_type(
         BossRecord.boss_type_id == boss_type_id,
         BossRecord.is_archived == False
     ).all()
-    for record in related_records:
-        if record.celery_task_ids:
-            for task_id in record.celery_task_ids.values():
-                if task_id:
-                    celery_app.control.revoke(task_id, terminate=False)
+    _revoke_alerts(related_records)
 
     boss_name = boss.name_zh
 
@@ -158,11 +161,7 @@ def delete_boss_record(
         raise HTTPException(status_code=404, detail="Record not found")
 
     # 1. 撤銷 Celery tasks
-    if record.celery_task_ids:
-        celery_ids = record.celery_task_ids
-        for key, task_id in celery_ids.items():
-            if task_id:
-                celery_app.control.revoke(task_id, terminate=False)
+    _revoke_alerts([record])
 
     # commit 後 ORM 物件會過期，先記下需要的欄位以免重新查詢
     channel, boss_type_id = record.channel, record.boss_type_id
@@ -219,11 +218,7 @@ def clear_boss_type_records(
         BossRecord.boss_type_id == boss_type_id,
         BossRecord.is_archived == False,
     ).all()
-    for record in active_records:
-        if record.celery_task_ids:
-            for task_id in record.celery_task_ids.values():
-                if task_id:
-                    celery_app.control.revoke(task_id, terminate=False)
+    _revoke_alerts(active_records)
 
     # 以 jsonb || 在資料庫端原子合併，只寫入這個 Boss 種類的 key，
     # 避免同時換輪不同 Boss 時讀出-修改-寫回互相覆蓋

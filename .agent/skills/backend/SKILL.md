@@ -337,7 +337,7 @@ ConnectionManager
 ### boss_service.py 模式
 - 使用 **靜態方法類** (`BossService`) 聚合相關邏輯
 - 方法鏈（全部同步）: `_validate_room_exists` → `_get_boss_type_by_id` → `_calculate_respawn_times` → `_create_boss_record`
-- `record_boss(db, record, identity, broadcast)` 寫入紀錄，先以 `broadcast` 回呼廣播 `boss_update`（WebSocket handler 傳入 `manager.broadcast_to_room_from_thread`，回到 event loop），再排程 Discord 通知；handler 以 `run_in_threadpool` 呼叫（資料庫通道，ADR-0010）
+- `record_boss(db, record, identity, broadcast)` 寫入紀錄，先以 `broadcast` 回呼廣播 `boss_update`（WebSocket handler 傳入 `manager.broadcast_to_room_from_thread`，回到 event loop），再排程 Discord 通知；handler 在 `db_lock()` 裡以 `run_in_threadpool` 呼叫（ADR-0010）
 - 建立完成後呼叫 `NotificationPolicy.notify(record, room, db)` 處理推播（Discord 失敗不影響主流程）
 
 ### room_service.py 模式
@@ -422,7 +422,7 @@ ConnectionManager
 
 ### cleanup_inactive_rooms (asyncio)
 - **頻率**: 每 1 小時
-- **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`（`archive_inactive_rooms()` 同步、批次更新，以 `asyncio.to_thread` 執行，不在 event loop 上查資料庫，ADR-0010）
+- **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`（`archive_inactive_rooms()` 同步、批次更新，拿著 `db_lock()` 以 `anyio.to_thread` 執行，不在 event loop 上查資料庫，ADR-0010）
 - **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
 
 ### run_heartbeat (asyncio)
@@ -485,9 +485,9 @@ ConnectionManager
 
 ### WebSocket 開發慣例
 - 新增訊息類型: 在 `routers/websocket.py` 的 `handle_message()` 中加入新的 `if msg_type == "..."` 分支
-- 廣播: 在 event loop 上（async handler）用 `await manager.broadcast_to_room()` / `broadcast_to_all()`；在資料庫通道裡（`def` 端點、`run_in_threadpool` 的函式）用 `manager.broadcast_to_room_from_thread()` / `broadcast_to_all_from_thread()`，勿直接呼叫 async 版本（沒有 await，廣播不會執行）
+- 廣播: 在 event loop 上（async handler）用 `await manager.broadcast_to_room()` / `broadcast_to_all()`；在 threadpool 裡（`def` 端點、`run_in_threadpool` 的函式）用 `manager.broadcast_to_room_from_thread()` / `broadcast_to_all_from_thread()`，勿直接呼叫 async 版本（沒有 await，廣播不會執行）
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
-- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 短暫取用，用完即還給 pool。**查資料庫的部分寫成同步函式、以 `run_in_threadpool` 執行**（`_load_room_state`、`_record_boss`，session 在函式裡開），handler 本身留在 event loop 上操作 `ConnectionManager`（它的狀態不是 thread-safe，勿整段丟進 threadpool，ADR-0010）
+- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 短暫取用，用完即還給 pool。**查資料庫的部分寫成同步函式、在 `async with db_lock():` 裡以 `run_in_threadpool` 執行**（`_load_room_state`、`_record_boss`，session 在函式裡開；加入房間的訂閱也在鎖裡），handler 本身留在 event loop 上操作 `ConnectionManager`（它的狀態不是 thread-safe，勿整段丟進 threadpool，ADR-0010）
 - **`ping` 訊息**在進入 `SessionLocal` 之前回 `pong` 並 `continue`，不觸碰 DB
 
 ### 錯誤處理

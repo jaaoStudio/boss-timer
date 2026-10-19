@@ -3,15 +3,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import logging
-import json
-import os
 
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
-from anyio import to_thread
-
-from app.dependencies import configure_database_lane, limiter, rate_limit_exceeded_handler
+from app.dependencies import limiter, rate_limit_exceeded_handler
 from app.routers.system import read_maintenance_file
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket, system, feedback # 引入 admin
@@ -19,7 +15,6 @@ from app.tasks.cleanup import cleanup_inactive_rooms
 from app.websocket.manager import ConnectionManager
 from app.dependencies import get_connection_manager
 
-# 設定檔的路徑 (與 system.py 中的路徑保持一致)
 
 # 用於追蹤上次讀取的維護狀態
 last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
@@ -30,8 +25,9 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
     並在狀態變化時透過 WebSocket 廣播。
     """
     global last_maintenance_status
-    # 讀檔走資料庫通道：與管理員寫檔依序執行，不會讀到寫到一半的檔案（ADR-0010）
-    data = await to_thread.run_sync(read_maintenance_file) or {}
+    # 在 event loop 上直接讀（檔案很小）：管理員寫檔也回到 event loop 執行，讀寫不會同時發生；
+    # 讀完到比較、更新上次的狀態之間沒有 await，同時的請求不會廣播錯的狀態
+    data = read_maintenance_file() or {}
     current_maintenance_status = {
         "is_maintenance": data.get("is_maintenance", False),
         "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),
@@ -54,7 +50,6 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    configure_database_lane()
     cleanup_task = asyncio.create_task(cleanup_inactive_rooms())
     heartbeat_task = asyncio.create_task(get_connection_manager().run_heartbeat())
     yield

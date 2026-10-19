@@ -3,7 +3,7 @@ import asyncio
 from anyio import to_thread
 import logging
 from datetime import datetime, timedelta, timezone
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, db_lock
 from app.database.models import BossRecord, Room
 
 
@@ -28,9 +28,9 @@ async def cleanup_inactive_rooms():
     while True:
         try:
             await asyncio.sleep(3600)  # 每小時執行一次
-            # 走資料庫通道（anyio 預設的執行緒限制，ADR-0010）：不在 event loop 上執行，也不和進房、回報同時執行。
-            # 勿用 asyncio.to_thread：它是另一個執行緒池，不受通道限制
-            archived = await to_thread.run_sync(archive_inactive_rooms)
+            # 拿著資料庫鎖、在 threadpool 執行（ADR-0010）：不在 event loop 上查資料庫，也不和進房、回報同時執行
+            async with db_lock():
+                archived = await to_thread.run_sync(archive_inactive_rooms)
             logging.info(f"Marked {archived} inactive rooms as archived.")
         except Exception as e:
             logging.error(f"Cleanup error: {e}")

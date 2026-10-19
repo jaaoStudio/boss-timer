@@ -13,7 +13,7 @@ def _depends_on_db(dependant) -> bool:
 
 def test_http_endpoints_using_the_database_are_sync():
     # async def 的端點直接查同步的資料庫會卡住整個 worker 的 event loop（WebSocket 心跳、廣播一起停住）；
-    # 宣告成一般的 def，FastAPI 會放到 threadpool 執行。需要廣播時以 anyio.from_thread.run 回到 event loop
+    # 宣告成一般的 def，FastAPI 會放到 threadpool 執行。需要廣播時以 manager.*_from_thread 回到 event loop
     offenders = [
         f"{sorted(route.methods)} {route.path}"
         for route in app.routes
@@ -111,63 +111,116 @@ def test_boss_update_is_broadcast_before_discord_is_scheduled(monkeypatch):
     assert order == ["broadcast", "notify"]
 
 
-def test_database_lane_runs_one_at_a_time():
-    # 程式隱含依賴「資料庫操作依序執行」（以前卡住 event loop 等於自動排隊）：通道一次只跑一個，但不在 event loop 上
+def test_database_lock_is_strictly_exclusive():
+    # 資料庫工作依序執行（ADR-0010）：anyio 的 CapacityLimiter 交接名額時，醒來前會被別人搶先，兩件事同時跑；
+    # 這把鎖不可以
+    import threading
+    import time
+
     import anyio
 
-    from app.dependencies import configure_database_lane
+    from app.database.database import db_lock
+
+    running, overlaps = [0], []
+    guard = threading.Lock()
+
+    def work():
+        with guard:
+            running[0] += 1
+            overlaps.append(running[0])
+        time.sleep(0.001)
+        with guard:
+            running[0] -= 1
+
+    async def job():
+        async with db_lock():
+            await anyio.to_thread.run_sync(work)
 
     async def main():
-        configure_database_lane()
-        return anyio.to_thread.current_default_thread_limiter().total_tokens
+        async with anyio.create_task_group() as tg:
+            for _ in range(200):
+                tg.start_soon(job)
 
-    assert anyio.run(main) == 1
+    anyio.run(main)
+    assert max(overlaps) == 1
 
 
-def test_google_calls_do_not_take_the_database_lane(monkeypatch):
-    # 呼叫 Google 最多等 10 秒：佔住一次一個的資料庫通道的話，所有人的資料庫操作都要等它
+def test_database_lock_covers_the_whole_request():
+    # FastAPI 把一個請求拆成好幾段丟進 threadpool（dependency、端點本體、收尾）。以前「一次一個」的單位是一段，
+    # 兩個請求的段會交錯；依序執行的單位要是整個請求
+    import threading
+    import time
+
     import anyio
+    import httpx
+    from fastapi import Depends, FastAPI
 
-    from app.routers import auth
+    events = []
+    guard = threading.Lock()
+    app = FastAPI()
 
-    used = []
-    real_run_sync = anyio.to_thread.run_sync
+    def first_step(db=Depends(get_db)):
+        with guard:
+            events.append("start")
+        time.sleep(0.02)
+        return db
 
-    async def spy(fn, *args, limiter=None, **kwargs):
-        used.append((getattr(fn, "__name__", ""), limiter))
-        return await real_run_sync(fn, *args, limiter=limiter, **kwargs)
+    @app.get("/work")
+    def work(db=Depends(first_step)):
+        time.sleep(0.02)
+        with guard:
+            events.append("end")
+        return {}
 
-    monkeypatch.setattr(auth.anyio.to_thread, "run_sync", spy)
-    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: None)
+    async def main():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+            async with anyio.create_task_group() as tg:
+                for _ in range(5):
+                    tg.start_soon(client.get, "/work")
+
+    anyio.run(main)
+    assert events == ["start", "end"] * 5, events
+
+
+def test_google_is_called_outside_the_database_lock(monkeypatch):
+    # 呼叫 Google 最多等 10 秒：在鎖裡等的話，所有人的資料庫工作都要等它
+    import anyio
     from fastapi.testclient import TestClient
+
+    from app.database.database import db_lock
+    from app.routers import auth
     from tests.helpers import make_limited_app
 
+    held = []
+
+    def verify(credential):
+        held.append(anyio.from_thread.run_sync(lambda: db_lock().locked()))
+        return None
+
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", verify)
     app = make_limited_app()
     app.include_router(auth.router)
     with TestClient(app) as client:
         client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.7"})
-    google = [limiter for name, limiter in used if name == "_verify_google_payload"]
-    assert google and google[0] is auth.GOOGLE_LIMITER
+    assert held == [False]
 
 
-def test_maintenance_file_is_read_in_the_database_lane(monkeypatch):
-    # 維護設定檔的讀寫都走同一條通道：管理員寫到一半時不會被讀到（誤判成「沒有維護」並廣播）
+def test_maintenance_config_is_written_on_the_event_loop(monkeypatch):
+    # 讀 maintenance.json 的地方（check_maintenance_mode、維護資訊）都在 event loop 上直接讀；寫檔也回到 event loop，
+    # 讀寫就不會同時發生（先清空再寫入時，同時讀到一半會誤判成「沒有維護」並廣播）。不用換檔：正式機以單一檔案掛載
     import threading
 
     import anyio
 
-    from app import main
+    from app.routers import system
 
     threads = {}
-    monkeypatch.setattr(main, "read_maintenance_file", lambda: threads.setdefault("read", threading.get_ident()) and {})
+    monkeypatch.setattr(system, "_write_maintenance_file", lambda data: threads.setdefault("write", threading.get_ident()))
 
-    class Manager:
-        async def broadcast_to_all(self, message):
-            pass
-
-    async def run():
+    async def main():
         threads["loop"] = threading.get_ident()
-        await main.check_maintenance_mode(Manager())
+        await anyio.to_thread.run_sync(system.save_maintenance_config, {"is_maintenance": True})
 
-    anyio.run(run)
-    assert threads["read"] != threads["loop"]
+    anyio.run(main)
+    assert threads["write"] == threads["loop"]
