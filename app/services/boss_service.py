@@ -2,7 +2,7 @@ from fastapi import HTTPException
 from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta, timezone
 import logging
-from typing import Optional, List
+from typing import Callable, Optional, List
 from app.database.models import Room, BossRecord, BossType
 from app.schemas.boss import BossRecordResponse, BossRecordCreate
 from app.services.notification_policy import NotificationPolicy
@@ -126,10 +126,11 @@ class BossService:
         return boss_record
 
     @staticmethod
-    def record_boss(db: Session, record: BossRecordCreate, identity: Identity) -> Optional[dict]:
+    def record_boss(db: Session, record: BossRecordCreate, identity: Identity, broadcast: Callable[[dict], None]) -> None:
         """
-        寫入 WebSocket 回報的紀錄並排程 Discord 通知，回傳要廣播給房間的 boss_update 訊息。
-        同步執行、會查資料庫：呼叫端以 run_in_threadpool 執行，廣播在 event loop 上做（ADR-0010）
+        寫入 WebSocket 回報的紀錄，以 broadcast 廣播 boss_update 給房間，再排程 Discord 通知。
+        同步執行、會查資料庫：呼叫端以 run_in_threadpool 執行，broadcast 負責回到 event loop 上廣播（ADR-0010）。
+        先廣播再排程：排程要寫 Redis，Redis 慢的時候房間不該等它才看到回報
         """
         room = BossService._validate_room_exists(db, record.room_id)
         room.last_active = datetime.now(timezone.utc)
@@ -144,11 +145,10 @@ class BossService:
 
         if not record_with_recorder:
             logging.error(f"Could not find boss_record with id {boss_record.id} to broadcast update.")
-            return None
+            return
 
-        message = {
+        broadcast({
             "type": "boss_update",
             "data": BossRecordResponse.model_validate(record_with_recorder).model_dump(mode='json'),
-        }
+        })
         NotificationPolicy.notify(record_with_recorder, room, db)
-        return message

@@ -422,7 +422,7 @@ ConnectionManager
 
 ### cleanup_inactive_rooms (asyncio)
 - **頻率**: 每 1 小時
-- **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`
+- **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`（`archive_inactive_rooms()` 同步、批次更新，以 `asyncio.to_thread` 執行，不在 event loop 上查資料庫，ADR-0010）
 - **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
 
 ### run_heartbeat (asyncio)

@@ -46,7 +46,9 @@ app/
 
 ## 新增 API 端點的標準步驟
 
-> ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查。呼叫外部服務一律設逾時
+> ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查（含 `async def` 裡不可直接開 `SessionLocal()`）。呼叫外部服務一律設逾時
+>
+> ⚠️ **端點會同時執行**：改在 threadpool 後，同一個 worker 的請求會真的同時跑（以前卡住 event loop 等於自動排隊）。「先查再寫」要防競爭：唯一限制撞到時接住 `IntegrityError` 改用已存在的那一筆（`create_user`、`toggle_vote`）；「數完再寫」或「刪掉再新增」先以 `with_for_update()` 鎖住使用者那一列（`create_feedback` 每日上限、`save_refresh_token`）。競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（臨時容器即可），平常跳過
 
 1. **定義 Schema** (`schemas/`): 建立 Pydantic 輸入/輸出模型
 2. **實作 Service** (`services/`): 實作業務邏輯（不含 HTTP 細節）

@@ -55,6 +55,20 @@ async def get_maintenance_info(request: Request):
         return default_info
 
 
+def _write_maintenance_file(data: dict) -> None:
+    with open(MAINTENANCE_FILE_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+def save_maintenance_config(data: dict) -> None:
+    """
+    在 threadpool 執行的端點裡寫 maintenance.json：回到 event loop 上寫。讀這個檔案的地方（check_maintenance_mode、
+    get_maintenance_info）都在 event loop 上，讀寫就不會同時發生——先清空再寫入時同時讀到一半，會誤判成「沒有維護」
+    並廣播出去。不用「寫暫存檔再換上」：正式機以單一檔案掛載，不能以 rename 覆蓋掛載點
+    """
+    from_thread.run_sync(_write_maintenance_file, data)
+
+
 @router.post("/maintenance-config", response_model=MaintenanceConfigUpdate)
 @rate_limit("10/minute")
 def update_maintenance_config(
@@ -68,13 +82,11 @@ def update_maintenance_config(
     只有管理員可以訪問此端點。
     """
     try:
-        # 將新的配置寫入 maintenance.json 檔案
-        with open(MAINTENANCE_FILE_PATH, "w", encoding="utf-8") as f:
-            json.dump(config.model_dump(), f, ensure_ascii=False, indent=2)
+        save_maintenance_config(config.model_dump())
         logging.info(f"Maintenance config updated by admin {current_user.email}: {config.model_dump()}")
 
         # 立即透過 WebSocket 廣播更新的狀態：同步端點在 threadpool 執行，回到 event loop 上廣播（ADR-0010）
-        from_thread.run(manager.broadcast_to_all, {
+        manager.broadcast_to_all_from_thread({
             "type": "maintenance_status_update",
             "data": config.model_dump()
         })

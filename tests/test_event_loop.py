@@ -65,3 +65,67 @@ def test_google_requests_have_timeouts(monkeypatch):
     auth_service.exchange_google_code("code")
     auth_service.verify_google_token("token")
     assert seen["post"] and seen["certs"]
+
+
+def test_async_functions_do_not_open_database_sessions():
+    # Depends(get_db) 以外的寫法：在 async 函式裡直接開 SessionLocal() 一樣會在 event loop 上查資料庫
+    # （WebSocket handler、背景工作）。查資料庫的部分要寫成同步函式、放進 threadpool
+    import ast
+    import pathlib
+
+    offenders = []
+    for path in pathlib.Path("app").rglob("*.py"):
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.AsyncFunctionDef):
+                for call in ast.walk(node):
+                    if isinstance(call, ast.Call) and getattr(call.func, "id", None) == "SessionLocal":
+                        offenders.append(f"{path}:{node.name}")
+    assert offenders == []
+
+
+def test_maintenance_config_is_written_on_the_event_loop(monkeypatch):
+    # 讀 maintenance.json 的地方（check_maintenance_mode、維護資訊）都在 event loop 上；寫檔也回到 event loop 執行，
+    # 讀寫就不會同時發生（先清空再寫入時，同時讀到一半會誤判成「沒有維護」並廣播）。不用換檔：正式機以單一檔案掛載
+    import threading
+
+    import anyio
+
+    from app.routers import system
+
+    threads = {}
+    monkeypatch.setattr(system, "_write_maintenance_file", lambda data: threads.setdefault("write", threading.get_ident()))
+
+    async def main():
+        threads["loop"] = threading.get_ident()
+        await anyio.to_thread.run_sync(system.save_maintenance_config, {"is_maintenance": True})
+
+    anyio.run(main)
+    assert threads["write"] == threads["loop"]
+
+
+def test_boss_update_is_broadcast_before_discord_is_scheduled(monkeypatch):
+    # Discord 通知要寫 Redis：Redis 慢的時候，房間不該等它才看到回報
+    from types import SimpleNamespace
+
+    from app.services import boss_service
+    from app.services.boss_service import BossService
+
+    order = []
+    record = SimpleNamespace(id=1)
+    monkeypatch.setattr(BossService, "_validate_room_exists", staticmethod(lambda db, room_id: SimpleNamespace(last_active=None)))
+    monkeypatch.setattr(BossService, "_get_boss_type_by_id", staticmethod(lambda db, boss_type_id: None))
+    monkeypatch.setattr(BossService, "_calculate_respawn_times", staticmethod(lambda db, rec, boss_type: {}))
+    monkeypatch.setattr(BossService, "_create_boss_record", staticmethod(lambda db, rec, times, identity: record))
+    monkeypatch.setattr(boss_service, "BossRecordResponse", SimpleNamespace(
+        model_validate=lambda obj: SimpleNamespace(model_dump=lambda mode: {})))
+    monkeypatch.setattr(boss_service.NotificationPolicy, "notify", staticmethod(lambda rec, room, db: order.append("notify")))
+
+    class FakeQuery:
+        def options(self, *a): return self
+        def filter(self, *a): return self
+        def first(self): return record
+
+    db = SimpleNamespace(query=lambda model: FakeQuery())
+    payload = SimpleNamespace(room_id="ROOMABCDEF", boss_type_id=1)
+    BossService.record_boss(db, payload, None, broadcast=lambda message: order.append("broadcast"))
+    assert order == ["broadcast", "notify"]

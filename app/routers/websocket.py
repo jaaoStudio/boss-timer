@@ -55,9 +55,12 @@ def _load_room_state(room_id: str) -> Optional[dict]:
         return room_service.get_room_state(db, room_id)
 
 
-def _record_boss(record: BossRecordCreate, identity: Identity) -> Optional[dict]:
+def _record_boss(record: BossRecordCreate, identity: Identity, manager: ConnectionManager) -> None:
     with SessionLocal() as db:
-        return boss_service.BossService.record_boss(db, record, identity)
+        boss_service.BossService.record_boss(
+            db, record, identity,
+            broadcast=lambda message: manager.broadcast_to_room_from_thread(record.room_id, message),
+        )
 
 
 async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
@@ -86,9 +89,7 @@ async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Opti
         return
     try:
         record_create = BossRecordCreate(**payload)
-        message = await run_in_threadpool(_record_boss, record_create, conn.identity)
-        if message:
-            await manager.broadcast_to_room(room_id=record_create.room_id, message=message)
+        await run_in_threadpool(_record_boss, record_create, conn.identity, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
         manager.send(websocket, {"type": "error", "code": "record_rejected", "message": str(e)})

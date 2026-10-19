@@ -50,10 +50,10 @@ def recorded_identities(monkeypatch):
 
     recorded: list[Identity] = []
 
-    def fake_record(db, record, identity):
+    def fake_record(db, record, identity, broadcast):
         off_event_loop()
         recorded.append(identity)
-        return {"type": "ok"}   # 回報成功時要廣播給房間的訊息
+        broadcast({"type": "ok"})   # 回報成功時廣播給房間（從 threadpool 回到 event loop）
 
     monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss", staticmethod(fake_record))
     # 在 with client 內，所有連線共用同一個 portal（同一個 event loop），與正式環境相同；

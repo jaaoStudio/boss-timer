@@ -3,6 +3,7 @@ from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy import case, func, literal, update
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
@@ -81,7 +82,15 @@ def create_user(db: Session, user_data: auth_schemas.UserCreate) -> models.User:
     """
     db_user = models.User(**user_data.model_dump())
     db.add(db_user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        # 同一個 Google 帳號的第一次登入同時送了兩次（連點、兩個分頁）：另一個請求已經建立，改用那一筆
+        db.rollback()
+        existing = get_user_by_google_id(db, user_data.google_id)
+        if existing is None:
+            raise
+        return existing
     db.refresh(db_user)
     return db_user
 
@@ -148,6 +157,8 @@ def save_refresh_token(db: Session, user_id: int, refresh_token: str):
             detail="Failed to save refresh token"
         )
 
+    # 先鎖住使用者那一列：同時登入兩次時依序處理，不會各自刪掉舊的、各自新增而留下兩個有效的 refresh token
+    db.query(models.User).filter(models.User.id == user_id).with_for_update().one()
     # 先刪除該用戶的舊 refresh token
     db.query(models.RefreshToken).filter(
         models.RefreshToken.user_id == user_id
