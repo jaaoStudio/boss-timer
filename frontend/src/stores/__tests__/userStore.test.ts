@@ -8,9 +8,12 @@ const api = vi.hoisted(() => ({
   updateMyPreferences: vi.fn(),
 }))
 const ws = vi.hoisted(() => ({ connect: vi.fn(), reconnect: vi.fn() }))
+const showFailure = vi.hoisted(() => vi.fn())
 
 vi.mock('@/services/apiService', () => ({ default: api }))
 vi.mock('@/stores/websocketStore', () => ({ useWebSocketStore: () => ws }))
+vi.mock('@/axios/handlingErrors', () => ({ showFailure }))
+vi.mock('@/i18n', () => ({ default: { global: { t: (key: string) => key } } }))
 
 type Session =
   | { status: 'authenticated'; user: User }
@@ -218,6 +221,15 @@ describe('6. 帳號偏好只在換人時套用', () => {
     void store._refetchSession()
     await answer(authed(userB))
     expect(store.preferencesVersion).toBe(2)
+  })
+
+  it('存檔失敗時經 showFailure 提示（全站已處理過的由它略過），本地的修改保留（#66）', async () => {
+    const store = await opened(authed(userA))
+    const error = new Error('400')
+    api.updateMyPreferences.mockRejectedValue(error)
+    await store.updatePreferences({ channelViewMode: 'timeline' })
+    expect(showFailure).toHaveBeenCalledWith(error, 'settings.preferencesSaveFailed')
+    expect(store.user?.preferences.channelViewMode).toBe('timeline')
   })
 
   it('updatePreferences 先寫本地與 user_info，存檔失敗也不改回', async () => {

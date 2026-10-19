@@ -1,4 +1,4 @@
-import { getCurrentScope, onScopeDispose, ref, watch, type Ref } from 'vue'
+import { ref, watch, type Ref } from 'vue'
 
 export function useLocalStorage<T>(
   key: string,
@@ -16,34 +16,29 @@ export function useLocalStorage<T>(
   }
 
   const state = ref<T>(load()) as Ref<T>
-  // 正在套用其他分頁的值：不寫回（否則其他分頁刪掉的 key 會被重新寫回，正規化後的值還會再觸發其他分頁一輪）
-  let applyingOtherTab = false
+  // 剛從其他分頁套用的內容：寫入前比對，相同就不寫回（否則其他分頁刪掉的 key 會被重新寫回，
+  // 正規化後的值還會再觸發其他分頁一輪）。只在真的賦值時記下，watch 一定會跑一次並清掉，不會殘留
+  let fromOtherTab: string | undefined
 
-  // flush: 'sync'：在賦值當下就執行，才能以上面的旗標判斷這次改變是不是來自其他分頁
-  const stopWatch = watch(state, (val) => {
-    if (!applyingOtherTab) localStorage.setItem(key, JSON.stringify(val))
-  }, { deep: true, flush: 'sync' })
+  // 預設的 flush：同一輪的修改只寫一次（例如重設設定一次改好幾個欄位）
+  watch(state, (val) => {
+    const json = JSON.stringify(val)
+    const skip = json === fromOtherTab
+    fromOtherTab = undefined
+    if (!skip) localStorage.setItem(key, json)
+  }, { deep: true })
 
   // 其他分頁改了同一個 key 就跟著更新（storage 事件只送到其他分頁）：同一台裝置的分頁之間，
-  // 舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）。key 為 null 代表其他分頁清空了 localStorage
-  const onStorage = (event: StorageEvent) => {
+  // 舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）。key 為 null 代表其他分頁清空了 localStorage。
+  // shortcut: 監聽不會移除，只能在模組層級呼叫（現有呼叫端都是）；要在元件裡用時改成 scope 結束時移除
+  window.addEventListener('storage', (event) => {
     if (event.storageArea !== localStorage || (event.key !== key && event.key !== null)) return
-    applyingOtherTab = true
-    try {
-      state.value = load()
-    } finally {
-      applyingOtherTab = false
-    }
-  }
-  window.addEventListener('storage', onStorage)
-
-  // 在元件或 effect scope 裡呼叫時，結束就移除監聽；現有的呼叫端都在模組層級，跟著頁面存在
-  if (getCurrentScope()) {
-    onScopeDispose(() => {
-      window.removeEventListener('storage', onStorage)
-      stopWatch()
-    })
-  }
+    const next = load()
+    const json = JSON.stringify(next)
+    if (json === JSON.stringify(state.value)) return
+    fromOtherTab = json
+    state.value = next
+  })
 
   return state
 }

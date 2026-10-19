@@ -4,6 +4,8 @@ import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
 import { QueryObserver } from '@tanstack/vue-query';
 import { queryClient } from '@/queryClient';
+import { showFailure } from '@/axios/handlingErrors';
+import i18n from '@/i18n';
 
 export interface User {
   id: number;
@@ -317,7 +319,10 @@ export const useUserStore = defineStore('user', {
       try {
         await apiService.updateMyPreferences(preferences);
       } catch (error) {
+        // 本地的修改保留、不改回（同各元件「先改本地」）；提示使用者帳號沒存到（#66）。
+        // 網路錯誤、5xx、429、登入失效已由全站處理（跳頁或提示），showFailure 不重複提示
         console.error('Failed to update preferences:', error);
+        showFailure(error, i18n.global.t('settings.preferencesSaveFailed'));
       }
     },
 

@@ -141,7 +141,7 @@ frontend/
 - `initializeAuth()` — 開始查詢登入狀態（`/auth/session`，由伺服器判斷），第一次判斷完成後連線 WebSocket（細節見下方「登入狀態的查詢守則」）
 - `loginWithGoogle(payload)` — Google 登入：照登入回應顯示（同時通知其他分頁），再重新查詢；失敗時不動登入狀態、往外丟（登入按鈕只在未登入時顯示，沒有「換帳號」流程）
 - `logout()` — 進行中再呼叫共用同一次（`_logoutPromise`）。先打 `/auth/logout`，**成功才**清掉本分頁的畫面並重新查詢；取得匿名身分後才清 `user_info`（同時通知其他分頁，讓它們沿用同一個匿名身分），查詢失敗也照樣清掉並通知。`/auth/logout` 失敗時什麼都不動、往外丟，`RoomSelection` 顯示「登出失敗」：HttpOnly cookie 前端清不掉，只有 API 成功才算登出
-- `updatePreferences(preferences)` — 更新使用者偏好設定：先寫進 `user.preferences` 與 `user_info`（快取仍是同一個登入者時）再存檔
+- `updatePreferences(preferences)` — 更新使用者偏好設定：先寫進 `user.preferences` 與 `user_info`（快取仍是同一個登入者時）再存檔；失敗時本地保留、經 `showFailure` 提示「設定儲存失敗」（全站已處理的錯誤不重複，#66）
 
 #### ⚠️ 登入狀態的查詢守則（ADR-0009，照 NextAuth 前端的模型）
 
@@ -284,9 +284,10 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 
 ### `useLocalStorage`（同一台裝置的分頁之間同步）
 - 監聽 `storage` 事件（只送到其他分頁）：其他分頁改了同一個 key 就重新讀取（清空、刪掉時回到預設值）。收藏 Boss、頻道檢視、設定、最近房間都經它，舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）
-- **套用其他分頁的值時不寫回**（`watch` 用 `flush: 'sync'` 加旗標判斷）：否則其他分頁刪掉的 key 會被重新寫回，讀取時正規化的值還會再觸發其他分頁一輪。勿改回非同步的 `watch`
+- **套用其他分頁的值時不寫回**：記下這次套用的內容，`watch` 寫入前比對，相同就略過（值沒變就不賦值，標記不會殘留）。否則其他分頁刪掉的 key 會被重新寫回，讀取時正規化的值還會再觸發其他分頁一輪。`watch` 用預設的 flush，同一輪的修改只寫一次，勿改成 `flush: 'sync'`（每改一個欄位就寫一次、通知其他分頁一次）
 - deserializer 收到的是 `JSON.stringify` 後的字串，要先 `JSON.parse` 再檢查（頻道檢視曾直接比對原始字串，設定從來沒存起來）
-- 在 Vue scope 裡呼叫時，scope 結束就移除監聽；現有呼叫端都在模組層級
+- **只能在模組層級呼叫**（監聽不會移除）：現有呼叫端都是模組層級的單例。勿在 scope 結束時停止監聽與寫入——模組第一次在某個元件裡載入的話，元件卸載會讓整個 app 停止存檔
+- 接受的取捨：新開分頁時載入帳號的偏好，經 localStorage 同步到其他分頁；還在存檔中的修改可能被改回帳號的值（毫秒等級的時序）
 - `useLayoutConfig` 直接讀寫 `localStorage`，另外監聽 `boss_tracker_layout`；**正在編輯版面時不套用**，不蓋掉還沒存的修改，離開編輯時以這個分頁的版面為準
 - 接受的取捨：收藏、版面是整份存檔，兩個分頁在同步送達前幾毫秒內各自存同一項時，以最後存的為準（後端 `||` 只保證不同項目不互相丟失）
 - 「顯示擊殺紀錄」只存在 `user.preferences` / `user_info`：`userStore` 監聽 `user_info`，同一個登入者時套用其他分頁的偏好

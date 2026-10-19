@@ -1,5 +1,6 @@
 // 同一台裝置的分頁之間同步本地偏好（#67）：舊分頁拿著舊值存檔，會把其他分頁剛存的整份清單 / 版面蓋掉
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 
 vi.mock('@/stores/websocketStore', () => ({ useWebSocketStore: () => ({ connect: vi.fn(), reconnect: vi.fn() }) }))
 
@@ -55,7 +56,7 @@ describe('套用其他分頁的值時不寫回 localStorage', () => {
     localStorage.setItem('favorite-boss-ids', '[1]')
     useLocalStorage<number[]>('favorite-boss-ids', [])
     otherTabWrites('favorite-boss-ids', null)
-    await Promise.resolve()
+    await nextTick()
     expect(localStorage.getItem('favorite-boss-ids')).toBeNull()
   })
 
@@ -65,8 +66,17 @@ describe('套用其他分頁的值時不寫回 localStorage', () => {
     useLocalStorage<number[]>('favorite-boss-ids', [], (raw) => JSON.parse(raw).filter((v: unknown) => typeof v === 'number'))
     otherTabWrites('favorite-boss-ids', '[1, "x"]')
     setItem.mockClear()
-    await Promise.resolve()
+    await nextTick()
     expect(setItem).not.toHaveBeenCalled()
+  })
+
+  it('同一輪改好幾個欄位只寫一次（不會每個欄位各通知其他分頁一次）', async () => {
+    const { useLocalStorage } = await import('@/composables/useLocalStorage')
+    const settings = useLocalStorage('settings', { a: 1, b: 2, c: 3 })
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    Object.assign(settings.value, { a: 9, b: 9, c: 9 })
+    await nextTick()
+    expect(setItem).toHaveBeenCalledTimes(1)
   })
 
   it('自己改的值照樣寫入', async () => {
@@ -74,7 +84,7 @@ describe('套用其他分頁的值時不寫回 localStorage', () => {
     const ids = useLocalStorage<number[]>('favorite-boss-ids', [])
     otherTabWrites('favorite-boss-ids', '[1]')
     ids.value = [1, 2]
-    await Promise.resolve()
+    await nextTick()
     expect(localStorage.getItem('favorite-boss-ids')).toBe('[1,2]')
   })
 })
