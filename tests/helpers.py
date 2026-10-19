@@ -1,14 +1,23 @@
 """測試共用：掛好限流的 FastAPI app 與設定匿名 cookie。"""
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from slowapi.errors import RateLimitExceeded
 
-from app.dependencies import limiter, rate_limit_exceeded_handler
+from app.dependencies import configure_database_lane, limiter, rate_limit_exceeded_handler
 from app.utils import anonymous_id
 
 
+@asynccontextmanager
+async def _database_lane(app: FastAPI):
+    # 與正式環境相同：資料庫操作走一次一個的通道（ADR-0010），測試才會碰到同樣的執行順序
+    configure_database_lane()
+    yield
+
+
 def make_limited_app() -> FastAPI:
-    app = FastAPI()
+    app = FastAPI(lifespan=_database_lane)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
     return app

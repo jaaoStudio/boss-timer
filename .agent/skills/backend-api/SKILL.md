@@ -48,7 +48,7 @@ app/
 
 > ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查（含 `async def` 裡不可直接開 `SessionLocal()`）。呼叫外部服務一律設逾時
 >
-> ⚠️ **端點會同時執行**：改在 threadpool 後，同一個 worker 的請求會真的同時跑（以前卡住 event loop 等於自動排隊）。「先查再寫」要防競爭：唯一限制撞到時接住 `IntegrityError` 改用已存在的那一筆（`create_user`、`toggle_vote`）；「數完再寫」或「刪掉再新增」先以 `with_for_update()` 鎖住使用者那一列（`create_feedback` 每日上限、`save_refresh_token`）。競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（臨時容器即可），平常跳過
+> ⚠️ **資料庫通道一次只跑一個**（`configure_database_lane()`，lifespan 設定）：同步端點、同步 dependency、`run_in_threadpool` / `anyio.to_thread` 都在同一個執行緒限制下依序執行，不在 event loop 上。程式隱含依賴「資料庫操作依序執行」，勿把限制調大或改用 `asyncio.to_thread`（另一個執行緒池，不受限制）。**在通道裡不可再等另一件也要走通道的事**（互相等待而卡死）；回到 event loop 只用來廣播（`manager.*_from_thread`）。會等外部服務的呼叫（Google）走自己的 `CapacityLimiter`，不佔通道（`/auth/google`）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列），以後放寬通道時用得上；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（臨時容器即可），平常跳過
 
 1. **定義 Schema** (`schemas/`): 建立 Pydantic 輸入/輸出模型
 2. **實作 Service** (`services/`): 實作業務邏輯（不含 HTTP 細節）
@@ -103,7 +103,7 @@ class BossService:
     def _validate_room_exists(db, room_id) -> Room: ...
 
     @staticmethod
-    def record_boss(db, record, identity) -> Optional[dict]: ...   # 回傳要廣播的訊息，廣播由呼叫端在 event loop 上做
+    def record_boss(db, record, identity, broadcast) -> None: ...   # 先以 broadcast 回呼廣播（回到 event loop），再排程 Discord 通知
 ```
 
 **`room_service.py` 模式（函式直接導出）**:

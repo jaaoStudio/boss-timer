@@ -1,4 +1,5 @@
 # app/routers/auth.py
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Header, Cookie
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -6,7 +7,7 @@ from typing import Dict, Any, Optional
 import uuid
 
 from app.database import models
-from app.database.database import get_db
+from app.database.database import SessionLocal, get_db
 from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
@@ -18,22 +19,46 @@ from app.utils.login_cookies import cookie_attrs, delete_login_cookies, set_acce
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+# 呼叫 Google 用的執行緒，與一次一個的資料庫通道分開（ADR-0010）：Google 最多等 10 秒，佔住通道的話所有人的資料庫操作都要等
+GOOGLE_LIMITER = anyio.CapacityLimiter(10)
+
+
+def _verify_google_payload(login_data: auth_schemas.GoogleLoginRequest) -> Optional[dict]:
+    if login_data.code:
+        return auth_service.exchange_google_code(login_data.code)
+    if login_data.credential:
+        return auth_service.verify_google_token(login_data.credential)
+    return None
+
+
+def _login_user(google_id: str, email: str, display_name: Optional[str], avatar_url: Optional[str]) -> tuple[auth_schemas.User, str]:
+    """建立或更新使用者並存好 refresh token，回傳 (使用者, refresh token)。在資料庫通道裡執行"""
+    with SessionLocal() as db:
+        user = auth_service.get_user_by_google_id(db, google_id=google_id)
+        if not user:
+            user = auth_service.create_user(db, user_data=auth_schemas.UserCreate(
+                google_id=google_id, email=email, display_name=display_name, avatar_url=avatar_url,
+            ))
+        else:
+            # 更新最後登入時間，並同步 Google 的名稱與頭像
+            user = auth_service.update_user_last_login(db, user, display_name=display_name, avatar_url=avatar_url)
+        refresh_token = auth_service.create_refresh_token(data={"sub": str(user.id)})
+        auth_service.save_refresh_token(db, user.id, refresh_token)
+        return auth_schemas.User.model_validate(user), refresh_token
+
+
 @router.post("/google", response_model=auth_schemas.LoginResponse)
 @rate_limit("10/minute")
-def login_with_google(
+async def login_with_google(
         request: Request,
         login_data: auth_schemas.GoogleLoginRequest,
         response: Response,
-        db: Session = Depends(get_db)
 ):
     """
     使用 Google Credential 登入或註冊使用者。
+    呼叫 Google 走自己的執行緒（GOOGLE_LIMITER），資料庫那段走資料庫通道（ADR-0010），兩者都不在 event loop 上
     """
-    payload = None
-    if login_data.code:
-        payload = auth_service.exchange_google_code(login_data.code)
-    elif login_data.credential:
-        payload = auth_service.verify_google_token(login_data.credential)
+    payload = await anyio.to_thread.run_sync(_verify_google_payload, login_data, limiter=GOOGLE_LIMITER)
 
     # 憑證無效回 400 而不是 401：401 在整個後端只代表登入失效，前端遇到 401 會照登入失效處理（ADR-0009）
     if not payload:
@@ -56,25 +81,7 @@ def login_with_google(
             detail="Missing user info from Google token",
         )
 
-    user = auth_service.get_user_by_google_id(db, google_id=google_id)
-
-    if not user:
-        # 創建新使用者
-        user_create = auth_schemas.UserCreate(
-            google_id=google_id,
-            email=email,
-            display_name=display_name,
-            avatar_url=avatar_url
-        )
-        user = auth_service.create_user(db, user_data=user_create)
-    else:
-        # 更新最後登入時間
-        user = auth_service.update_user_last_login(db, user, display_name=display_name, avatar_url=avatar_url)
-
-    refresh_token = auth_service.create_refresh_token(data={"sub": str(user.id)})
-
-    # 將 refresh token 存儲到資料庫
-    auth_service.save_refresh_token(db, user.id, refresh_token)
+    user, refresh_token = await anyio.to_thread.run_sync(_login_user, google_id, email, display_name, avatar_url)
 
     # 將 refresh token 設置在 HttpOnly cookie 中
     response.set_cookie(
@@ -89,7 +96,7 @@ def login_with_google(
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": auth_schemas.User.model_validate(user)
+        "user": user,
     }
 
 

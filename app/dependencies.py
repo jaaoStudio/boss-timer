@@ -3,6 +3,7 @@ import ipaddress
 from typing import Optional
 from functools import lru_cache
 
+from anyio import to_thread
 from fastapi import Depends, status, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
@@ -20,6 +21,17 @@ from app.database.database import get_db
 from app.services.auth_service import decode_token_user_id
 from app.utils.identity import Identity, has_login_cookies, resolve_identity, resolve_login
 from app.utils.login_cookies import set_access_token_cookie
+
+def configure_database_lane() -> None:
+    """
+    資料庫操作走一次一個的通道（ADR-0010）：同步端點、同步 dependency、run_in_threadpool / anyio.to_thread 都在
+    anyio 預設的執行緒限制下執行，設成 1 就是依序執行、但不在 event loop 上。程式隱含依賴「資料庫操作依序執行」
+    （以前卡住 event loop 等於自動排隊），同時執行會冒出先查再寫、讀快照與訂閱之間等交錯。
+    在通道裡執行的程式不可再等另一件也要走通道的事（會互相等待而卡死）；回到 event loop 只用來廣播。
+    須在 event loop 裡呼叫（lifespan）
+    """
+    to_thread.current_default_thread_limiter().total_tokens = 1
+
 
 # IP 天花板 = 個人額度 × 200（見 docs/adr/0007）。匿名身分有簽章、無法任意編造後，
 # 天花板只是最後防線，放寬到能容納學校、行動網路 CGNAT 等大量玩家共用一個 IP

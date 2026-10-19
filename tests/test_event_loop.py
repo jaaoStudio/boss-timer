@@ -33,10 +33,10 @@ def test_broadcast_from_threadpool_runs_on_the_event_loop():
     manager = ConnectionManager()
     threads = {}
 
-    async def broadcast_to_room(room_id, message):
+    def enqueue_all(websockets, message):
         threads["broadcast"] = threading.get_ident()
 
-    manager.broadcast_to_room = broadcast_to_room
+    manager._enqueue_all = enqueue_all
 
     async def main():
         threads["loop"] = threading.get_ident()
@@ -83,26 +83,6 @@ def test_async_functions_do_not_open_database_sessions():
     assert offenders == []
 
 
-def test_maintenance_config_is_written_on_the_event_loop(monkeypatch):
-    # 讀 maintenance.json 的地方（check_maintenance_mode、維護資訊）都在 event loop 上；寫檔也回到 event loop 執行，
-    # 讀寫就不會同時發生（先清空再寫入時，同時讀到一半會誤判成「沒有維護」並廣播）。不用換檔：正式機以單一檔案掛載
-    import threading
-
-    import anyio
-
-    from app.routers import system
-
-    threads = {}
-    monkeypatch.setattr(system, "_write_maintenance_file", lambda data: threads.setdefault("write", threading.get_ident()))
-
-    async def main():
-        threads["loop"] = threading.get_ident()
-        await anyio.to_thread.run_sync(system.save_maintenance_config, {"is_maintenance": True})
-
-    anyio.run(main)
-    assert threads["write"] == threads["loop"]
-
-
 def test_boss_update_is_broadcast_before_discord_is_scheduled(monkeypatch):
     # Discord 通知要寫 Redis：Redis 慢的時候，房間不該等它才看到回報
     from types import SimpleNamespace
@@ -129,3 +109,65 @@ def test_boss_update_is_broadcast_before_discord_is_scheduled(monkeypatch):
     payload = SimpleNamespace(room_id="ROOMABCDEF", boss_type_id=1)
     BossService.record_boss(db, payload, None, broadcast=lambda message: order.append("broadcast"))
     assert order == ["broadcast", "notify"]
+
+
+def test_database_lane_runs_one_at_a_time():
+    # 程式隱含依賴「資料庫操作依序執行」（以前卡住 event loop 等於自動排隊）：通道一次只跑一個，但不在 event loop 上
+    import anyio
+
+    from app.dependencies import configure_database_lane
+
+    async def main():
+        configure_database_lane()
+        return anyio.to_thread.current_default_thread_limiter().total_tokens
+
+    assert anyio.run(main) == 1
+
+
+def test_google_calls_do_not_take_the_database_lane(monkeypatch):
+    # 呼叫 Google 最多等 10 秒：佔住一次一個的資料庫通道的話，所有人的資料庫操作都要等它
+    import anyio
+
+    from app.routers import auth
+
+    used = []
+    real_run_sync = anyio.to_thread.run_sync
+
+    async def spy(fn, *args, limiter=None, **kwargs):
+        used.append((getattr(fn, "__name__", ""), limiter))
+        return await real_run_sync(fn, *args, limiter=limiter, **kwargs)
+
+    monkeypatch.setattr(auth.anyio.to_thread, "run_sync", spy)
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", lambda credential: None)
+    from fastapi.testclient import TestClient
+    from tests.helpers import make_limited_app
+
+    app = make_limited_app()
+    app.include_router(auth.router)
+    with TestClient(app) as client:
+        client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.7"})
+    google = [limiter for name, limiter in used if name == "_verify_google_payload"]
+    assert google and google[0] is auth.GOOGLE_LIMITER
+
+
+def test_maintenance_file_is_read_in_the_database_lane(monkeypatch):
+    # 維護設定檔的讀寫都走同一條通道：管理員寫到一半時不會被讀到（誤判成「沒有維護」並廣播）
+    import threading
+
+    import anyio
+
+    from app import main
+
+    threads = {}
+    monkeypatch.setattr(main, "read_maintenance_file", lambda: threads.setdefault("read", threading.get_ident()) and {})
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            pass
+
+    async def run():
+        threads["loop"] = threading.get_ident()
+        await main.check_maintenance_mode(Manager())
+
+    anyio.run(run)
+    assert threads["read"] != threads["loop"]

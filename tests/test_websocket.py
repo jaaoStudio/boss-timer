@@ -472,3 +472,33 @@ def test_first_handshake_failure_after_boot_logs_full_traceback(monkeypatch, cap
         with open_socket(access_token=access_token()) as ws:
             ws.receive_json()
     assert any(r.exc_info for r in caplog.records if "handshake identity lookup failed" in r.getMessage())
+
+
+def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypatch):
+    # 讀房間狀態（threadpool）與訂閱房間（event loop）之間，別人的回報廣播出去的話，加入的人兩邊都收不到。
+    # 資料庫操作走一次一個的通道（ADR-0010）：回報要等讀完房間狀態、訂閱好才輪得到，加入的人一定收得到
+    import time
+
+    def slow_room_state(db, room_id):
+        off_event_loop()
+        time.sleep(0.2)
+        return {"type": "room_state"}
+
+    with connect(str(uuid.uuid4())) as reporter, connect(str(uuid.uuid4())) as joiner:
+        reporter.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
+        assert reporter.receive_json()["type"] == "room_state"
+        assert reporter.receive_json()["type"] == "user_count_update"
+        monkeypatch.setattr(ws_router.room_service, "get_room_state", slow_room_state)
+        joiner.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
+        time.sleep(0.05)   # 讓加入的人開始讀房間狀態
+        reporter.send_json({"type": "record_boss", "payload": {
+            "room_id": ROOM, "channel": 1, "boss_type_id": 1, "status": "killed", "recorder_info": None,
+        }})
+        while reporter.receive_json()["type"] != "ok":
+            pass
+        # 回報已廣播給當時在房間裡的所有人；之後的 pong 一定排在它後面
+        joiner.send_json({"type": "ping"})
+        received = []
+        while not received or received[-1] != "pong":
+            received.append(joiner.receive_json()["type"])
+        assert "ok" in received, received

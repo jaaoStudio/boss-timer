@@ -210,8 +210,11 @@ class FeedbackService:
             try:
                 db.commit()
             except IntegrityError:
-                # 連點兩下：另一個同時送出的請求已經投了（UNIQUE(feedback_id, user_id)），結果一樣是已投票
+                # 另一個請求已經投了（UNIQUE(feedback_id, user_id)），結果一樣是已投票；
+                # 回饋剛被管理員刪掉（外鍵）時照「找不到」處理
                 db.rollback()
+                if db.get(models.FeedbackItem, feedback_id) is None:
+                    raise FeedbackNotFound(f"Feedback {feedback_id} not found")
 
         vote_count = (
             db.query(func.count(models.FeedbackVote.id))
