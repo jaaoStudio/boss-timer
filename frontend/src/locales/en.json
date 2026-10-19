@@ -165,6 +165,7 @@
     "roomExpired": "This room has expired and has been removed."
   },
   "settings": {
+    "preferencesSaveFailed": "Failed to save your settings. Please try again.",
     "title": "Settings",
     "tabs": {
       "preferences": "Preferences",

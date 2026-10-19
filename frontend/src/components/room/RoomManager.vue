@@ -31,7 +31,6 @@
             <el-switch
               v-model="showRecordHistory"
               size="small"
-              @change="toggleRecordHistory"
               style="--el-switch-on-color: #6b7280;"
             />
           </div>
@@ -55,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import SettingsModal from '@/components/settings/SettingsModal.vue'
 import { useRouter } from 'vue-router'
 import { storeToRefs } from 'pinia'
@@ -74,7 +73,12 @@ const userStore = useUserStore()
 const { roomId } = storeToRefs(roomStore)
 const { user, isLoggedIn } = storeToRefs(userStore)
 
-const showRecordHistory = ref(user.value?.preferences?.showRecordHistory ?? true)
+// 直接以 user.preferences 為準（BossTracker 也讀它）：換成另一個登入者時開關跟著帳號設定（#69）。
+// updatePreferences 會先寫進 user.preferences 再存檔，切換後馬上反映
+const showRecordHistory = computed({
+  get: () => (user.value?.preferences?.showRecordHistory as boolean | undefined) ?? true,
+  set: (value: boolean) => { void userStore.updatePreferences({ showRecordHistory: value }) },
+})
 const showSettings = ref(false)
 
 const handleCommand = (command: string) => {
@@ -93,10 +97,6 @@ const switchLanguage = () => {
   localStorage.setItem('language', newLocale)
 }
 
-const toggleRecordHistory = async () => {
-  if (!user.value) return
-  await userStore.updatePreferences({ showRecordHistory: showRecordHistory.value })
-}
 
 const copyRoomId = () => {
   if (!roomId.value) return

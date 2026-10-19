@@ -165,6 +165,7 @@
     "roomExpired": "此房間已過期，已從列表中移除。"
   },
   "settings": {
+    "preferencesSaveFailed": "設定儲存失敗，請稍後再試",
     "title": "設定",
     "tabs": {
       "preferences": "系統設定",

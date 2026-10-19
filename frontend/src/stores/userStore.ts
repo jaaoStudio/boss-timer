@@ -4,6 +4,8 @@ import { useWebSocketStore } from '@/stores/websocketStore';
 import { generateRandomName } from '@/utils/anonymousName';
 import { QueryObserver } from '@tanstack/vue-query';
 import { queryClient } from '@/queryClient';
+import { showFailure } from '@/axios/handlingErrors';
+import i18n from '@/i18n';
 
 export interface User {
   id: number;
@@ -132,6 +134,13 @@ export const useUserStore = defineStore('user', {
           this._resolveInit = resolve;
         });
         this.initBroadcastChannel();
+        // 同一台裝置的其他分頁改了同一個登入者的偏好（user_info 的偏好一改就寫入）：跟著更新，例如「顯示擊殺紀錄」
+        // （CONTEXT.md「跨裝置同步」）。登入者改變不在這裡處理，由通知與查詢處理
+        window.addEventListener('storage', (event) => {
+          if (event.storageArea !== localStorage || event.key !== 'user_info' || !this.user) return;
+          const cached = parseCachedUser(event.newValue);
+          if (cached?.id === this.user.id) this.user = { ...this.user, preferences: cached.preferences };
+        });
         const observer = new QueryObserver(queryClient, {
           queryKey: SESSION_QUERY_KEY,
           queryFn: ({ signal }) => this._fetchSession(signal),
@@ -310,7 +319,10 @@ export const useUserStore = defineStore('user', {
       try {
         await apiService.updateMyPreferences(preferences);
       } catch (error) {
+        // 本地的修改保留、不改回（同各元件「先改本地」）；提示使用者帳號沒存到（#66）。
+        // 網路錯誤、5xx、429、登入失效已由全站處理（跳頁或提示），showFailure 不重複提示
         console.error('Failed to update preferences:', error);
+        showFailure(error, i18n.global.t('settings.preferencesSaveFailed'));
       }
     },
 

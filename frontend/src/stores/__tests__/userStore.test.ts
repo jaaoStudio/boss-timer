@@ -8,9 +8,12 @@ const api = vi.hoisted(() => ({
   updateMyPreferences: vi.fn(),
 }))
 const ws = vi.hoisted(() => ({ connect: vi.fn(), reconnect: vi.fn() }))
+const showFailure = vi.hoisted(() => vi.fn())
 
 vi.mock('@/services/apiService', () => ({ default: api }))
 vi.mock('@/stores/websocketStore', () => ({ useWebSocketStore: () => ws }))
+vi.mock('@/axios/handlingErrors', () => ({ showFailure }))
+vi.mock('@/i18n', () => ({ default: { global: { t: (key: string) => key } } }))
 
 type Session =
   | { status: 'authenticated'; user: User }
@@ -220,12 +223,41 @@ describe('6. 帳號偏好只在換人時套用', () => {
     expect(store.preferencesVersion).toBe(2)
   })
 
+  it('存檔失敗時經 showFailure 提示（全站已處理過的由它略過），本地的修改保留（#66）', async () => {
+    const store = await opened(authed(userA))
+    const error = new Error('400')
+    api.updateMyPreferences.mockRejectedValue(error)
+    await store.updatePreferences({ channelViewMode: 'timeline' })
+    expect(showFailure).toHaveBeenCalledWith(error, 'settings.preferencesSaveFailed')
+    expect(store.user?.preferences.channelViewMode).toBe('timeline')
+  })
+
   it('updatePreferences 先寫本地與 user_info，存檔失敗也不改回', async () => {
     const store = await opened(authed(userA))
     api.updateMyPreferences.mockRejectedValue(new Error('5xx'))
     await store.updatePreferences({ channelViewMode: 'timeline' })
     expect(store.user?.preferences.channelViewMode).toBe('timeline')
     expect(JSON.parse(localStorage.getItem('user_info')!).preferences.channelViewMode).toBe('timeline')
+  })
+})
+
+describe('6b. 同一台裝置的分頁之間同步偏好（CONTEXT.md「跨裝置同步」）', () => {
+  const otherTabWritesUserInfo = (user: User) => {
+    localStorage.setItem('user_info', JSON.stringify(user))
+    window.dispatchEvent(new StorageEvent('storage', { key: 'user_info', newValue: JSON.stringify(user), storageArea: localStorage }))
+  }
+
+  it('其他分頁改了同一個登入者的偏好（例如顯示擊殺紀錄）時跟著更新', async () => {
+    const store = await opened(authed(userA))
+    otherTabWritesUserInfo({ ...userA, preferences: { ...userA.preferences, showRecordHistory: false } })
+    expect(store.user?.preferences.showRecordHistory).toBe(false)
+  })
+
+  it('快取換成另一個登入者時不套用（登入者改變由通知與查詢處理）', async () => {
+    const store = await opened(authed(userA))
+    otherTabWritesUserInfo({ ...userB, preferences: { showRecordHistory: false } })
+    expect(store.user?.id).toBe(1)
+    expect(store.user?.preferences.showRecordHistory).toBeUndefined()
   })
 })
 

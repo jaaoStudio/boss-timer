@@ -65,6 +65,13 @@ function parseStored(raw: string | null): { items?: unknown } | null {
   }
 }
 
+// 存的版面（localStorage 或帳號偏好）轉成 LayoutItem[]；沒有或格式不對時回傳 null
+function itemsFrom(source: { items?: unknown } | null | undefined): LayoutItem[] | null {
+  return isValidItems(source?.items) ? (source!.items as unknown[]).map(i => migrateItem(i)) : null
+}
+
+const defaultItems = (): LayoutItem[] => DEFAULT_ITEMS.map(i => ({ ...i }))
+
 // Singleton — 跨元件共享，第一次 call useLayoutConfig() 時初始化
 const layout = ref<LayoutItem[]>([])
 const isEditMode = ref(false)
@@ -76,30 +83,25 @@ export function useLayoutConfig() {
   if (!initialized) {
     initialized = true
     layout.value = loadItems()
+    // 其他分頁存了版面就跟著更新（#67）；刪掉或清空時回到預設版面。正在編輯時不套用，不蓋掉還沒存的修改，
+    // 離開編輯時以這個分頁的版面為準（兩個分頁同時改版面時，最後存的為準）
+    window.addEventListener('storage', (event) => {
+      if (event.storageArea !== localStorage || (event.key !== STORAGE_KEY && event.key !== null) || isEditMode.value) return
+      layout.value = itemsFrom(parseStored(event.key === null ? null : event.newValue)) ?? defaultItems()
+    })
   }
 
   function loadItems(): LayoutItem[] {
-    let source: { items?: unknown } | null = null
-
-    if (userStore.isLoggedIn && userStore.user?.preferences?.[PREFERENCE_KEY]) {
-      source = userStore.user.preferences[PREFERENCE_KEY] as { items?: unknown }
-    } else {
-      source = parseStored(localStorage.getItem(STORAGE_KEY))
-    }
-
-    if (isValidItems(source?.items)) {
-      return (source!.items as unknown[]).map(i => migrateItem(i))
-    }
-    return DEFAULT_ITEMS.map(i => ({ ...i }))
+    const source = userStore.isLoggedIn && userStore.user?.preferences?.[PREFERENCE_KEY]
+      ? userStore.user.preferences[PREFERENCE_KEY] as { items?: unknown }
+      : parseStored(localStorage.getItem(STORAGE_KEY))
+    return itemsFrom(source) ?? defaultItems()
   }
 
   // 將帳號的 preferences 同步到本地 layout（由 App.vue 在換成另一個登入者時呼叫）
   function syncFromUser() {
-    const prefs = userStore.user?.preferences?.[PREFERENCE_KEY] as { items?: unknown } | undefined
-    if (!prefs) return
-    if (isValidItems(prefs.items)) {
-      layout.value = (prefs.items as unknown[]).map(i => migrateItem(i))
-    }
+    const items = itemsFrom(userStore.user?.preferences?.[PREFERENCE_KEY] as { items?: unknown } | undefined)
+    if (items) layout.value = items
   }
 
   async function saveLayout() {
@@ -154,7 +156,7 @@ export function useLayoutConfig() {
   }
 
   function resetLayout() {
-    layout.value = DEFAULT_ITEMS.map(i => ({ ...i }))
+    layout.value = defaultItems()
   }
 
   return {
