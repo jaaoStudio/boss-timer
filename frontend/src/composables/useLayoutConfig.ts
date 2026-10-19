@@ -76,11 +76,14 @@ export function useLayoutConfig() {
   if (!initialized) {
     initialized = true
     layout.value = loadItems()
-    // 其他分頁存了版面就跟著更新（#67），正在編輯時不蓋掉還沒存的修改
+    // 其他分頁存了版面就跟著更新（#67）；刪掉或清空時回到預設版面。正在編輯時不套用，不蓋掉還沒存的修改，
+    // 離開編輯時以這個分頁的版面為準（兩個分頁同時改版面時，最後存的為準）
     window.addEventListener('storage', (event) => {
-      if (event.storageArea !== localStorage || event.key !== STORAGE_KEY || isEditMode.value) return
-      const stored = parseStored(event.newValue)
-      if (isValidItems(stored?.items)) layout.value = (stored!.items as unknown[]).map(i => migrateItem(i))
+      if (event.storageArea !== localStorage || (event.key !== STORAGE_KEY && event.key !== null) || isEditMode.value) return
+      const stored = parseStored(event.key === null ? null : event.newValue)
+      layout.value = isValidItems(stored?.items)
+        ? (stored!.items as unknown[]).map(i => migrateItem(i))
+        : DEFAULT_ITEMS.map(i => ({ ...i }))
     })
   }
 

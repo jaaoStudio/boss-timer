@@ -1,5 +1,5 @@
 // 同一台裝置的分頁之間同步本地偏好（#67）：舊分頁拿著舊值存檔，會把其他分頁剛存的整份清單 / 版面蓋掉
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('@/stores/websocketStore', () => ({ useWebSocketStore: () => ({ connect: vi.fn(), reconnect: vi.fn() }) }))
 
@@ -10,11 +10,24 @@ function otherTabWrites(key: string, value: string | null) {
   window.dispatchEvent(new StorageEvent('storage', { key, newValue: value, storageArea: localStorage }))
 }
 
+// 每次重新載入模組時，上一個測試的 storage 監聽還掛在 window 上：記下來，測完移除，測試之間互不影響
+const listeners: [string, EventListenerOrEventListenerObject][] = []
+const addEventListener = window.addEventListener.bind(window)
+
 beforeEach(async () => {
   localStorage.clear()
+  vi.spyOn(window, 'addEventListener').mockImplementation((type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions) => {
+    listeners.push([type, listener])
+    addEventListener(type, listener, options)
+  })
   vi.resetModules()
   const { createPinia, setActivePinia } = await import('pinia')
   setActivePinia(createPinia())
+})
+
+afterEach(() => {
+  for (const [type, listener] of listeners.splice(0)) window.removeEventListener(type, listener)
+  vi.restoreAllMocks()
 })
 
 describe('useLocalStorage', () => {
@@ -33,6 +46,51 @@ describe('useLocalStorage', () => {
     const mode = useLocalStorage<string>('channel-view-mode', 'overview')
     otherTabWrites('channel-view-mode', null)
     expect(mode.value).toBe('overview')
+  })
+})
+
+describe('套用其他分頁的值時不寫回 localStorage', () => {
+  it('其他分頁刪掉時不重新寫回', async () => {
+    const { useLocalStorage } = await import('@/composables/useLocalStorage')
+    localStorage.setItem('favorite-boss-ids', '[1]')
+    useLocalStorage<number[]>('favorite-boss-ids', [])
+    otherTabWrites('favorite-boss-ids', null)
+    await Promise.resolve()
+    expect(localStorage.getItem('favorite-boss-ids')).toBeNull()
+  })
+
+  it('讀取時會正規化的值，不寫回正規化後的結果（不會再觸發其他分頁一輪）', async () => {
+    const { useLocalStorage } = await import('@/composables/useLocalStorage')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem')
+    useLocalStorage<number[]>('favorite-boss-ids', [], (raw) => JSON.parse(raw).filter((v: unknown) => typeof v === 'number'))
+    otherTabWrites('favorite-boss-ids', '[1, "x"]')
+    setItem.mockClear()
+    await Promise.resolve()
+    expect(setItem).not.toHaveBeenCalled()
+  })
+
+  it('自己改的值照樣寫入', async () => {
+    const { useLocalStorage } = await import('@/composables/useLocalStorage')
+    const ids = useLocalStorage<number[]>('favorite-boss-ids', [])
+    otherTabWrites('favorite-boss-ids', '[1]')
+    ids.value = [1, 2]
+    await Promise.resolve()
+    expect(localStorage.getItem('favorite-boss-ids')).toBe('[1,2]')
+  })
+})
+
+describe('頻道檢視', () => {
+  it('重新開頁時讀回存過的設定（存的是 JSON 字串）', async () => {
+    localStorage.setItem('channel-view-mode', JSON.stringify('timeline'))
+    const { useChannelViewPreference } = await import('@/composables/useChannelViewPreference')
+    expect(useChannelViewPreference().viewMode.value).toBe('timeline')
+  })
+
+  it('其他分頁切成時間軸時跟著切換，不會被改回預設值', async () => {
+    const { useChannelViewPreference } = await import('@/composables/useChannelViewPreference')
+    const { viewMode } = useChannelViewPreference()
+    otherTabWrites('channel-view-mode', JSON.stringify('timeline'))
+    expect(viewMode.value).toBe('timeline')
   })
 })
 
@@ -60,6 +118,15 @@ describe('版面', () => {
     const { layout } = useLayoutConfig()
     otherTabWrites('boss_tracker_layout', otherLayout)
     expect(layout.value[0].id).toBe('recordHistory')
+  })
+
+  it('其他分頁刪掉版面時回到預設版面', async () => {
+    localStorage.setItem('boss_tracker_layout', otherLayout)
+    const { useLayoutConfig } = await import('@/composables/useLayoutConfig')
+    const { layout } = useLayoutConfig()
+    expect(layout.value[0].id).toBe('recordHistory')
+    otherTabWrites('boss_tracker_layout', null)
+    expect(layout.value[0].id).toBe('controlPanel')
   })
 
   it('正在編輯版面時不蓋掉還沒存的修改', async () => {

@@ -283,9 +283,14 @@ const isExpired = computed(() => isExpiredRecord(record.value, status.value, bos
 ## Composables 模式
 
 ### `useLocalStorage`（同一台裝置的分頁之間同步）
-- 監聽 `storage` 事件（只送到其他分頁）：其他分頁改了同一個 key 就重新讀取。收藏 Boss、頻道檢視、設定、最近房間都經它，舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）
-- `useLayoutConfig` 直接讀寫 `localStorage`，另外監聽 `boss_tracker_layout`；**正在編輯版面時不套用**，不蓋掉還沒存的修改
-- 測試：`src/composables/__tests__/crossTabPreferences.test.ts`
+- 監聽 `storage` 事件（只送到其他分頁）：其他分頁改了同一個 key 就重新讀取（清空、刪掉時回到預設值）。收藏 Boss、頻道檢視、設定、最近房間都經它，舊分頁才不會拿舊的整份值存檔、蓋掉其他分頁剛存的（#67）
+- **套用其他分頁的值時不寫回**（`watch` 用 `flush: 'sync'` 加旗標判斷）：否則其他分頁刪掉的 key 會被重新寫回，讀取時正規化的值還會再觸發其他分頁一輪。勿改回非同步的 `watch`
+- deserializer 收到的是 `JSON.stringify` 後的字串，要先 `JSON.parse` 再檢查（頻道檢視曾直接比對原始字串，設定從來沒存起來）
+- 在 Vue scope 裡呼叫時，scope 結束就移除監聽；現有呼叫端都在模組層級
+- `useLayoutConfig` 直接讀寫 `localStorage`，另外監聽 `boss_tracker_layout`；**正在編輯版面時不套用**，不蓋掉還沒存的修改，離開編輯時以這個分頁的版面為準
+- 接受的取捨：收藏、版面是整份存檔，兩個分頁在同步送達前幾毫秒內各自存同一項時，以最後存的為準（後端 `||` 只保證不同項目不互相丟失）
+- 「顯示擊殺紀錄」只存在 `user.preferences` / `user_info`：`userStore` 監聽 `user_info`，同一個登入者時套用其他分頁的偏好
+- 測試：`src/composables/__tests__/crossTabPreferences.test.ts`、`src/stores/__tests__/userStore.test.ts`（6b）
 
 ### `useSettings`
 - **Singleton 模式**: 模組層級的 `ref` 確保所有元件共享同一份設定

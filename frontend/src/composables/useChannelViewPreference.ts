@@ -8,7 +8,11 @@ const DEFAULT_MODE: ChannelViewMode = 'overview'
 const viewMode = useLocalStorage<ChannelViewMode>(
   'channel-view-mode',
   DEFAULT_MODE,
-  (raw) => (raw === 'overview' || raw === 'timeline') ? raw as ChannelViewMode : DEFAULT_MODE,
+  // 存的是 JSON 字串（useLocalStorage 以 JSON.stringify 寫入），先解開再檢查
+  (raw) => {
+    const value: unknown = JSON.parse(raw)
+    return value === 'overview' || value === 'timeline' ? value : DEFAULT_MODE
+  },
 )
 
 export function useChannelViewPreference() {

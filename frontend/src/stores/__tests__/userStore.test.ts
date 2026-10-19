@@ -229,6 +229,26 @@ describe('6. 帳號偏好只在換人時套用', () => {
   })
 })
 
+describe('6b. 同一台裝置的分頁之間同步偏好（CONTEXT.md「跨裝置同步」）', () => {
+  const otherTabWritesUserInfo = (user: User) => {
+    localStorage.setItem('user_info', JSON.stringify(user))
+    window.dispatchEvent(new StorageEvent('storage', { key: 'user_info', newValue: JSON.stringify(user), storageArea: localStorage }))
+  }
+
+  it('其他分頁改了同一個登入者的偏好（例如顯示擊殺紀錄）時跟著更新', async () => {
+    const store = await opened(authed(userA))
+    otherTabWritesUserInfo({ ...userA, preferences: { ...userA.preferences, showRecordHistory: false } })
+    expect(store.user?.preferences.showRecordHistory).toBe(false)
+  })
+
+  it('快取換成另一個登入者時不套用（登入者改變由通知與查詢處理）', async () => {
+    const store = await opened(authed(userA))
+    otherTabWritesUserInfo({ ...userB, preferences: { showRecordHistory: false } })
+    expect(store.user?.id).toBe(1)
+    expect(store.user?.preferences.showRecordHistory).toBeUndefined()
+  })
+})
+
 describe('7. 登出：取得匿名身分後才清 user_info 並通知', () => {
   it('畫面先清、快取等查詢回答匿名才清並通知', async () => {
     const store = await opened(authed(userA))
