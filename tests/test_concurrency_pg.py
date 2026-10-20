@@ -5,7 +5,6 @@
 import os
 import threading
 import uuid
-from datetime import datetime, timezone
 
 import pytest
 from sqlalchemy import create_engine, func

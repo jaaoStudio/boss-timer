@@ -7,7 +7,7 @@ from typing import Dict, Any, Optional
 import uuid
 
 from app.database import models
-from app.database.database import SessionLocal, db_lock, get_db
+from app.database.database import SessionLocal, get_db, run_db
 from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
@@ -78,8 +78,7 @@ async def login_with_google(
             detail="Missing user info from Google token",
         )
 
-    async with db_lock():
-        user, refresh_token = await anyio.to_thread.run_sync(_login_user, google_id, email, display_name, avatar_url)
+    user, refresh_token = await run_db(_login_user, google_id, email, display_name, avatar_url)
 
     # 將 refresh token 設置在 HttpOnly cookie 中
     response.set_cookie(

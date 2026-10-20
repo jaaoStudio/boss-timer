@@ -1,5 +1,7 @@
 # app/database/database.py
-from anyio import Lock, to_thread
+from typing import Optional
+
+from anyio import Lock, fail_after, to_thread
 from anyio.lowlevel import RunVar
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -54,3 +56,18 @@ async def get_db():
             yield db
         finally:
             await to_thread.run_sync(db.close)
+
+
+async def run_db(fn, *args, lock_timeout: Optional[float] = None):
+    """
+    不經 get_db 的資料庫工作（WebSocket、背景工作、/auth/google 的資料庫那段）一律經這裡：拿著 db_lock() 在
+    threadpool 執行 fn(*args)，回傳結果。勿只用 run_in_threadpool：不拿鎖會和其他資料庫工作同時執行（ADR-0010）。
+    lock_timeout：最多等鎖幾秒，等不到丟 TimeoutError；None 為不限
+    """
+    lock = db_lock()
+    with fail_after(lock_timeout):
+        await lock.acquire()
+    try:
+        return await to_thread.run_sync(fn, *args)
+    finally:
+        lock.release()

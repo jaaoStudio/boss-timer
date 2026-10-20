@@ -476,7 +476,7 @@ def test_first_handshake_failure_after_boot_logs_full_traceback(monkeypatch, cap
 
 def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypatch):
     # 讀房間狀態（threadpool）與訂閱房間（event loop）之間，別人的回報廣播出去的話，加入的人兩邊都收不到。
-    # 資料庫操作走一次一個的通道（ADR-0010）：回報要等讀完房間狀態、訂閱好才輪得到，加入的人一定收得到
+    # 加入房間在資料庫鎖裡讀完狀態並訂閱好（ADR-0010），回報要等鎖放開才寫得進去，加入的人一定收得到
     import time
 
     def slow_room_state(db, room_id):
@@ -485,9 +485,7 @@ def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypa
         return {"type": "room_state"}
 
     with connect(str(uuid.uuid4())) as reporter, connect(str(uuid.uuid4())) as joiner:
-        reporter.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
-        assert reporter.receive_json()["type"] == "room_state"
-        assert reporter.receive_json()["type"] == "user_count_update"
+        join(reporter)
         monkeypatch.setattr(ws_router.room_service, "get_room_state", slow_room_state)
         joiner.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
         time.sleep(0.05)   # 讓加入的人開始讀房間狀態
@@ -502,3 +500,35 @@ def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypa
         while not received or received[-1] != "pong":
             received.append(joiner.receive_json()["type"])
         assert "ok" in received, received
+
+
+def test_handshake_gives_up_waiting_for_the_database_lock(monkeypatch, caplog):
+    # 資料庫故障時，鎖前面的工作每個要卡 5～10 秒。握手等鎖要有上限，等不到就拒絕（前端照一般斷線退避重連）；
+    # 不設上限的話，前端 20 秒放棄重連後，被放棄的握手仍在排隊，佇列越來越長
+    import threading
+
+    import anyio
+
+    from app.database.database import db_lock
+
+    monkeypatch.setattr(ws_router, "HANDSHAKE_LOCK_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(identity_module, "_get_user", lambda db, user_id: SimpleNamespace(id=int(user_id)))
+    release = threading.Event()
+
+    async def hold_lock():
+        async with db_lock():
+            while not release.is_set():
+                await anyio.sleep(0.01)
+
+    holder = client.portal.start_task_soon(hold_lock)
+    timer = threading.Timer(1, release.set)   # 沒有上限時，握手等到鎖放開就會連上
+    timer.start()
+    try:
+        with pytest.raises(WebSocketDisconnect):
+            with open_socket(access_token=access_token()) as ws:
+                ws.receive_json()
+    finally:
+        release.set()
+        timer.cancel()
+        holder.result()
+    assert "handshake identity lookup failed" in caplog.text

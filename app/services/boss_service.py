@@ -129,7 +129,7 @@ class BossService:
     def record_boss(db: Session, record: BossRecordCreate, identity: Identity, broadcast: Callable[[dict], None]) -> None:
         """
         寫入 WebSocket 回報的紀錄，以 broadcast 廣播 boss_update 給房間，再排程 Discord 通知。
-        同步執行、會查資料庫：呼叫端以 run_in_threadpool 執行，broadcast 負責回到 event loop 上廣播（ADR-0010）。
+        同步執行、會查資料庫：呼叫端經 run_db() 執行（拿資料庫鎖、在 threadpool），broadcast 負責回到 event loop 上廣播（ADR-0010）。
         先廣播再排程：排程要寫 Redis，Redis 慢的時候房間不該等它才看到回報
         """
         room = BossService._validate_room_exists(db, record.room_id)

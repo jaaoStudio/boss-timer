@@ -9,7 +9,7 @@ status: accepted
 我們決定**資料庫維持同步，但一律不在 event loop 上執行**（FastAPI 對同步函式庫的建議做法）：
 
 - 不需要 `await` 的端點宣告成一般的 `def`，FastAPI 會放到 threadpool 執行。
-- 需要 `await` 的端點（例如要廣播 WebSocket）與 WebSocket 的訊息處理，資料庫那段以 `run_in_threadpool` 執行。
+- 需要 `await` 的端點（例如要廣播 WebSocket）與 WebSocket 的訊息處理，資料庫那段經 `run_db()` 執行（拿資料庫鎖、在 threadpool 執行，見下一節）。
 - 呼叫外部服務（Google）的同步請求一律設逾時。
 - 資料庫連線設 `connect_timeout` 與 TCP keepalive / `tcp_user_timeout`（#76），連不上或網路中斷時，執行緒最多卡幾秒，不會卡好幾分鐘。
 
@@ -19,8 +19,9 @@ status: accepted
 
 - `app/database/database.py` 的 `db_lock()`（anyio `Lock`，每個 event loop 一把）。`get_db` 是 async 的 dependency：請求開始時拿鎖、建立 session，整個請求結束、session 關閉後才放開。FastAPI 把一個請求拆成好幾段丟進 threadpool（dependency、端點本體、回應序列化、收尾），依序執行的單位是整個請求，段與段之間不會插進別的請求。
 - 等鎖的請求在 event loop 上等，不佔執行緒也不佔資料庫連線；拿著鎖的請求各段馬上有執行緒可用（threadpool 維持預設的 40 條）。WebSocket 連線、心跳、收訊息與廣播照常在 event loop 上同時進行。
-- 不經 `get_db` 的資料庫工作也拿同一把鎖：WebSocket 有登入 cookie 的握手、加入房間（讀房間狀態到訂閱都在鎖裡，別人的回報要等訂閱好才寫得進去）、回報、清理工作、Google 登入的資料庫那段。匿名握手不查資料庫，不拿鎖。
-- **拿著鎖時不可再等另一件也要拿鎖的事**（會互相等待而卡死），也不要在鎖裡等外部服務：`/auth/google` 因此不依賴 `get_db`，呼叫 Google 在鎖外、資料庫那段才拿鎖。從 threadpool 回到 event loop 只用來廣播（`manager.*_from_thread`，不需要鎖）。
+- 不經 `get_db` 的資料庫工作一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行）：WebSocket 有登入 cookie 的握手、回報、清理工作、Google 登入的資料庫那段。勿只用 `run_in_threadpool`：不拿鎖會和其他資料庫工作同時執行，而且測試抓不到。唯一的例外是加入房間：讀房間狀態到訂閱都要在鎖裡（別人的回報要等訂閱好才寫得進去），所以自己 `async with db_lock()`。匿名握手不查資料庫，不拿鎖。
+- 帶登入 cookie 的握手最多等鎖 5 秒（`HANDSHAKE_LOCK_TIMEOUT_SECONDS`），等不到就拒絕、前端退避重連。資料庫故障時鎖前面的工作每個要卡 5～10 秒，前端握手 20 秒就放棄重連；不設上限的話，被放棄的握手仍在排隊，佇列越來越長（PR #80 第 4 輪）。
+- **拿著鎖時不可再等另一件也要拿鎖的事**（會互相等待而卡死），也不要在鎖裡等外部服務：`/auth/google` 因此不依賴 `get_db`，呼叫 Google 在鎖外、資料庫那段才拿鎖。從 threadpool 回到 event loop 只用來廣播（`manager.*_from_thread`）與寫維護設定檔，兩者都不需要鎖。
 - 維護設定檔（`maintenance.json`）不經鎖：讀與寫都在 event loop 上直接做（檔案很小），不會同時發生，讀完到比較、廣播之間也沒有 `await`。
 - 第 1 輪加的防競爭寫法（撞到唯一限制改用已存在的那一筆、鎖住使用者那一列）保留，以後放寬時用得上（`tests/test_concurrency_pg.py`）。
 
@@ -35,6 +36,7 @@ status: accepted
 ## Consequences
 
 - event loop 不再被資料庫卡住；資料庫工作依序執行，吞吐量與 PR 之前相同（每筆只有幾毫秒），在目前規模不是瓶頸。一筆慢查詢或慢的 Redis（Discord 排程、預警撤銷，撤銷已改為一次呼叫）會讓之後的資料庫工作排隊，但不再卡住 WebSocket 的心跳與廣播。
-- 新增需要資料庫的端點時：不需要 `await` 就用 `def`；需要 `await` 就把資料庫那段放進 `run_in_threadpool`。勿在 `async def` 裡直接查詢。
+- 新增需要資料庫的端點時：不需要 `await` 就用 `def`；需要 `await` 就把資料庫那段寫成同步函式、以 `run_db()` 執行。勿在 `async def` 裡直接查詢。
 - 連線池用盡時的等候逾時（`pool_timeout` 預設 30 秒）是整個後端共用的設定，不為個別端點調整。
+- 限流在 dependency 之後才檢查（slowapi 的裝飾器包在端點外面）：超過限流的請求也會先拿鎖、查一次登入才被 429 擋下，有人狂打 API 時其他人跟著排隊。PR 之前同樣如此（而且卡住 event loop），改善見 #82。
 - **何時放寬**：資料庫工作的排隊時間成為瓶頸時。屆時要先補齊各處的防競爭（以 `tests/test_concurrency_pg.py` 的寫法重現），再拿掉或縮小鎖的範圍；async SQLAlchemy 同樣需要先處理這些交錯。
