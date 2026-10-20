@@ -49,7 +49,6 @@ def _login_user(google_id: str, email: str, display_name: Optional[str], avatar_
 
 @router.post("/google", response_model=auth_schemas.LoginResponse, dependencies=[rate_limit("10/minute")])
 async def login_with_google(
-        request: Request,
         login_data: auth_schemas.GoogleLoginRequest,
         response: Response,
 ):
@@ -133,7 +132,6 @@ def refresh_token(
 
 @router.post("/validate", response_model=auth_schemas.ValidateResponse, dependencies=[rate_limit("60/minute")])
 def validate_token(
-        request: Request,
         authorization: str = Header(None),
         access_token: str = Cookie(None),
         db: Session = Depends(get_db)
@@ -163,7 +161,7 @@ def validate_token(
         return {"valid": False}
 
 @router.get("/me", response_model=auth_schemas.User, dependencies=[rate_limit("60/minute")])
-def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
+def read_users_me(current_user: models.User = Depends(get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
@@ -191,7 +189,6 @@ def logout(
 
 @router.put("/me/preferences", response_model=auth_schemas.User, dependencies=[rate_limit("30/minute")])
 def update_preferences(
-        request: Request,
         preferences: Dict[str, Any],
         current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)

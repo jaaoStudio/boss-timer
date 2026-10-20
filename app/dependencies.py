@@ -76,24 +76,20 @@ def limit_keys(identity: Identity, conn: HTTPConnection) -> tuple[str, str]:
     return personal_limit_key(identity, conn), ceiling_limit_key(identity, conn)
 
 
-def get_ip_ceiling_key(request: Request) -> str:
-    """HTTP API 的 IP 天花板 key，見 ceiling_limit_key。"""
-    return ceiling_limit_key(resolve_identity(request), request)
-
-
-def get_user_identifier(request: Request) -> str:
+def http_limit_keys(request: Request) -> tuple[str, str]:
     """
-    HTTP API 的個人額度 key，見 personal_limit_key。access token 無效時改以 refresh token 裡的使用者計算：
+    HTTP API 的 (個人額度 key, IP 天花板 key)。access token 無效時改以 refresh token 裡的使用者計算，兩個 key 都是：
     需要登入的 API 與 /auth/session 在 access token 過期時照樣以登入者處理並換發（ADR-0009），
-    若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到（ADR-0007）。
+    若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、被同 IP 其他人灌爆的天花板擋住，連換發都做不到（ADR-0007）。
     只解開 refresh token、不查資料庫：以使用者而不是 token 本身（jti）計算，舊的或已撤銷的 token 才不會各拿一份額度
     （每次登入都會產生新的 jti，輪流使用就能繞過每日上限）
     """
     identity = resolve_identity(request)
     if identity.kind != "user":
         if refresh_user := decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh"):
-            return f"user:{refresh_user}"
-    return personal_limit_key(identity, request)
+            identity = Identity("user", str(refresh_user))
+    return limit_keys(identity, request)
+
 
 # 計數器存在記憶體，每次部署歸零（ADR-0007）
 limit_storage = MemoryStorage()
@@ -147,8 +143,7 @@ def rate_limit(limit_value: str):
     """
     async def check(request: Request) -> None:
         endpoint = request.scope["endpoint"]
-        keys = (get_user_identifier(request), get_ip_ceiling_key(request))
-        if not check_dual_limit(limit_value, f"{endpoint.__module__}.{endpoint.__qualname__}", keys):
+        if not check_dual_limit(limit_value, f"{endpoint.__module__}.{endpoint.__qualname__}", http_limit_keys(request)):
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Rate limit exceeded: {limit_value}")
 
     return Depends(check)

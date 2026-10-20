@@ -1,6 +1,7 @@
 """雙層限流（個人額度 + IP 天花板）的行為測試，見 docs/adr/0007。"""
 import uuid
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jose import jwt
 from starlette.requests import Request as StarletteRequest
@@ -10,15 +11,20 @@ from app.utils import anonymous_id
 from app.dependencies import (
     IP_CEILING_MULTIPLIER,
     get_client_ip,
-    get_user_identifier,
+    http_limit_keys,
     rate_limit,
 )
-from tests.helpers import make_limited_app, set_cookies
+from tests.helpers import set_cookies
+
+
+def personal_key(request) -> str:
+    return http_limit_keys(request)[0]
+
 
 PERSONAL_LIMIT = 2
 CEILING = PERSONAL_LIMIT * IP_CEILING_MULTIPLIER
 
-app = make_limited_app()
+app = FastAPI()
 
 
 @app.get("/limited", dependencies=[rate_limit(f"{PERSONAL_LIMIT}/minute")])
@@ -58,8 +64,8 @@ def test_client_ip_falls_back_to_connection_source():
 def test_personal_key_uses_signed_anonymous_cookie_then_real_ip():
     anon = str(uuid.uuid4())
     signed = anonymous_id.sign(anon)
-    assert get_user_identifier(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == f"anon:{anon}"
-    assert get_user_identifier(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
+    assert personal_key(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == f"anon:{anon}"
+    assert personal_key(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
 
 
 def test_forged_or_legacy_cookie_falls_back_to_real_ip():
@@ -67,15 +73,15 @@ def test_forged_or_legacy_cookie_falls_back_to_real_ip():
     headers = {"CF-Connecting-IP": "203.0.113.7"}
     for value in ["made-up", str(uuid.uuid4())]:
         request = make_request(headers, cookies=f"{anonymous_id.COOKIE_NAME}={value}")
-        assert get_user_identifier(request) == "ip:203.0.113.7"
+        assert personal_key(request) == "ip:203.0.113.7"
 
 
 def test_ipv4_mapped_ipv6_uses_ipv4_key():
-    assert get_user_identifier(make_request({"CF-Connecting-IP": "::ffff:203.0.113.7"})) == "ip:203.0.113.7"
+    assert personal_key(make_request({"CF-Connecting-IP": "::ffff:203.0.113.7"})) == "ip:203.0.113.7"
 
 
 def test_ipv6_key_collapses_to_64_prefix():
-    key = get_user_identifier(make_request({"CF-Connecting-IP": "2407:4d00:bc01:14e3:64a0:b1e7:f2a2:e28d"}))
+    key = personal_key(make_request({"CF-Connecting-IP": "2407:4d00:bc01:14e3:64a0:b1e7:f2a2:e28d"}))
     assert key == "ip:2407:4d00:bc01:14e3::/64"
 
 
@@ -132,7 +138,7 @@ def test_rate_limited_request_does_not_take_the_database_lock():
     from app.database.database import get_db
 
     db_calls = []
-    db_app = make_limited_app()
+    db_app = FastAPI()
 
     async def fake_db():
         db_calls.append(True)
@@ -149,3 +155,13 @@ def test_rate_limited_request_does_not_take_the_database_lock():
     assert db_client.get("/with-db", headers=headers).status_code == 200
     assert db_client.get("/with-db", headers=headers).status_code == 429
     assert db_calls == [True]
+
+
+def test_logged_in_user_with_expired_access_token_is_not_limited_by_the_ip_ceiling():
+    # access token 過期時以 refresh token 認出登入者（ADR-0009）。IP 天花板也要以這個登入者計算，
+    # 不然同 IP 有人灌爆天花板時，連換發 token 的 /auth/session 都會被擋（ADR-0007：登入者不受同 IP 其他人影響）
+    ip = "203.0.113.60"
+    exhaust_ip_ceiling(ip)
+    refresh = jwt.encode({"sub": "77", "type": "refresh"}, settings.secret_key, algorithm=settings.algorithm)
+    set_cookies(client, refresh_token=refresh)
+    assert client.get("/limited", headers={"CF-Connecting-IP": ip}).status_code == 200

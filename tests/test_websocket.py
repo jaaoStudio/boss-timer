@@ -6,6 +6,7 @@ from contextlib import contextmanager, suppress
 from types import SimpleNamespace
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jose import jwt
 from starlette.websockets import WebSocketDisconnect
@@ -20,11 +21,10 @@ from app.utils import identity as identity_module
 from app.utils.identity import Identity
 from app.websocket import manager as manager_module
 from app.websocket.manager import HEARTBEAT_INTERVAL_SECONDS, HEARTBEAT_TIMEOUT_SECONDS, HELLO_MESSAGE, ConnectionManager
-from tests.helpers import make_limited_app
 
 ROOM = "ROOMABCDEF"
 
-app = make_limited_app()
+app = FastAPI()
 app.include_router(ws_router.router)
 client = TestClient(app)
 

@@ -179,12 +179,14 @@ def create_room(...):   # 用到資料庫的端點宣告成 def（ADR-0010）
 
 - **勿改回包在端點外面的 decorator**（原本的 slowapi 寫法）：那要等所有 dependency 解析完才檢查，超過限流的請求也會先拿資料庫鎖、查一次登入才被 429 擋下（#82）。路由層級的 dependency 最先解析，被擋的請求不碰資料庫（`tests/test_rate_limit.py`）
 - 每個端點各自計數（scope 為端點函式的 `module.qualname`）；超過時回 429 `{"detail": "Rate limit exceeded: ..."}`
+- 兩個 key 都由 `http_limit_keys()` 從同一個身分產生（access token 過期時以 refresh token 裡的使用者計算），登入者的 IP 天花板也以自己計算，不受同 IP 其他人影響（ADR-0007）
+- 參數驗證失敗（422）的請求也會計入（路由層級的 dependency 在驗證參數之前執行，fastapi-limiter 相同）；格式錯誤的 JSON 在讀 body 時就回 422，不計入
 - WebSocket 訊息與握手用同一套計數（`check_dual_limit`）
 
 | 層 | key | 額度 | 用途 |
 |---|---|---|---|
-| 個人額度 | `get_user_identifier`：`user:{id}` → access token 無效時 refresh token 裡的使用者 `user:{id}`（只解開不查資料庫，不以 jti 計算） → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
-| IP 天花板 | `get_ip_ceiling_key`：登入者 `user:{id}`（登入者無法換身分、不受同 IP 影響），否則 IP key | `limit_value` × `IP_CEILING_MULTIPLIER`（200） | 最後防線，擋大量申請新身分與灌爆 |
+| 個人額度 | `http_limit_keys()` 的第一個 key：`user:{id}` → access token 無效時 refresh token 裡的使用者 `user:{id}`（只解開不查資料庫，不以 jti 計算） → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
+| IP 天花板 | `http_limit_keys()` 的第二個 key：登入者 `user:{id}`（登入者無法換身分、不受同 IP 影響），否則 IP key | `limit_value` × `IP_CEILING_MULTIPLIER`（200） | 最後防線，擋大量申請新身分與灌爆 |
 
 **IP key**（`get_ip_rate_limit_key`）：`ip:{真實 IP}`；IPv6 縮成 /64（不縮到 /56：行動網路常替每支手機各配一段 /64，縮太粗會把不相干的使用者算在一起），IPv4-mapped IPv6 視為 IPv4。
 
@@ -249,7 +251,7 @@ except Exception as e:
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
 | 撞到發放上限 | 不發放、**不回 429**（拿不到身分的結果相同，429 只會讓前端當成判斷失敗、沿用上次的顯示） | `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流） |
 
-- 個人額度（所有 API 共用 `get_user_identifier`）：access token 的使用者 → refresh token 裡的使用者（`user:{id}`）→ 一般規則。需要登入的 API 與 `/auth/session` 在 access token 過期時照樣以登入者處理，退回匿名或 IP 會讓同 IP 的登入者互相擋到。**勿改成以 refresh token 的 jti 計算**：不查資料庫，舊的、已撤銷的 token 會各拿一份額度（PR #70 第 5 輪）
+- 個人額度（所有 API 共用 `http_limit_keys()`，IP 天花板也以同一個身分計算）：access token 的使用者 → refresh token 裡的使用者（`user:{id}`）→ 一般規則。需要登入的 API 與 `/auth/session` 在 access token 過期時照樣以登入者處理，退回匿名或 IP 會讓同 IP 的登入者互相擋到。**勿改成以 refresh token 的 jti 計算**：不查資料庫，舊的、已撤銷的 token 會各拿一份額度（PR #70 第 5 輪）
 - **勿把換發或清 cookie 的判斷搬回前端**：前端每多處理一種失敗，就多一個與伺服器判斷不一致的可能
 
 ### 匿名使用者

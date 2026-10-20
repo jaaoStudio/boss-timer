@@ -14,7 +14,7 @@ status: accepted
 - 有登入 cookie 就照「登入已失效」處理、清掉，不先檢查 token 能否解開：解不開的 cookie 留著沒有用，判斷規則也少一種。
 - 登入者的判斷（access token 且使用者存在 → refresh token 查資料庫確認未撤銷）與 WebSocket 握手共用 `resolve_login()`，兩邊不會判斷出不同結果。
 - 呼叫失敗（網路錯誤、5xx、429）不代表登入狀態改變：前端沿用目前的顯示（開頁時以顯示快取 `user_info` 恢復上次的狀態），什麼都不清除，也不自動重試，等下一次觸發再問。這個查詢不經全域錯誤處理（不跳維護 / 錯誤頁、不提示）；伺服器真的掛掉時，開頁緊接著的維護狀態請求會帶使用者到維護頁或錯誤頁。
-- 額度：所有 HTTP API（`/auth/session`、需要登入的 API 等）的個人額度依序以 access token 的使用者、refresh token 裡的使用者計算（`get_user_identifier`），不退回 IP，同 IP 的人不會互相擋到（ADR-0007）。refresh token 只解開、不查撤銷，所以以裡面的使用者而不是 token 本身（jti）計算：每次登入都會產生新的 jti，以 jti 計算的話，存下舊的、已撤銷的 token 輪流使用就能各拿一份額度、繞過每日上限（PR #70 第 5 輪）。代價是拿到別人舊 token 的人能用掉那個人的額度，但這得先取得對方的 token。
+- 額度：所有 HTTP API（`/auth/session`、需要登入的 API 等）的個人額度與 IP 天花板都依序以 access token 的使用者、refresh token 裡的使用者計算（`http_limit_keys()`），不退回 IP，同 IP 的人不會互相擋到（ADR-0007；IP 天花板原本漏掉 refresh token，#82 的 PR 修正）。refresh token 只解開、不查撤銷，所以以裡面的使用者而不是 token 本身（jti）計算：每次登入都會產生新的 jti，以 jti 計算的話，存下舊的、已撤銷的 token 輪流使用就能各拿一份額度、繞過每日上限（PR #70 第 5 輪）。代價是拿到別人舊 token 的人能用掉那個人的額度，但這得先取得對方的 token。
 
 ### 跨分頁同步（照 NextAuth 前端的模型）
 
