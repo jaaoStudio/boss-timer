@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from jose import JWTError, jwt
 from datetime import datetime, timedelta, timezone
 from typing import Optional
+import logging
 import secrets
 from functools import partial
 
@@ -65,8 +66,12 @@ def verify_google_token(token: str) -> Optional[dict]:
             token, partial(requests.Request(), timeout=GOOGLE_TIMEOUT_SECONDS), settings.google_client_id
         )
         return payload
-    except (ValueError, TransportError):
-        # Token 無效，或連不上 Google、逾時：照登入失敗處理（400），不是伺服器錯誤
+    except ValueError:
+        # Token 無效
+        return None
+    except TransportError as error:
+        # 連不上 Google 或逾時：照登入失敗處理（400），記 warning 和憑證無效分得出來
+        logging.warning("Google token verification failed: %r", error)
         return None
 
 

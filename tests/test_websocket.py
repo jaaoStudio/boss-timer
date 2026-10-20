@@ -477,10 +477,14 @@ def test_first_handshake_failure_after_boot_logs_full_traceback(monkeypatch, cap
 def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypatch):
     # 讀房間狀態（threadpool）與訂閱房間（event loop）之間，別人的回報廣播出去的話，加入的人兩邊都收不到。
     # 加入房間在資料庫鎖裡讀完狀態並訂閱好（ADR-0010），回報要等鎖放開才寫得進去，加入的人一定收得到
+    import threading
     import time
+
+    loading = threading.Event()
 
     def slow_room_state(db, room_id):
         off_event_loop()
+        loading.set()   # 加入的人已拿到鎖、開始讀房間狀態
         time.sleep(0.2)
         return {"type": "room_state"}
 
@@ -488,7 +492,7 @@ def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypa
         join(reporter)
         monkeypatch.setattr(ws_router.room_service, "get_room_state", slow_room_state)
         joiner.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
-        time.sleep(0.05)   # 讓加入的人開始讀房間狀態
+        assert loading.wait(5)   # 確定加入的人先拿到鎖，回報才會排在它後面
         reporter.send_json({"type": "record_boss", "payload": {
             "room_id": ROOM, "channel": 1, "boss_type_id": 1, "status": "killed", "recorder_info": None,
         }})
@@ -513,14 +517,16 @@ def test_handshake_gives_up_waiting_for_the_database_lock(monkeypatch, caplog):
 
     monkeypatch.setattr(ws_router, "HANDSHAKE_LOCK_TIMEOUT_SECONDS", 0.1)
     monkeypatch.setattr(identity_module, "_get_user", lambda db, user_id: SimpleNamespace(id=int(user_id)))
-    release = threading.Event()
+    held, release = threading.Event(), threading.Event()
 
     async def hold_lock():
         async with db_lock():
+            held.set()
             while not release.is_set():
                 await anyio.sleep(0.01)
 
     holder = client.portal.start_task_soon(hold_lock)
+    assert held.wait(5)   # 確定鎖被佔住才開始握手
     timer = threading.Timer(1, release.set)   # 沒有上限時，握手等到鎖放開就會連上
     timer.start()
     try:
@@ -531,4 +537,7 @@ def test_handshake_gives_up_waiting_for_the_database_lock(monkeypatch, caplog):
         release.set()
         timer.cancel()
         holder.result()
-    assert "handshake identity lookup failed" in caplog.text
+    # 等不到鎖是排隊太久（例如部署後的重連潮），記 warning，不和資料庫故障的 error 混在一起
+    waits = [r for r in caplog.records if "waited too long for the database lock" in r.getMessage()]
+    assert [r.levelname for r in waits] == ["WARNING"]
+    assert "handshake identity lookup failed" not in caplog.text

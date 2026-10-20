@@ -7,7 +7,7 @@ import threading
 import uuid
 
 import pytest
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine, func, inspect
 from sqlalchemy.orm import sessionmaker
 
 from app.database import models
@@ -24,9 +24,13 @@ pytestmark = pytest.mark.skipif(not URL, reason="需要 PostgreSQL（設定 TEST
 @pytest.fixture(scope="module")
 def Session():
     engine = create_engine(URL, pool_size=20)
-    Base.metadata.drop_all(engine)
+    # 只在空的資料庫上跑：不小心指到開發資料庫時不建表、不刪表
+    if inspect(engine).get_table_names():
+        engine.dispose()
+        pytest.fail("TEST_DATABASE_URL 要指向空的資料庫（例如臨時容器），這個資料庫已經有資料表")
     Base.metadata.create_all(engine)
     yield sessionmaker(bind=engine)
+    Base.metadata.drop_all(engine)
     engine.dispose()
 
 

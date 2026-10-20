@@ -192,8 +192,13 @@ async def websocket_endpoint(
             identity = await run_db(resolve_identity, websocket, lock_timeout=HANDSHAKE_LOCK_TIMEOUT_SECONDS)
         else:
             identity = resolve_identity(websocket)   # 匿名握手不查資料庫
+    except TimeoutError:
+        # 等不到資料庫鎖：排隊太久（例如部署後的重連潮），不是資料庫故障，記 warning；照下面一樣拒絕、前端退避重連
+        logging.warning("WebSocket handshake waited too long for the database lock")
+        await websocket.close()
+        return
     except Exception as error:
-        # 查資料庫失敗或等不到資料庫鎖（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
+        # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
         # 前端看到 1006），前端照一般斷線退避重連，資料庫恢復後就照完整判斷連上。勿退回較低的身分：
         # 身分在握手時固定，前端看到的身分沒變就不會重連，會一直以錯的身分回報
         _log_handshake_failure(error)

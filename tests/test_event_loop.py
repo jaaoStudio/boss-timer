@@ -266,7 +266,7 @@ def test_handshake_lock_timeout_is_shorter_than_the_frontend_gives_up():
     assert 10 <= websocket.HANDSHAKE_LOCK_TIMEOUT_SECONDS < frontend_seconds
 
 
-def test_google_timeout_is_a_failed_login_not_a_server_error(monkeypatch):
+def test_google_timeout_is_a_failed_login_not_a_server_error(monkeypatch, caplog):
     # Google 逾時丟 TransportError：照憑證無效處理（回 400、前端顯示登入失敗），不是 500 跳錯誤頁
     from google.auth.exceptions import TransportError
 
@@ -275,3 +275,5 @@ def test_google_timeout_is_a_failed_login_not_a_server_error(monkeypatch):
 
     monkeypatch.setattr(auth_service.id_token, "verify_oauth2_token", slow)
     assert auth_service.verify_google_token("credential") is None
+    # 和憑證無效分得出來：Google 故障時 log 看得到
+    assert [r.levelname for r in caplog.records if "Google" in r.getMessage()] == ["WARNING"]
