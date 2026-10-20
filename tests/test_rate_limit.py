@@ -1,7 +1,6 @@
 """雙層限流（個人額度 + IP 天花板）的行為測試，見 docs/adr/0007。"""
 import uuid
 
-from fastapi import Request
 from fastapi.testclient import TestClient
 from jose import jwt
 from starlette.requests import Request as StarletteRequest
@@ -13,7 +12,6 @@ from app.dependencies import (
     get_client_ip,
     get_user_identifier,
     rate_limit,
-    scale_limit,
 )
 from tests.helpers import make_limited_app, set_cookies
 
@@ -23,9 +21,8 @@ CEILING = PERSONAL_LIMIT * IP_CEILING_MULTIPLIER
 app = make_limited_app()
 
 
-@app.get("/limited")
-@rate_limit(f"{PERSONAL_LIMIT}/minute")
-async def limited_endpoint(request: Request):
+@app.get("/limited", dependencies=[rate_limit(f"{PERSONAL_LIMIT}/minute")])
+async def limited_endpoint():
     return {"ok": True}
 
 
@@ -48,10 +45,6 @@ def make_request(headers: dict[str, str] | None = None, cookies: str | None = No
     if cookies:
         raw_headers.append((b"cookie", cookies.encode()))
     return StarletteRequest({"type": "http", "headers": raw_headers, "client": ("172.70.1.1", 443)})
-
-
-def test_scale_limit_multiplies_every_limit():
-    assert scale_limit("15/minute;50/day", 50) == "750 per 1 minute;2500 per 1 day"
 
 
 def test_client_ip_prefers_cf_connecting_ip():
@@ -129,3 +122,30 @@ def test_logged_in_user_is_not_blocked_by_exhausted_ip_ceiling():
     exhaust_ip_ceiling("203.0.113.1")
     token = jwt.encode({"sub": "42", "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
     assert call("203.0.113.1", access_token=token) == 200
+
+
+def test_rate_limited_request_does_not_take_the_database_lock():
+    # 超過限流的請求在拿資料庫鎖、查登入之前就要被擋下（#82）：不然有人狂打 API 時，每個被擋的請求都要先在鎖裡
+    # 跑一次查詢，其他人的資料庫工作跟著排隊
+    from fastapi import Depends
+
+    from app.database.database import get_db
+
+    db_calls = []
+    db_app = make_limited_app()
+
+    async def fake_db():
+        db_calls.append(True)
+        yield None
+
+    db_app.dependency_overrides[get_db] = fake_db
+
+    @db_app.get("/with-db", dependencies=[rate_limit("1/minute")])
+    def with_db(db=Depends(get_db)):
+        return {"ok": True}
+
+    db_client = TestClient(db_app)
+    headers = {"CF-Connecting-IP": "203.0.113.50"}
+    assert db_client.get("/with-db", headers=headers).status_code == 200
+    assert db_client.get("/with-db", headers=headers).status_code == 429
+    assert db_calls == [True]

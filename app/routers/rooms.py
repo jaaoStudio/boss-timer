@@ -12,8 +12,7 @@ import logging
 router = APIRouter(prefix="/room", tags=["rooms"])
 
 
-@router.post("/", response_model=RoomResponse)
-@rate_limit("15/minute;50/day")
+@router.post("/", response_model=RoomResponse, dependencies=[rate_limit("15/minute;50/day")])
 def create_room(
         request: Request,
         db: Session = Depends(get_db)
@@ -29,8 +28,7 @@ def create_room(
         raise HTTPException(status_code=500, detail="Failed to create room")
 
 
-@router.get("/{room_id}/exists", response_model=RoomExists)
-@rate_limit("15/minute")
+@router.get("/{room_id}/exists", response_model=RoomExists, dependencies=[rate_limit("15/minute")])
 def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, max_length=10, description="房間 ID，固定 10 個字元"),
                             db: Session = Depends(get_db)):
     """檢查房間是否存在"""
@@ -59,8 +57,7 @@ def check_room_exists(request: Request, room_id: str= Path(..., min_length=10, m
         logging.error(f"Check room exists error: {e}")
         raise HTTPException(status_code=500, detail="Failed to check room existence")
 
-@router.patch("/{room_id}/settings", response_model=RoomResponse)
-@rate_limit("30/minute")
+@router.patch("/{room_id}/settings", response_model=RoomResponse, dependencies=[rate_limit("30/minute")])
 def update_room_settings(
         request: Request,
         settings_data: RoomSettingsUpdate,

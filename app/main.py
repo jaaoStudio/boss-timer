@@ -4,10 +4,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import logging
 
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
 
-from app.dependencies import limiter, rate_limit_exceeded_handler
 from app.routers.system import read_maintenance_file
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket, system, feedback # 引入 admin
@@ -57,10 +54,6 @@ async def lifespan(app: FastAPI):
     heartbeat_task.cancel()
 
 app = FastAPI(title="Boss Tracker API", version=settings.version, lifespan=lifespan)
-
-app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-app.add_middleware(SlowAPIMiddleware)
 
 # CORS 設定
 origin_list = [origin.strip() for origin in settings.allowed_origins.split(",") if origin.strip()]

@@ -24,7 +24,7 @@ Boss Timer 是一款為楓之谷世界 (Artale, 楓星...) 設計的即時 Boss 
 | 非同步任務 | Celery + Redis (Broker & Backend) |
 | 設定管理 | pydantic-settings + python-dotenv |
 | 套件管理 | uv (pyproject.toml + uv.lock) |
-| 限流 | slowapi |
+| 限流 | limits（記憶體計數，`dependencies.rate_limit()`） |
 | 部署 | Docker + Docker Compose + Nginx (反向代理) |
 | 資料庫遷移 | Alembic |
 | Python 版本 | 3.11+ |
@@ -506,6 +506,6 @@ ConnectionManager
 - ⚠️ 匿名記錄者資訊使用結構化的 `RecorderInfo` schema，防止任意 JSON 注入
 - ⚠️ Room ID 路徑參數限制長度: `min_length=10, max_length=10`
 - ⚠️ 管理員端點使用 `Depends(get_current_admin_user)` 保護
-- ⚠️ 所有 HTTP API 使用 `rate_limit()` 雙層限流（個人額度 + 真實 IP ×200 天花板，見 ADR-0007 與 backend-api skill），勿直接用 `@limiter.limit`
+- ⚠️ 所有 HTTP API 以路由層級的 dependency 掛上 `rate_limit()` 雙層限流（`dependencies=[rate_limit("15/minute")]`，個人額度 + 真實 IP ×200 天花板，見 ADR-0007 與 backend-api skill）；勿改回包在端點外面的 decorator（#82）
 - ⚠️ 限流與匿名身分一律經 `app/utils/identity.resolve_identity()` 判斷；需要登入的 API 用 `dependencies.get_current_user` / `get_optional_user`（以 `resolve_login` 判斷，access token 過期時在回應換發，401 只代表登入失效）。勿自己解析 JWT 或信任 cookie 原值（JWT 一律經 `decode_token_user_id()`，會檢查 access / refresh 類型）
 - ⚠️ Celery Worker 不使用 root 執行 (Docker 中建議加 `--uid` 參數)

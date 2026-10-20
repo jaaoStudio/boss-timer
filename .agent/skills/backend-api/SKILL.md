@@ -12,7 +12,7 @@ description: 新增或修改 FastAPI 路由、Pydantic Schema、Service 層業�
 | 框架 | FastAPI |
 | ORM | SQLAlchemy (同步模式) |
 | 資料驗證 | Pydantic v2 |
-| 限流 | slowapi |
+| 限流 | limits（記憶體計數，`dependencies.rate_limit()`） |
 | 套件管理 | uv (pyproject.toml) |
 
 ---
@@ -48,7 +48,7 @@ app/
 
 > ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查（含 `async def` 裡不可直接開 `SessionLocal()`）。呼叫外部服務一律設逾時
 >
-> ⚠️ **資料庫工作依序執行：一把鎖住整個請求**（`app/database/database.py` 的 `db_lock()`，ADR-0010）：`get_db` 是 async dependency，請求開始拿鎖、結束才放開，段與段之間不會插進別的請求；等鎖時在 event loop 上等、不佔執行緒與連線。不經 `get_db` 的資料庫工作（WebSocket、背景工作）一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行），勿只用 `run_in_threadpool`（不拿鎖，測試抓不到）；唯一例外是加入房間（訂閱也要在鎖裡）。限流在 dependency 之後才檢查，超過限流的請求也會先拿鎖（#82）。**拿著鎖時不可再等另一件也要拿鎖的事**（互相等待而卡死），也不要在鎖裡等 Google 這類動輒 10 秒的外部服務（`/auth/google` 不依賴 `get_db`，Google 在鎖外、資料庫那段才拿鎖，而且用自己的執行緒上限 `GOOGLE_LIMITER`，不佔預設的 40 條；Redis 仍在鎖裡，是已接受的取捨，見 ADR-0010）。勿改回「把 threadpool 限成一次一個」（交接名額不嚴格、單位是一段，見 ADR-0010）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列）；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（要指向空的資料庫，例如臨時容器；已有資料表會拒絕執行），平常跳過
+> ⚠️ **資料庫工作依序執行：一把鎖住整個請求**（`app/database/database.py` 的 `db_lock()`，ADR-0010）：`get_db` 是 async dependency，請求開始拿鎖、結束才放開，段與段之間不會插進別的請求；等鎖時在 event loop 上等、不佔執行緒與連線。不經 `get_db` 的資料庫工作（WebSocket、背景工作）一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行），勿只用 `run_in_threadpool`（不拿鎖，測試抓不到）；唯一例外是加入房間（訂閱也要在鎖裡）。限流在拿鎖之前檢查（路由層級的 dependency，#82）。**拿著鎖時不可再等另一件也要拿鎖的事**（互相等待而卡死），也不要在鎖裡等 Google 這類動輒 10 秒的外部服務（`/auth/google` 不依賴 `get_db`，Google 在鎖外、資料庫那段才拿鎖，而且用自己的執行緒上限 `GOOGLE_LIMITER`，不佔預設的 40 條；Redis 仍在鎖裡，是已接受的取捨，見 ADR-0010）。勿改回「把 threadpool 限成一次一個」（交接名額不嚴格、單位是一段，見 ADR-0010）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列）；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（要指向空的資料庫，例如臨時容器；已有資料表會拒絕執行），平常跳過
 
 1. **定義 Schema** (`schemas/`): 建立 Pydantic 輸入/輸出模型
 2. **實作 Service** (`services/`): 實作業務邏輯（不含 HTTP 細節）
@@ -170,13 +170,16 @@ def get_room_state(db, room_id) -> dict:
 
 ## Rate Limiting / 限流
 
-使用 `slowapi`，一律透過 `dependencies.py` 的 `rate_limit()` 掛上**雙層限流**（見 ADR-0007），**勿直接用 `@limiter.limit`**：
+一律透過 `dependencies.py` 的 `rate_limit()` 以**路由層級的 dependency** 掛上**雙層限流**（見 ADR-0007，照 fastapi-limiter 的寫法）：
 
 ```python
-@router.post("/", response_model=RoomResponse)
-@rate_limit("15/minute;50/day")   # 多條上限以 ; 分隔
-def create_room(request: Request, ...):   # 必須有 request 參數；用到資料庫的端點宣告成 def（ADR-0010）
+@router.post("/", response_model=RoomResponse, dependencies=[rate_limit("15/minute;50/day")])   # 多條上限以 ; 分隔
+def create_room(...):   # 用到資料庫的端點宣告成 def（ADR-0010）
 ```
+
+- **勿改回包在端點外面的 decorator**（原本的 slowapi 寫法）：那要等所有 dependency 解析完才檢查，超過限流的請求也會先拿資料庫鎖、查一次登入才被 429 擋下（#82）。路由層級的 dependency 最先解析，被擋的請求不碰資料庫（`tests/test_rate_limit.py`）
+- 每個端點各自計數（scope 為端點函式的 `module.qualname`）；超過時回 429 `{"detail": "Rate limit exceeded: ..."}`
+- WebSocket 訊息與握手用同一套計數（`check_dual_limit`）
 
 | 層 | key | 額度 | 用途 |
 |---|---|---|---|

@@ -1,17 +1,13 @@
-"""測試共用：掛好限流的 FastAPI app 與設定匿名 cookie。"""
+"""測試共用：測試用的 FastAPI app 與設定匿名 cookie。"""
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from slowapi.errors import RateLimitExceeded
 
-from app.dependencies import limiter, rate_limit_exceeded_handler
 from app.utils import anonymous_id
 
 
 def make_limited_app() -> FastAPI:
-    app = FastAPI()
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
-    return app
+    # 限流是路由層級的 dependency（rate_limit()），不需要另外掛 middleware 或例外處理
+    return FastAPI()
 
 
 def set_cookies(client: TestClient, anon: str | None = None, signed: bool = True, **extra: str) -> None:

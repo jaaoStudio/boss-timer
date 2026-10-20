@@ -25,8 +25,7 @@ from app.services.feedback_service import (
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-@router.get("/", response_model=FeedbackListResponse)
-@rate_limit("60/minute")
+@router.get("/", response_model=FeedbackListResponse, dependencies=[rate_limit("60/minute")])
 def list_feedback(
     request: Request,
     sort: str = Query("votes", pattern="^(votes|newest)$"),
@@ -43,8 +42,7 @@ def list_feedback(
     return FeedbackListResponse(items=items, total=len(items))
 
 
-@router.post("/", response_model=FeedbackResponse, status_code=201)
-@rate_limit("20/minute")
+@router.post("/", response_model=FeedbackResponse, status_code=201, dependencies=[rate_limit("20/minute")])
 def create_feedback(
     request: Request,
     payload: FeedbackCreate,
@@ -71,8 +69,7 @@ def create_feedback(
     )
 
 
-@router.post("/{feedback_id}/vote", response_model=FeedbackVoteResponse)
-@rate_limit("60/minute")
+@router.post("/{feedback_id}/vote", response_model=FeedbackVoteResponse, dependencies=[rate_limit("60/minute")])
 def toggle_vote(
     request: Request,
     feedback_id: int,
@@ -96,8 +93,7 @@ def toggle_vote(
     )
 
 
-@router.patch("/{feedback_id}", response_model=FeedbackResponse)
-@rate_limit("60/minute")
+@router.patch("/{feedback_id}", response_model=FeedbackResponse, dependencies=[rate_limit("60/minute")])
 def admin_update_status(
     request: Request,
     feedback_id: int,
@@ -132,8 +128,7 @@ def admin_update_status(
     )
 
 
-@router.delete("/{feedback_id}", status_code=204)
-@rate_limit("30/minute")
+@router.delete("/{feedback_id}", status_code=204, dependencies=[rate_limit("30/minute")])
 def admin_delete(
     request: Request,
     feedback_id: int,
