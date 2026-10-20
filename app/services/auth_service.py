@@ -17,6 +17,7 @@ from app.config import settings
 
 # Google Auth
 from google.oauth2 import id_token
+from google.auth.exceptions import TransportError
 from google.auth.transport import requests
 import requests as python_requests
 
@@ -64,8 +65,8 @@ def verify_google_token(token: str) -> Optional[dict]:
             token, partial(requests.Request(), timeout=GOOGLE_TIMEOUT_SECONDS), settings.google_client_id
         )
         return payload
-    except ValueError:
-        # Token 無效
+    except (ValueError, TransportError):
+        # Token 無效，或連不上 Google、逾時：照登入失敗處理（400），不是伺服器錯誤
         return None
 
 

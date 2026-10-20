@@ -216,3 +216,62 @@ def test_run_db_gives_up_waiting_for_the_lock_after_the_timeout():
         assert await run_db(lambda x: x + 1, 1) == 2   # 放開後照常執行、回傳結果
 
     anyio.run(main)
+
+
+def test_google_calls_do_not_take_the_default_threads(monkeypatch):
+    # 拿著資料庫鎖的請求每一段都要從預設的 40 條執行緒拿一條。Google 最多等 20 秒（換 token + 抓憑證）：
+    # 40 個人同時登入、Google 又慢時，拿著鎖的請求要不到執行緒，所有資料庫工作一起停住
+    borrowed = []
+
+    def verify(credential):
+        borrowed.append(anyio.from_thread.run_sync(lambda: anyio.to_thread.current_default_thread_limiter().borrowed_tokens))
+        return None
+
+    monkeypatch.setattr(auth.auth_service, "verify_google_token", verify)
+    app = make_limited_app()
+    app.include_router(auth.router)
+    with TestClient(app) as client:
+        client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.8"})
+    assert borrowed == [0]
+
+
+def test_session_is_closed_even_when_the_request_is_cancelled(monkeypatch):
+    # 請求被取消（伺服器關閉、middleware 取消）時，收尾也要把連線還回連線池：
+    # 被取消的 scope 裡一 await 就會再被取消，close 沒保護的話不會執行
+    from app.database import database
+
+    closed = []
+    monkeypatch.setattr(database, "SessionLocal", lambda: SimpleNamespace(close=lambda: closed.append(True)))
+
+    async def main():
+        with anyio.CancelScope() as scope:
+            requests = get_db()
+            await requests.__anext__()
+            scope.cancel()
+            await requests.aclose()
+
+    anyio.run(main)
+    assert closed == [True]
+
+
+def test_handshake_lock_timeout_is_shorter_than_the_frontend_gives_up():
+    # 握手等鎖要比前端放棄握手（CONNECT_TIMEOUT_MS）短，否則被放棄的握手仍在排隊、佇列越來越長；
+    # 也不能太短：部署後幾百個分頁同時重連時，加入房間要排一陣子（PR #80 第 5 輪）
+    import re
+
+    from app.routers import websocket
+
+    source = pathlib.Path("frontend/src/stores/websocketStore.ts").read_text(encoding="utf-8")
+    frontend_seconds = int(re.search(r"CONNECT_TIMEOUT_MS = (\d+)", source).group(1)) / 1000
+    assert 10 <= websocket.HANDSHAKE_LOCK_TIMEOUT_SECONDS < frontend_seconds
+
+
+def test_google_timeout_is_a_failed_login_not_a_server_error(monkeypatch):
+    # Google 逾時丟 TransportError：照憑證無效處理（回 400、前端顯示登入失敗），不是 500 跳錯誤頁
+    from google.auth.exceptions import TransportError
+
+    def slow(*args, **kwargs):
+        raise TransportError("read timed out")
+
+    monkeypatch.setattr(auth_service.id_token, "verify_oauth2_token", slow)
+    assert auth_service.verify_google_token("credential") is None

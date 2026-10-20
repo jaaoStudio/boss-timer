@@ -19,6 +19,10 @@ from app.utils.login_cookies import cookie_attrs, delete_login_cookies, set_acce
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+# 呼叫 Google 用自己的執行緒上限，不佔預設的 40 條（ADR-0010）：拿著資料庫鎖的請求每一段都要從那 40 條拿一條，
+# Google 最多等 20 秒（換 token + 抓憑證），同時登入的人多、Google 又慢時會讓拿著鎖的請求要不到執行緒
+GOOGLE_LIMITER = anyio.CapacityLimiter(10)
+
 def _verify_google_payload(login_data: auth_schemas.GoogleLoginRequest) -> Optional[dict]:
     if login_data.code:
         return auth_service.exchange_google_code(login_data.code)
@@ -55,7 +59,7 @@ async def login_with_google(
     呼叫 Google 在資料庫鎖之外（最多等 10 秒，在鎖裡等的話所有人的資料庫工作都要等它），資料庫那段才拿鎖（ADR-0010）。
     兩者都在 threadpool 執行，不在 event loop 上；因此不依賴 get_db（它會讓整個請求拿著鎖）
     """
-    payload = await anyio.to_thread.run_sync(_verify_google_payload, login_data)
+    payload = await anyio.to_thread.run_sync(_verify_google_payload, login_data, limiter=GOOGLE_LIMITER)
 
     # 憑證無效回 400 而不是 401：401 在整個後端只代表登入失效，前端遇到 401 會照登入失效處理（ADR-0009）
     if not payload:

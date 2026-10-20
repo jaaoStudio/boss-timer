@@ -1,7 +1,7 @@
 # app/database/database.py
 from typing import Optional
 
-from anyio import Lock, fail_after, to_thread
+from anyio import CancelScope, Lock, fail_after, to_thread
 from anyio.lowlevel import RunVar
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
@@ -55,7 +55,9 @@ async def get_db():
         try:
             yield db
         finally:
-            await to_thread.run_sync(db.close)
+            # 請求被取消時也要把連線還回連線池：被取消的 scope 裡一 await 就會再被取消
+            with CancelScope(shield=True):
+                await to_thread.run_sync(db.close)
 
 
 async def run_db(fn, *args, lock_timeout: Optional[float] = None):
