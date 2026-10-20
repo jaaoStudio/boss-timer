@@ -27,7 +27,7 @@ router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 @router.get("/", response_model=FeedbackListResponse)
 @rate_limit("60/minute")
-async def list_feedback(
+def list_feedback(
     request: Request,
     sort: str = Query("votes", pattern="^(votes|newest)$"),
     db: Session = Depends(get_db),
@@ -45,7 +45,7 @@ async def list_feedback(
 
 @router.post("/", response_model=FeedbackResponse, status_code=201)
 @rate_limit("20/minute")
-async def create_feedback(
+def create_feedback(
     request: Request,
     payload: FeedbackCreate,
     db: Session = Depends(get_db),
@@ -73,7 +73,7 @@ async def create_feedback(
 
 @router.post("/{feedback_id}/vote", response_model=FeedbackVoteResponse)
 @rate_limit("60/minute")
-async def toggle_vote(
+def toggle_vote(
     request: Request,
     feedback_id: int,
     db: Session = Depends(get_db),
@@ -98,7 +98,7 @@ async def toggle_vote(
 
 @router.patch("/{feedback_id}", response_model=FeedbackResponse)
 @rate_limit("60/minute")
-async def admin_update_status(
+def admin_update_status(
     request: Request,
     feedback_id: int,
     payload: FeedbackStatusUpdate,
@@ -134,7 +134,7 @@ async def admin_update_status(
 
 @router.delete("/{feedback_id}", status_code=204)
 @rate_limit("30/minute")
-async def admin_delete(
+def admin_delete(
     request: Request,
     feedback_id: int,
     db: Session = Depends(get_db),

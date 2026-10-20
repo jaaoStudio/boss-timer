@@ -9,17 +9,35 @@ status: accepted
 我們決定**資料庫維持同步，但一律不在 event loop 上執行**（FastAPI 對同步函式庫的建議做法）：
 
 - 不需要 `await` 的端點宣告成一般的 `def`，FastAPI 會放到 threadpool 執行。
-- 需要 `await` 的端點（例如要廣播 WebSocket）與 WebSocket 的訊息處理，資料庫那段以 `run_in_threadpool` 執行。
+- 需要 `await` 的端點（例如要廣播 WebSocket）與 WebSocket 的訊息處理，資料庫那段經 `run_db()` 執行（拿資料庫鎖、在 threadpool 執行，見下一節）。
 - 呼叫外部服務（Google）的同步請求一律設逾時。
 - 資料庫連線設 `connect_timeout` 與 TCP keepalive / `tcp_user_timeout`（#76），連不上或網路中斷時，執行緒最多卡幾秒，不會卡好幾分鐘。
 
+### 資料庫工作依序執行：一把鎖住整個請求（PR #80 第 2、3 輪）
+
+改在 threadpool 執行後，同一個 worker 的請求會真的同時跑。程式原本隱含依賴「資料庫工作依序執行」——以前資料庫卡住 event loop，等於所有請求自動排隊——同時執行後兩輪審查陸續找到 7 個交錯：投票連點、每日上限被突破、重複建立帳號、多個 refresh token、加入房間時讀快照與訂閱之間漏掉回報、刪除紀錄撤銷不到剛排程的 Discord 預警、清理工作封存剛活躍的房間。我們決定**保留依序執行，但不在 event loop 上**：
+
+- `app/database/database.py` 的 `db_lock()`（anyio `Lock`，每個 event loop 一把）。`get_db` 是 async 的 dependency：請求開始時拿鎖、建立 session，整個請求結束、session 關閉後才放開。FastAPI 把一個請求拆成好幾段丟進 threadpool（dependency、端點本體、回應序列化、收尾），依序執行的單位是整個請求，段與段之間不會插進別的請求。
+- 等鎖的請求在 event loop 上等，不佔執行緒也不佔資料庫連線；拿著鎖的請求各段馬上有執行緒可用（threadpool 維持預設的 40 條）。WebSocket 連線、心跳、收訊息與廣播照常在 event loop 上同時進行。
+- 不經 `get_db` 的資料庫工作一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行）：WebSocket 有登入 cookie 的握手、回報、清理工作、Google 登入的資料庫那段。勿只用 `run_in_threadpool`：不拿鎖會和其他資料庫工作同時執行，而且測試抓不到。唯一的例外是加入房間：讀房間狀態到訂閱都要在鎖裡（別人的回報要等訂閱好才寫得進去），所以自己 `async with db_lock()`。匿名握手不查資料庫，不拿鎖。
+- 帶登入 cookie 的握手最多等鎖 15 秒（`HANDSHAKE_LOCK_TIMEOUT_SECONDS`），等不到就拒絕、前端退避重連。資料庫故障時鎖前面的工作每個要卡 5～10 秒，前端握手 20 秒就放棄重連；不設上限的話，被放棄的握手仍在排隊，佇列越來越長（PR #80 第 4 輪）。上限要比前端的 20 秒短，也不能太短：部署後幾百個分頁同時重連時，加入房間在鎖裡要排好幾秒，第 4 輪訂的 5 秒會讓登入者的握手被拒（第 5 輪）。一般 HTTP 請求等鎖不設上限：資料庫故障時被放棄的請求仍會排隊，PR 之前同樣如此（而且卡住整個 event loop）。
+- **拿著鎖時不可再等另一件也要拿鎖的事**（會互相等待而卡死），也不要在鎖裡等外部服務：`/auth/google` 因此不依賴 `get_db`，呼叫 Google 在鎖外、資料庫那段才拿鎖；Google 呼叫另外用自己的執行緒上限（`GOOGLE_LIMITER`），不佔 threadpool 預設的 40 條——拿著鎖的請求每一段都要從那 40 條拿一條，被 Google 佔光時所有資料庫工作一起停住。Redis（Discord 排程、預警撤銷）仍在鎖裡，是已接受的取捨，見 Consequences。從 threadpool 回到 event loop 只用來廣播（`manager.*_from_thread`）與寫維護設定檔，兩者都不需要鎖。
+- 維護設定檔（`maintenance.json`）不經鎖：讀與寫都在 event loop 上直接做（檔案很小），不會同時發生，讀完到比較、廣播之間也沒有 `await`。
+- `get_db` 收尾的 `db.close` 放在 `CancelScope(shield=True)` 裡：請求被取消時也要把連線還回連線池。
+- 第 1 輪加的防競爭寫法（撞到唯一限制改用已存在的那一筆、鎖住使用者那一列）保留，以後放寬時用得上（`tests/test_concurrency_pg.py`）。
+
 ## Considered Options
 
-- **改用 async 的 SQLAlchemy + asyncpg**：從頭到尾都是 async，沒有 threadpool 的上限，取消與逾時比較自然。但所有 service 與端點都要改寫成 `AsyncSession` 加 `await`；async 模式不能延遲載入關聯（`record.recorder`、`record.boss_type` 這類用法漏改一處，就要等特定資料出現時才在執行期出錯，測試不一定測得到）；Celery worker 是同步的，要同時維持兩套資料庫設定與查詢寫法；測試的假 session 也要全部改。這個專案的規模（同時開著幾百個分頁、查詢都很短）用 threadpool（40 條執行緒）與連線池（30 條連線）綽綽有餘，不值得這個代價。
+- **把 threadpool 限成一次一個**（PR #80 第 2 輪的實作）：做不到依序執行。anyio 的 `CapacityLimiter` 釋放名額時只是叫醒下一位、沒有把名額交給它，醒來前可以被別的請求搶先，兩件事同時跑；而且依序執行的單位是「一段」而不是「一個請求」，請求在段與段之間排隊時佔著資料庫連線，大量湧入時 30 條連線被排隊中的請求佔光，拿到名額的卻等不到連線，整站卡住 30 秒。
+
+- **讓請求同時執行，逐一處理競爭**（PR #80 第 1 輪的方向）：一般 web 應用的做法、吞吐量高，但這份程式從來不是照「會同時執行」寫的。加入房間的漏接要動到前端怎麼合併資料，兩輪就找到 7 個交錯、很可能還有。吞吐量在目前規模不是問題（PR 之前本來就是一次一個），不值得。
+
+- **改用 async 的 SQLAlchemy + asyncpg**：它也解決不了上面的交錯——每個 `await` 都是讓出點，一個請求等資料庫時 event loop 就去跑別的請求，和 threadpool 同時執行一樣會交錯。此外，從頭到尾都是 async，沒有 threadpool 的上限，取消與逾時比較自然。但所有 service 與端點都要改寫成 `AsyncSession` 加 `await`；async 模式不能延遲載入關聯（`record.recorder`、`record.boss_type` 這類用法漏改一處，就要等特定資料出現時才在執行期出錯，測試不一定測得到）；Celery worker 是同步的，要同時維持兩套資料庫設定與查詢寫法；測試的假 session 也要全部改。這個專案的規模（同時開著幾百個分頁、查詢都很短）用 threadpool（40 條執行緒）與連線池（30 條連線）綽綽有餘，不值得這個代價。
 
 ## Consequences
 
-- event loop 不再被資料庫卡住；同時要等資料庫的請求數受 threadpool 與連線池限制，在目前規模不是瓶頸。
-- 新增需要資料庫的端點時：不需要 `await` 就用 `def`；需要 `await` 就把資料庫那段放進 `run_in_threadpool`。勿在 `async def` 裡直接查詢。
+- event loop 不再被資料庫卡住；資料庫工作依序執行，吞吐量與 PR 之前相同（每筆只有幾毫秒），在目前規模不是瓶頸。一筆慢查詢或慢的 Redis（Discord 排程、預警撤銷，撤銷已改為一次呼叫）會讓之後的資料庫工作排隊，但不再卡住 WebSocket 的心跳與廣播。
+- 新增需要資料庫的端點時：不需要 `await` 就用 `def`；需要 `await` 就把資料庫那段寫成同步函式、以 `run_db()` 執行。勿在 `async def` 裡直接查詢。
 - 連線池用盡時的等候逾時（`pool_timeout` 預設 30 秒）是整個後端共用的設定，不為個別端點調整。
-- **何時重新考慮 async SQLAlchemy**：同時連線數成長到 threadpool 或連線池成為瓶頸，或後端要大幅改寫時。屆時資料庫操作已經集中在 threadpool 的呼叫點，比較容易換。
+- 限流在 dependency 之後才檢查（slowapi 的裝飾器包在端點外面）：超過限流的請求也會先拿鎖、查一次登入才被 429 擋下，有人狂打 API 時其他人跟著排隊。PR 之前同樣如此（而且卡住 event loop），改善見 #82。
+- **何時放寬**：資料庫工作的排隊時間成為瓶頸時。屆時要先補齊各處的防競爭（以 `tests/test_concurrency_pg.py` 的寫法重現），再拿掉或縮小鎖的範圍；async SQLAlchemy 同樣需要先處理這些交錯。

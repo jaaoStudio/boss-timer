@@ -3,21 +3,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 import logging
-import json
-import os
 
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.dependencies import limiter, rate_limit_exceeded_handler
+from app.routers.system import read_maintenance_file
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket, system, feedback # 引入 admin
 from app.tasks.cleanup import cleanup_inactive_rooms
 from app.websocket.manager import ConnectionManager
 from app.dependencies import get_connection_manager
 
-# 設定檔的路徑 (與 system.py 中的路徑保持一致)
-MAINTENANCE_FILE_PATH = os.path.join(os.path.dirname(__file__), "maintenance.json")
 
 # 用於追蹤上次讀取的維護狀態
 last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
@@ -28,19 +25,15 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
     並在狀態變化時透過 WebSocket 廣播。
     """
     global last_maintenance_status
-    current_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
-    if os.path.exists(MAINTENANCE_FILE_PATH):
-        try:
-            with open(MAINTENANCE_FILE_PATH, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                current_maintenance_status = {
-                    "is_maintenance": data.get("is_maintenance", False),
-                    "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),
-                    "title": data.get("title", ""),
-                    "message": data.get("message", "")
-                }
-        except (json.JSONDecodeError, IOError):
-            pass # 檔案讀取或解析失敗，使用預設值
+    # 在 event loop 上直接讀（檔案很小）：管理員寫檔也回到 event loop 執行，讀寫不會同時發生；
+    # 讀完到比較、更新上次的狀態之間沒有 await，同時的請求不會廣播錯的狀態
+    data = read_maintenance_file() or {}
+    current_maintenance_status = {
+        "is_maintenance": data.get("is_maintenance", False),
+        "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),
+        "title": data.get("title", ""),
+        "message": data.get("message", ""),
+    }
 
     # 檢查狀態是否發生變化
     if current_maintenance_status != last_maintenance_status:

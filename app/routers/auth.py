@@ -1,13 +1,13 @@
 # app/routers/auth.py
+import anyio
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request, Header, Cookie
-from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from typing import Dict, Any, Optional
 import uuid
 
 from app.database import models
-from app.database.database import get_db
+from app.database.database import SessionLocal, get_db, run_db
 from app.dependencies import rate_limit, anonymous_id_mint_allowed, get_current_user
 from app.schemas import auth as auth_schemas
 from app.services import auth_service
@@ -19,22 +19,47 @@ from app.utils.login_cookies import cookie_attrs, delete_login_cookies, set_acce
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+# 呼叫 Google 用自己的執行緒上限，不佔預設的 40 條（ADR-0010）：拿著資料庫鎖的請求每一段都要從那 40 條拿一條，
+# Google 最多等 20 秒（換 token + 抓憑證），同時登入的人多、Google 又慢時會讓拿著鎖的請求要不到執行緒
+GOOGLE_LIMITER = anyio.CapacityLimiter(10)
+
+def _verify_google_payload(login_data: auth_schemas.GoogleLoginRequest) -> Optional[dict]:
+    if login_data.code:
+        return auth_service.exchange_google_code(login_data.code)
+    if login_data.credential:
+        return auth_service.verify_google_token(login_data.credential)
+    return None
+
+
+def _login_user(google_id: str, email: str, display_name: Optional[str], avatar_url: Optional[str]) -> tuple[auth_schemas.User, str]:
+    """建立或更新使用者並存好 refresh token，回傳 (使用者, refresh token)。拿著資料庫鎖、在 threadpool 執行"""
+    with SessionLocal() as db:
+        user = auth_service.get_user_by_google_id(db, google_id=google_id)
+        if not user:
+            user = auth_service.create_user(db, user_data=auth_schemas.UserCreate(
+                google_id=google_id, email=email, display_name=display_name, avatar_url=avatar_url,
+            ))
+        else:
+            # 更新最後登入時間，並同步 Google 的名稱與頭像
+            user = auth_service.update_user_last_login(db, user, display_name=display_name, avatar_url=avatar_url)
+        refresh_token = auth_service.create_refresh_token(data={"sub": str(user.id)})
+        auth_service.save_refresh_token(db, user.id, refresh_token)
+        return auth_schemas.User.model_validate(user), refresh_token
+
+
 @router.post("/google", response_model=auth_schemas.LoginResponse)
 @rate_limit("10/minute")
 async def login_with_google(
         request: Request,
         login_data: auth_schemas.GoogleLoginRequest,
         response: Response,
-        db: Session = Depends(get_db)
 ):
     """
     使用 Google Credential 登入或註冊使用者。
+    呼叫 Google 在資料庫鎖之外（最多等 10 秒，在鎖裡等的話所有人的資料庫工作都要等它），資料庫那段才拿鎖（ADR-0010）。
+    兩者都在 threadpool 執行，不在 event loop 上；因此不依賴 get_db（它會讓整個請求拿著鎖）
     """
-    payload = None
-    if login_data.code:
-        payload = auth_service.exchange_google_code(login_data.code)
-    elif login_data.credential:
-        payload = auth_service.verify_google_token(login_data.credential)
+    payload = await anyio.to_thread.run_sync(_verify_google_payload, login_data, limiter=GOOGLE_LIMITER)
 
     # 憑證無效回 400 而不是 401：401 在整個後端只代表登入失效，前端遇到 401 會照登入失效處理（ADR-0009）
     if not payload:
@@ -57,25 +82,7 @@ async def login_with_google(
             detail="Missing user info from Google token",
         )
 
-    user = auth_service.get_user_by_google_id(db, google_id=google_id)
-
-    if not user:
-        # 創建新使用者
-        user_create = auth_schemas.UserCreate(
-            google_id=google_id,
-            email=email,
-            display_name=display_name,
-            avatar_url=avatar_url
-        )
-        user = auth_service.create_user(db, user_data=user_create)
-    else:
-        # 更新最後登入時間
-        user = auth_service.update_user_last_login(db, user, display_name=display_name, avatar_url=avatar_url)
-
-    refresh_token = auth_service.create_refresh_token(data={"sub": str(user.id)})
-
-    # 將 refresh token 存儲到資料庫
-    auth_service.save_refresh_token(db, user.id, refresh_token)
+    user, refresh_token = await run_db(_login_user, google_id, email, display_name, avatar_url)
 
     # 將 refresh token 設置在 HttpOnly cookie 中
     response.set_cookie(
@@ -90,13 +97,13 @@ async def login_with_google(
     return {
         "access_token": access_token,
         "token_type": "bearer",
-        "user": auth_schemas.User.model_validate(user)
+        "user": user,
     }
 
 
 @router.post("/refresh", response_model=auth_schemas.TokenResponse)
 @rate_limit("30/minute")
-async def refresh_token(
+def refresh_token(
         request: Request,
         response: Response,
         db: Session = Depends(get_db)
@@ -128,7 +135,7 @@ async def refresh_token(
 
 @router.post("/validate", response_model=auth_schemas.ValidateResponse)
 @rate_limit("60/minute")
-async def validate_token(
+def validate_token(
         request: Request,
         authorization: str = Header(None),
         access_token: str = Cookie(None),
@@ -160,7 +167,7 @@ async def validate_token(
 
 @router.get("/me", response_model=auth_schemas.User)
 @rate_limit("60/minute")
-async def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
+def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
@@ -169,7 +176,7 @@ async def read_users_me(request: Request, current_user: models.User = Depends(ge
 
 @router.post("/logout")
 @rate_limit("10/minute")
-async def logout(
+def logout(
         request: Request,
         response: Response,
         db: Session = Depends(get_db)
@@ -189,7 +196,7 @@ async def logout(
 
 @router.put("/me/preferences", response_model=auth_schemas.User)
 @rate_limit("30/minute")
-async def update_preferences(
+def update_preferences(
         request: Request,
         preferences: Dict[str, Any],
         current_user: models.User = Depends(get_current_user),
@@ -206,7 +213,7 @@ async def update_preferences(
 
 @router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
 @rate_limit("60/minute")
-async def init_session(
+def init_session(
         request: Request,
         response: Response,
         db: Session = Depends(get_db),
@@ -223,8 +230,7 @@ async def init_session(
     """
     cookies = request.cookies
     if has_login_cookies(cookies):
-        # resolve_login 會查資料庫（同步）：每次開頁與跨分頁重新判斷都會呼叫，放進 threadpool 免得卡住 WebSocket 等其他工作
-        if login := await run_in_threadpool(resolve_login, db, cookies):
+        if login := resolve_login(db, cookies):
             if login.renew_access_token:
                 set_access_token_cookie(response, login.user.id)
             return {"status": "authenticated", "user": auth_schemas.User.model_validate(login.user)}

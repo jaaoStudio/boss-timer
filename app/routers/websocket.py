@@ -7,13 +7,12 @@ from dataclasses import dataclass
 from typing import Optional, Callable, Awaitable
 
 from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
-from starlette.concurrency import run_in_threadpool
-from sqlalchemy.orm import Session
+from anyio import to_thread
 
-from app.database.database import SessionLocal
+from app.database.database import SessionLocal, db_lock, run_db
 from app.services import room_service, boss_service
 from app.dependencies import IP_CEILING_MULTIPLIER, check_dual_limit, get_connection_manager, limit_keys
-from app.utils.identity import Identity, resolve_identity
+from app.utils.identity import Identity, has_login_cookies, resolve_identity
 from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
 
@@ -21,6 +20,10 @@ router = APIRouter(prefix="/ws", tags=["websocket"])
 
 # 限流（見 docs/adr/0007）：個人額度以伺服器端身分計算（重連不會歸零），IP 天花板為其 IP_CEILING_MULTIPLIER 倍
 RECORD_BOSS_LIMIT = "30/minute;1000/day"
+# 帶登入 cookie 的握手最多等資料庫鎖幾秒，等不到就拒絕（前端照一般斷線退避重連）。要比前端放棄握手的 20 秒
+# （CONNECT_TIMEOUT_MS）短：資料庫故障時鎖前面的工作每個要卡 5～10 秒，不設上限的話被放棄的握手仍在排隊、佇列越來越長。
+# 也不能太短：部署後幾百個分頁同時重連，加入房間在鎖裡排隊要好幾秒（PR #80 第 5 輪，5 秒會讓登入者的握手被拒）
+HANDSHAKE_LOCK_TIMEOUT_SECONDS = 15
 # 握手頻率：以身分計，所有分頁共用。約每小時 1000 次；用 10 分鐘的時間窗，撞到上限後最多 10 分鐘就恢復
 # （固定時間窗，1 小時的窗最壞要等近 1 小時）。原本為背景分頁反覆重連（#43）而放寬，#43 已修，
 # 部署後觀察正式環境的重連頻率再收緊
@@ -42,27 +45,48 @@ class Connection:
     limit_keys: tuple[str, str]
 
 
-Handler = Callable[[WebSocket, dict, Optional[str], Session, ConnectionManager, Connection], Awaitable[None]]
+Handler = Callable[[WebSocket, dict, Optional[str], ConnectionManager, Connection], Awaitable[None]]
+
+# 處理訊息的 handler 在 event loop 上執行，ConnectionManager 只在 event loop 上操作；查資料庫的部分經 run_db
+# 拿資料庫鎖、在 threadpool 執行，各自開 session，不卡住所有連線（ADR-0010）
 
 
-async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
-    if not room_service.get_room_by_id(db, room_id):
-        manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
-        return
-    room_service.update_room_last_active(db, room_id)
+def _load_room_state(room_id: str) -> Optional[dict]:
+    with SessionLocal() as db:
+        if not room_service.get_room_by_id(db, room_id):
+            return None
+        room_service.update_room_last_active(db, room_id)
+        return room_service.get_room_state(db, room_id)
+
+
+def _record_boss(record: BossRecordCreate, identity: Identity, manager: ConnectionManager) -> None:
+    with SessionLocal() as db:
+        boss_service.BossService.record_boss(
+            db, record, identity,
+            broadcast=lambda message: manager.broadcast_to_room_from_thread(record.room_id, message),
+        )
+
+
+async def _handle_join_room(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
+    # 讀房間狀態與訂閱都在資料庫鎖裡（唯一不經 run_db 的地方，訂閱也要在鎖裡）：別人的回報要等訂閱好才寫得進去，
+    # 不會在兩者之間廣播而漏接（ADR-0010）。
     # 取得初始狀態成功後才訂閱：出錯時（例如資料庫故障）連線保留，但不留在房間裡卻沒有初始狀態
-    initial_state = room_service.get_room_state(db, room_id)
-    manager.subscribe_to_room(websocket, room_id)
-    manager.send(websocket, initial_state)
+    async with db_lock():
+        initial_state = await to_thread.run_sync(_load_room_state, room_id)
+        if initial_state is None:
+            manager.send(websocket, {"type": "error", "code": "room_not_found", "message": "Room not found"})
+            return
+        manager.subscribe_to_room(websocket, room_id)
+        manager.send(websocket, initial_state)
     await manager.broadcast_user_count(room_id)
 
 
-async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
+async def _handle_leave_room(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
     manager.unsubscribe_from_room(websocket)
     await manager.broadcast_user_count(room_id)
 
 
-async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], db: Session, manager: ConnectionManager, conn: Connection) -> None:
+async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Optional[str], manager: ConnectionManager, conn: Connection) -> None:
     current_room = manager.socket_to_room.get(websocket)
     if not current_room or current_room != room_id:
         manager.send(websocket, {"type": "error", "code": "record_rejected", "message": "You are not in this room"})
@@ -72,7 +96,7 @@ async def _handle_record_boss(websocket: WebSocket, payload: dict, room_id: Opti
         return
     try:
         record_create = BossRecordCreate(**payload)
-        await boss_service.BossService.record_boss_from_websocket(db, record_create, conn.identity, manager)
+        await run_db(_record_boss, record_create, conn.identity, manager)
     except Exception as e:
         logging.error(f"Error processing record_boss message: {e}", exc_info=True)
         manager.send(websocket, {"type": "error", "code": "record_rejected", "message": str(e)})
@@ -85,7 +109,7 @@ _HANDLERS: dict[str, Handler] = {
 }
 
 
-async def handle_message(websocket: WebSocket, message: dict, db: Session, manager: ConnectionManager, conn: Connection) -> None:
+async def handle_message(websocket: WebSocket, message: dict, manager: ConnectionManager, conn: Connection) -> None:
     msg_type = message.get("type")
     if not msg_type:
         logging.warning("Received message without type")
@@ -102,7 +126,7 @@ async def handle_message(websocket: WebSocket, message: dict, db: Session, manag
         logging.warning(f"Received message type '{msg_type}' without a valid room_id")
         return
 
-    await handler(websocket, payload, room_id, db, manager, conn)
+    await handler(websocket, payload, room_id, manager, conn)
 
 
 async def _receive_message(websocket: WebSocket) -> Optional[dict]:
@@ -162,9 +186,17 @@ async def websocket_endpoint(
     websocket: WebSocket,
     manager: ConnectionManager = Depends(get_connection_manager)
 ):
-    # 有登入 cookie 時會查資料庫，放到 threadpool，不卡住其他連線
+    # 有登入 cookie 時會查資料庫，拿資料庫鎖在 threadpool 執行，不卡住其他連線
     try:
-        identity = await run_in_threadpool(resolve_identity, websocket)
+        if has_login_cookies(websocket.cookies):
+            identity = await run_db(resolve_identity, websocket, lock_timeout=HANDSHAKE_LOCK_TIMEOUT_SECONDS)
+        else:
+            identity = resolve_identity(websocket)   # 匿名握手不查資料庫
+    except TimeoutError:
+        # 等不到資料庫鎖：排隊太久（例如部署後的重連潮），不是資料庫故障，記 warning；照下面一樣拒絕、前端退避重連
+        logging.warning("WebSocket handshake waited too long for the database lock")
+        await websocket.close()
+        return
     except Exception as error:
         # 查資料庫失敗（暫時故障、連線池逾時，#61）：記錄後拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403，
         # 前端看到 1006），前端照一般斷線退避重連，資料庫恢復後就照完整判斷連上。勿退回較低的身分：
@@ -218,8 +250,7 @@ async def websocket_endpoint(
                 continue
 
             try:
-                with SessionLocal() as db:
-                    await handle_message(websocket, message, db, manager, conn)
+                await handle_message(websocket, message, manager, conn)
             except Exception:
                 # 照 Socket.IO：單則訊息處理出錯不關閉連線。關閉的話前端重連後 hello 會重置退避，
                 # 每次都送 join_room、每次都出錯（例如資料庫故障），變成每秒重連一次

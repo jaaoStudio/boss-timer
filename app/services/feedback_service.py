@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Tuple
 
 from sqlalchemy import func, case, and_, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import models
@@ -136,7 +137,9 @@ class FeedbackService:
         payload: FeedbackCreate,
     ) -> models.FeedbackItem:
         """建立回饋（pending 狀態，需 admin 審核）。"""
-        # Rate limit: 每使用者每天最多 DAILY_SUBMIT_LIMIT 筆
+        # Rate limit: 每使用者每天最多 DAILY_SUBMIT_LIMIT 筆。先鎖住這個使用者那一列再數：同時送出的提交依序處理，
+        # 不會各自數到上限以下、一起寫入而超過上限（端點在 threadpool 執行，請求會同時跑，ADR-0010）
+        db.query(models.User).filter(models.User.id == user_id).with_for_update().one()
         since = datetime.now(timezone.utc) - timedelta(days=1)
         count = (
             db.query(func.count(models.FeedbackItem.id))
@@ -195,6 +198,7 @@ class FeedbackService:
         if existing:
             db.delete(existing)
             voted_now = False
+            db.commit()
         else:
             db.add(
                 models.FeedbackVote(
@@ -203,8 +207,14 @@ class FeedbackService:
                 )
             )
             voted_now = True
-
-        db.commit()
+            try:
+                db.commit()
+            except IntegrityError:
+                # 另一個請求已經投了（UNIQUE(feedback_id, user_id)），結果一樣是已投票；
+                # 回饋剛被管理員刪掉（外鍵）時照「找不到」處理
+                db.rollback()
+                if db.get(models.FeedbackItem, feedback_id) is None:
+                    raise FeedbackNotFound(f"Feedback {feedback_id} not found")
 
         vote_count = (
             db.query(func.count(models.FeedbackVote.id))

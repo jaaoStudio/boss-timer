@@ -29,22 +29,33 @@ app.include_router(ws_router.router)
 client = TestClient(app)
 
 
+def off_event_loop() -> None:
+    """在 threadpool 執行緒裡沒有執行中的 event loop；在 event loop 上呼叫就讓測試失敗"""
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return
+    raise AssertionError("在 event loop 上查了同步的資料庫")
+
+
 @pytest.fixture(autouse=True)
 def recorded_identities(monkeypatch):
     """不連資料庫：房間一律存在；回報只記下伺服器端身分，並廣播 ok 讓測試知道已處理。"""
     manager = ConnectionManager()
     app.dependency_overrides[get_connection_manager] = lambda: manager
-    monkeypatch.setattr(ws_router.room_service, "get_room_by_id", lambda db, room_id: True)
-    monkeypatch.setattr(ws_router.room_service, "update_room_last_active", lambda db, room_id: None)
-    monkeypatch.setattr(ws_router.room_service, "get_room_state", lambda db, room_id: {"type": "room_state"})
+    # 假的資料庫操作都檢查不在 event loop 上執行（ADR-0010）：在 event loop 上查同步的資料庫會卡住所有連線
+    monkeypatch.setattr(ws_router.room_service, "get_room_by_id", lambda db, room_id: off_event_loop() or True)
+    monkeypatch.setattr(ws_router.room_service, "update_room_last_active", lambda db, room_id: off_event_loop())
+    monkeypatch.setattr(ws_router.room_service, "get_room_state", lambda db, room_id: off_event_loop() or {"type": "room_state"})
 
     recorded: list[Identity] = []
 
-    async def fake_record(db, record, identity, manager):
+    def fake_record(db, record, identity, broadcast):
+        off_event_loop()
         recorded.append(identity)
-        await manager.broadcast_to_room(record.room_id, {"type": "ok"})
+        broadcast({"type": "ok"})   # 回報成功時廣播給房間（從 threadpool 回到 event loop）
 
-    monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss_from_websocket", staticmethod(fake_record))
+    monkeypatch.setattr(ws_router.boss_service.BossService, "record_boss", staticmethod(fake_record))
     # 在 with client 內，所有連線共用同一個 portal（同一個 event loop），與正式環境相同；
     # 否則每條連線各自一個 loop，廣播跨 loop 放進送出佇列不是 thread-safe
     with client:
@@ -132,7 +143,7 @@ def test_recorder_info_comes_from_server_identity():
     def create(identity, **recorder_info):
         payload = BossRecordCreate(room_id=ROOM, channel=1, boss_type_id=1, status="killed",
                                    recorder_info=recorder_info or None)
-        return asyncio.run(BossService._create_boss_record(db, payload, times, identity))
+        return BossService._create_boss_record(db, payload, times, identity)
 
     anon = str(uuid.uuid4())
     forged = create(Identity("anon", anon), anonymous_id="victim-uuid", anonymous_name="小明")
@@ -461,3 +472,72 @@ def test_first_handshake_failure_after_boot_logs_full_traceback(monkeypatch, cap
         with open_socket(access_token=access_token()) as ws:
             ws.receive_json()
     assert any(r.exc_info for r in caplog.records if "handshake identity lookup failed" in r.getMessage())
+
+
+def test_join_room_does_not_miss_a_report_made_while_loading_room_state(monkeypatch):
+    # 讀房間狀態（threadpool）與訂閱房間（event loop）之間，別人的回報廣播出去的話，加入的人兩邊都收不到。
+    # 加入房間在資料庫鎖裡讀完狀態並訂閱好（ADR-0010），回報要等鎖放開才寫得進去，加入的人一定收得到
+    import threading
+    import time
+
+    loading = threading.Event()
+
+    def slow_room_state(db, room_id):
+        off_event_loop()
+        loading.set()   # 加入的人已拿到鎖、開始讀房間狀態
+        time.sleep(0.2)
+        return {"type": "room_state"}
+
+    with connect(str(uuid.uuid4())) as reporter, connect(str(uuid.uuid4())) as joiner:
+        join(reporter)
+        monkeypatch.setattr(ws_router.room_service, "get_room_state", slow_room_state)
+        joiner.send_json({"type": "join_room", "payload": {"room_id": ROOM}})
+        assert loading.wait(5)   # 確定加入的人先拿到鎖，回報才會排在它後面
+        reporter.send_json({"type": "record_boss", "payload": {
+            "room_id": ROOM, "channel": 1, "boss_type_id": 1, "status": "killed", "recorder_info": None,
+        }})
+        while reporter.receive_json()["type"] != "ok":
+            pass
+        # 回報已廣播給當時在房間裡的所有人；之後的 pong 一定排在它後面
+        joiner.send_json({"type": "ping"})
+        received = []
+        while not received or received[-1] != "pong":
+            received.append(joiner.receive_json()["type"])
+        assert "ok" in received, received
+
+
+def test_handshake_gives_up_waiting_for_the_database_lock(monkeypatch, caplog):
+    # 資料庫故障時，鎖前面的工作每個要卡 5～10 秒。握手等鎖要有上限，等不到就拒絕（前端照一般斷線退避重連）；
+    # 不設上限的話，前端 20 秒放棄重連後，被放棄的握手仍在排隊，佇列越來越長
+    import threading
+
+    import anyio
+
+    from app.database.database import db_lock
+
+    monkeypatch.setattr(ws_router, "HANDSHAKE_LOCK_TIMEOUT_SECONDS", 0.1)
+    monkeypatch.setattr(identity_module, "_get_user", lambda db, user_id: SimpleNamespace(id=int(user_id)))
+    held, release = threading.Event(), threading.Event()
+
+    async def hold_lock():
+        async with db_lock():
+            held.set()
+            while not release.is_set():
+                await anyio.sleep(0.01)
+
+    holder = client.portal.start_task_soon(hold_lock)
+    assert held.wait(5)   # 確定鎖被佔住才開始握手
+    timer = threading.Timer(1, release.set)   # 沒有上限時，握手等到鎖放開就會連上
+    timer.start()
+    try:
+        with pytest.raises(WebSocketDisconnect):
+            with open_socket(access_token=access_token()) as ws:
+                ws.receive_json()
+    finally:
+        release.set()
+        timer.cancel()
+        holder.result()
+    # 等不到鎖是排隊太久（例如部署後的重連潮），記 warning，不和資料庫故障的 error 混在一起
+    waits = [r for r in caplog.records if "waited too long for the database lock" in r.getMessage()]
+    assert [r.levelname for r in waits] == ["WARNING"]
+    assert "handshake identity lookup failed" not in caplog.text

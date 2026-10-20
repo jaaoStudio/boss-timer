@@ -22,16 +22,23 @@ from app.websocket.manager import ConnectionManager
 router = APIRouter(prefix="/boss", tags=["boss"])
 
 
+def _revoke_alerts(records) -> None:
+    """撤銷這些紀錄排程中的 Discord 預警，一次呼叫送出：逐筆撤銷時換輪可能要對 broker 送上百次，期間拿著資料庫鎖（ADR-0010）"""
+    task_ids = [task_id for record in records for task_id in (record.celery_task_ids or {}).values() if task_id]
+    if task_ids:
+        celery_app.control.revoke(task_ids, terminate=False)
+
+
 @router.get("/boss-types", response_model=List[BossTypeResponse])
 @rate_limit("15/minute")
-async def get_boss_types(request: Request, db: Session = Depends(get_db)):
+def get_boss_types(request: Request, db: Session = Depends(get_db)):
     """取得全域 Boss 種類（不含房間自訂）"""
     return db.query(BossType).filter(BossType.room_id == None).all()
 
 
 @router.post("/room/{room_id}/boss-types", response_model=BossTypeResponse)
 @rate_limit("30/minute")
-async def create_custom_boss_type(
+def create_custom_boss_type(
     request: Request,
     room_id: str,
     payload: CustomBossTypeCreate,
@@ -54,7 +61,7 @@ async def create_custom_boss_type(
     db.refresh(custom)
 
     response = BossTypeResponse.model_validate(custom)
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={"type": "boss_type_added", "data": response.model_dump(mode='json')},
     )
@@ -63,7 +70,7 @@ async def create_custom_boss_type(
 
 @router.delete("/room/{room_id}/boss-types/{boss_type_id}")
 @rate_limit("30/minute")
-async def delete_custom_boss_type(
+def delete_custom_boss_type(
     request: Request,
     room_id: str,
     boss_type_id: int,
@@ -84,11 +91,7 @@ async def delete_custom_boss_type(
         BossRecord.boss_type_id == boss_type_id,
         BossRecord.is_archived == False
     ).all()
-    for record in related_records:
-        if record.celery_task_ids:
-            for task_id in record.celery_task_ids.values():
-                if task_id:
-                    celery_app.control.revoke(task_id, terminate=False)
+    _revoke_alerts(related_records)
 
     boss_name = boss.name_zh
 
@@ -96,7 +99,7 @@ async def delete_custom_boss_type(
     db.delete(boss)
     db.commit()
 
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={
             "type": "boss_type_deleted",
@@ -107,7 +110,7 @@ async def delete_custom_boss_type(
 
 @router.get("/room/{room_id}/records", response_model=BossRecordHistoryPage)
 @rate_limit("60/minute")
-async def list_boss_records(
+def list_boss_records(
     request: Request,
     room_id: str,
     before_id: Optional[int] = Query(None, ge=1),
@@ -140,7 +143,7 @@ async def list_boss_records(
 
 @router.delete("/room/{room_id}/records/{record_id}")
 @rate_limit("15/minute")
-async def delete_boss_record(
+def delete_boss_record(
     request: Request,
     room_id: str,
     record_id: int,
@@ -158,11 +161,7 @@ async def delete_boss_record(
         raise HTTPException(status_code=404, detail="Record not found")
 
     # 1. 撤銷 Celery tasks
-    if record.celery_task_ids:
-        celery_ids = record.celery_task_ids
-        for key, task_id in celery_ids.items():
-            if task_id:
-                celery_app.control.revoke(task_id, terminate=False)
+    _revoke_alerts([record])
 
     # commit 後 ORM 物件會過期，先記下需要的欄位以免重新查詢
     channel, boss_type_id = record.channel, record.boss_type_id
@@ -177,7 +176,7 @@ async def delete_boss_record(
     replacement = get_effective_record(db, room_id, last_cleared_at, channel, boss_type_id) if room else None
 
     # 4. WebSocket Broadcast
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={
             "type": "record_deleted",
@@ -194,7 +193,7 @@ async def delete_boss_record(
 
 @router.post("/room/{room_id}/boss-types/{boss_type_id}/clear")
 @rate_limit("10/minute")
-async def clear_boss_type_records(
+def clear_boss_type_records(
     request: Request,
     room_id: str,
     boss_type_id: int,
@@ -219,11 +218,7 @@ async def clear_boss_type_records(
         BossRecord.boss_type_id == boss_type_id,
         BossRecord.is_archived == False,
     ).all()
-    for record in active_records:
-        if record.celery_task_ids:
-            for task_id in record.celery_task_ids.values():
-                if task_id:
-                    celery_app.control.revoke(task_id, terminate=False)
+    _revoke_alerts(active_records)
 
     # 以 jsonb || 在資料庫端原子合併，只寫入這個 Boss 種類的 key，
     # 避免同時換輪不同 Boss 時讀出-修改-寫回互相覆蓋
@@ -238,7 +233,7 @@ async def clear_boss_type_records(
     )
     db.commit()
 
-    await manager.broadcast_to_room(
+    manager.broadcast_to_room_from_thread(
         room_id=room_id,
         message={
             "type": "boss_type_cleared",

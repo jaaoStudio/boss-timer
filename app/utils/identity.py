@@ -86,7 +86,7 @@ def resolve_identity(conn: HTTPConnection) -> Identity:
     若只看 access token，登入者重連後會變成匿名、回報沒有記錄者。因此先以 resolve_login 判斷登入者
     （與 /auth/session 相同），否則伺服器簽發的匿名身分，否則無。
     結果存在該連線的 Connection、整條連線固定，這裡不快取。
-    ⚠️ WebSocket 有登入 cookie 時會同步查資料庫：async 呼叫端必須以 run_in_threadpool 呼叫，避免卡住 event loop。
+    ⚠️ WebSocket 有登入 cookie 時會同步查資料庫：async 呼叫端必須經 run_db() 呼叫（拿資料庫鎖、在 threadpool 執行，ADR-0010）。
     """
     if isinstance(conn, WebSocket):
         return _resolve_websocket(conn.cookies)

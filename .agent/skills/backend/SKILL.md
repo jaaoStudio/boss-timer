@@ -267,7 +267,7 @@ def send_discord_webhook(self, webhook_url, content=None, embeds=None):
 
 ### 連線建立
 - Endpoint: `ws://<host>/api/ws/`
-- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，以 `run_in_threadpool` 呼叫；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無（登入者的判斷與 `/auth/session` 共用 `resolve_login()`，ADR-0009；查資料庫失敗時 endpoint 記 error log（完整堆疊一分鐘最多一次，#76）並拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403、前端看到 1006），前端照一般斷線退避重連、資料庫恢復後照完整判斷連上；**勿退回較低的身分**：身分在握手時固定，前端看到的身分沒變就不會重連，#61）。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
+- **身分由伺服器在握手時以 `resolve_identity(websocket)` 決定**（有登入 cookie 時查資料庫，經 `run_db()` 呼叫，最多等資料庫鎖 15 秒（比前端放棄握手的 20 秒短）；匿名握手不碰資料庫）：access token 有效且使用者存在 → access token 無效時改用 refresh token（資料庫確認未撤銷；背景分頁常在 access token 過期後才重連）→ 簽章的匿名 cookie → 無（登入者的判斷與 `/auth/session` 共用 `resolve_login()`，ADR-0009；查資料庫失敗或等不到鎖時 endpoint 記 error log（完整堆疊一分鐘最多一次，#76）並拒絕這次握手（還沒 accept，uvicorn 回 HTTP 403、前端看到 1006），前端照一般斷線退避重連、資料庫恢復後照完整判斷連上；**勿退回較低的身分**：身分在握手時固定，前端看到的身分沒變就不會重連，#61）。連同限流 key 存在該連線的 `Connection`，**整條連線固定不變**；登入 / 登出時前端重新連線，前端送來的任何身分欄位都不採信
 - 使用全域 Singleton `ConnectionManager` 管理所有連線
 
 ### 訊息格式 (JSON)
@@ -336,8 +336,8 @@ ConnectionManager
 
 ### boss_service.py 模式
 - 使用 **靜態方法類** (`BossService`) 聚合相關邏輯
-- 方法鏈: `_validate_room_exists` → `_get_boss_type_by_id` → `_calculate_respawn_times` → `_create_boss_record`
-- 建立記錄後立即廣播到房間
+- 方法鏈（全部同步）: `_validate_room_exists` → `_get_boss_type_by_id` → `_calculate_respawn_times` → `_create_boss_record`
+- `record_boss(db, record, identity, broadcast)` 寫入紀錄，先以 `broadcast` 回呼廣播 `boss_update`（WebSocket handler 傳入 `manager.broadcast_to_room_from_thread`，回到 event loop），再排程 Discord 通知；handler 經 `run_db()` 呼叫（ADR-0010）
 - 建立完成後呼叫 `NotificationPolicy.notify(record, room, db)` 處理推播（Discord 失敗不影響主流程）
 
 ### room_service.py 模式
@@ -422,7 +422,7 @@ ConnectionManager
 
 ### cleanup_inactive_rooms (asyncio)
 - **頻率**: 每 1 小時
-- **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`
+- **邏輯**: 標記 `last_active < 7 天前` 的房間為 `is_active = False`，並將所屬 Boss 記錄標記為 `is_archived = True`（`archive_inactive_rooms()` 同步、批次更新，拿著 `db_lock()` 以 `anyio.to_thread` 執行，不在 event loop 上查資料庫，ADR-0010）
 - **啟動**: 在 FastAPI lifespan 中以 `asyncio.create_task` 方式啟動
 
 ### run_heartbeat (asyncio)
@@ -459,6 +459,7 @@ ConnectionManager
 ## 開發慣例與守則
 
 ### 新增 API 端點
+0. 用到資料庫的端點宣告成 `def`，勿在 `async def` 裡直接查詢（ADR-0010，見 backend-api skill）
 1. 在 `schemas/` 定義 Pydantic 輸入/輸出模型
 2. 在 `services/` 實作業務邏輯
 3. 在 `routers/` 註冊路由，調用 Service，處理例外
@@ -484,10 +485,10 @@ ConnectionManager
 
 ### WebSocket 開發慣例
 - 新增訊息類型: 在 `routers/websocket.py` 的 `handle_message()` 中加入新的 `if msg_type == "..."` 分支
-- 廣播: 使用 `manager.broadcast_to_room()` 或 `manager.broadcast_to_all()`
+- 廣播: 在 event loop 上（async handler）用 `await manager.broadcast_to_room()` / `broadcast_to_all()`；在 threadpool 裡（`def` 端點、`run_db` 執行的函式）用 `manager.broadcast_to_room_from_thread()` / `broadcast_to_all_from_thread()`，勿直接呼叫 async 版本（沒有 await，廣播不會執行）
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
-- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 在每個需要 DB 的 message handler 內短暫取用，用完即還給 pool
-- **`ping` 訊息**在進入 `SessionLocal` 之前回 `pong` 並 `continue`，不觸碰 DB
+- **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 短暫取用，用完即還給 pool。**查資料庫的部分寫成同步函式、經 `run_db()` 執行**（拿資料庫鎖、在 threadpool；`_record_boss`，session 在函式裡開。唯一例外是加入房間：訂閱也要在鎖裡，所以自己 `async with db_lock()`），handler 本身留在 event loop 上操作 `ConnectionManager`（它的狀態不是 thread-safe，勿整段丟進 threadpool，ADR-0010）
+- **`ping` 訊息**直接回 `pong` 並 `continue`，不進 `handle_message`、不碰資料庫
 
 ### 錯誤處理
 - Router 層使用 `HTTPException` 回傳適當 HTTP 狀態碼
