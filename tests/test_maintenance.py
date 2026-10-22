@@ -104,3 +104,24 @@ def test_failed_broadcast_is_retried(tmp_path, monkeypatch):
         pass
     asyncio.run(system.refresh_maintenance_status(Manager()))
     assert sent[1]["data"]["is_maintenance"] is True
+
+
+def test_concurrent_refreshes_broadcast_once_even_if_broadcast_yields(tmp_path, monkeypatch):
+    # 比較與記下狀態之間若隔著會讓出的 await，同時的兩個請求都會廣播同一個變化
+    import asyncio
+
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    system.save_maintenance_config({"is_maintenance": True})
+    sent = []
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            await asyncio.sleep(0)
+            sent.append(message)
+
+    async def main():
+        await asyncio.gather(*(system.refresh_maintenance_status(Manager()) for _ in range(2)))
+
+    asyncio.run(main())
+    assert len(sent) == 1

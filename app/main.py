@@ -32,7 +32,7 @@ app.add_middleware(
 )
 
 # 註冊路由
-# 將 check_maintenance_mode 應用到所有路由，除了 system.router 中的 /maintenance-info
+# 維護中回 503 的路由（system.check_maintenance_mode）；auth 與 system 不受維護模式影響
 app.include_router(rooms.router, dependencies=[Depends(check_maintenance_mode)])
 app.include_router(bosses.router, dependencies=[Depends(check_maintenance_mode)])
 app.include_router(auth.router) # auth.router 不受維護模式影響

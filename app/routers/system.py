@@ -52,8 +52,8 @@ last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": 
 async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
     """
     讀維護狀態，跟上次不同就廣播。所有維護狀態的廣播都經這裡（受保護的請求、後台切換），同一個變化只廣播一次（#86）。
-    在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）。廣播只放進佇列、不實際等待，廣播成功後才更新上次的狀態：
-    同時的請求不會重複廣播，廣播失敗時下一個請求會重試
+    在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）。廣播前就記下：同時的請求不會重複廣播；
+    廣播失敗時還原，下一個請求會重試
     """
     global last_maintenance_status
     data = read_maintenance_file() or {}
@@ -64,9 +64,14 @@ async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
         "message": data.get("message", ""),
     }
     if current != last_maintenance_status:
+        previous, last_maintenance_status = last_maintenance_status, current
         logging.info(f"Maintenance status changed: {current}")
-        await manager.broadcast_to_all({"type": "maintenance_status_update", "data": current})
-        last_maintenance_status = current
+        try:
+            await manager.broadcast_to_all({"type": "maintenance_status_update", "data": current})
+        except BaseException:
+            if last_maintenance_status is current:   # 期間沒有更新的狀態才還原
+                last_maintenance_status = previous
+            raise
     return current
 
 
