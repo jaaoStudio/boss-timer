@@ -13,7 +13,8 @@ on:
 
 jobs:
   # 建置不等部署，前後端並行。較新的 commit 開始建置時取消較舊的建置（較新的已包含它的變更），
-  # 所以較舊的 commit 不會比較新的晚建好、排在新版之後部署把正式機降回舊版；:latest / :cache 也不會被舊的覆蓋
+  # 所以較舊的 commit 不會比較新的晚建好、排在新版之後部署把正式機降回舊版。
+  # 群組不分 commit：重新執行舊的 run 會取消較新的建置，要回到舊版請用 Rollback workflow
   build:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
