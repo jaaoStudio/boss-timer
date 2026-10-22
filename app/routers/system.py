@@ -52,7 +52,8 @@ last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": 
 async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
     """
     讀維護狀態，跟上次不同就廣播。所有維護狀態的廣播都經這裡（受保護的請求、後台切換），同一個變化只廣播一次（#86）。
-    在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）；讀完到更新上次的狀態之間沒有 await，同時的請求不會重複廣播
+    在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）。廣播只放進佇列、不實際等待，廣播成功後才更新上次的狀態：
+    同時的請求不會重複廣播，廣播失敗時下一個請求會重試
     """
     global last_maintenance_status
     data = read_maintenance_file() or {}
@@ -63,10 +64,16 @@ async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
         "message": data.get("message", ""),
     }
     if current != last_maintenance_status:
-        last_maintenance_status = current
         logging.info(f"Maintenance status changed: {current}")
         await manager.broadcast_to_all({"type": "maintenance_status_update", "data": current})
+        last_maintenance_status = current
     return current
+
+
+async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connection_manager)):
+    """受保護路由的 dependency：維護中回 503；狀態變化時廣播"""
+    if (await refresh_maintenance_status(manager))["is_maintenance"]:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
 
 
 @router.get("/maintenance-info", response_model=MaintenanceInfo, dependencies=[rate_limit("60/minute")])

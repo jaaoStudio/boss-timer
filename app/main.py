@@ -1,21 +1,15 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import asyncio
 
 
-from app.routers.system import refresh_maintenance_status
+from app.routers.system import check_maintenance_mode
 from app.config import settings
 from app.routers import rooms, bosses, auth, websocket, system, feedback # 引入 admin
 from app.tasks.cleanup import cleanup_inactive_rooms
-from app.websocket.manager import ConnectionManager
 from app.dependencies import get_connection_manager
 
-
-async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connection_manager)):
-    """檢查系統是否處於維護模式，是的話回 503；狀態變化時廣播（refresh_maintenance_status）"""
-    if (await refresh_maintenance_status(manager))["is_maintenance"]:
-        raise HTTPException(status_code=503, detail="Service Unavailable")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

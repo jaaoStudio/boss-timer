@@ -80,3 +80,27 @@ def test_admin_toggle_is_broadcast_once(tmp_path, monkeypatch):
     assert client.post("/system/maintenance-config", json=config).status_code == 200
     assert client.get("/ws/connections/count").status_code == 200
     assert sent == [{"type": "maintenance_status_update", "data": config}]
+
+
+def test_failed_broadcast_is_retried(tmp_path, monkeypatch):
+    # 廣播前就更新「上次的狀態」的話，廣播失敗後同一個變化永遠不會再廣播
+    import asyncio
+
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    system.save_maintenance_config({"is_maintenance": True})
+    sent = []
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            if not sent:
+                sent.append(None)
+                raise RuntimeError("broadcast failed")
+            sent.append(message)
+
+    try:
+        asyncio.run(system.refresh_maintenance_status(Manager()))
+    except RuntimeError:
+        pass
+    asyncio.run(system.refresh_maintenance_status(Manager()))
+    assert sent[1]["data"]["is_maintenance"] is True
