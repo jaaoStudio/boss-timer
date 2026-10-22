@@ -12,12 +12,13 @@ def _seconds(value: str) -> int:
 
 
 def test_wait_timeout_is_covered_by_start_period():
-    # 過了 start_period 會改回每 30 秒檢查。後端在自己的 start_period 內健康就要算成功：
-    # nginx 等後端健康才啟動，期限還要留下 nginx 的 start_period
+    # compose 等後端（nginx 的 depends_on）與等 nginx（--wait）各自以 --wait-timeout 計時（Compose 2.35 實測），
+    # 所以只要等後端那段全程在 start_period 內：過了 start_period 會改回每 30 秒檢查，稍慢的啟動會多等一輪而逾時
     timeout = int(re.search(r"--wait-timeout (\d+)", (ROOT / "deploy/lib.sh").read_text()).group(1))
+    assert timeout == 120
     compose = yaml.safe_load((ROOT / "deploy/docker-compose.yaml").read_text())
     for slot in ("blue", "green"):
         backend = compose["services"][f"boss_service_{slot}"]["healthcheck"]
         nginx = compose["services"][f"boss_timer_nginx_{slot}"]["healthcheck"]
-        assert _seconds(backend["start_period"]) + _seconds(nginx["start_period"]) <= timeout, slot
+        assert _seconds(backend["start_period"]) >= timeout, slot
         assert backend["start_interval"] == nginx["start_interval"] == "2s", slot
