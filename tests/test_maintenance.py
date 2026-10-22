@@ -13,11 +13,14 @@ ROOT = Path(__file__).resolve().parent.parent
 def test_maintenance_file_lives_in_a_mounted_directory():
     # 掛單一檔案的話，主機上以「寫新檔再換上」存檔（編輯器、sed -i、原子寫入）容器看不到；檔案不存在時 Docker 還會建立同名目錄
     compose = yaml.safe_load((ROOT / "deploy/docker-compose.yaml").read_text())
+    sources = set()
     for name in ("boss_service_blue", "boss_service_green"):
         service = compose["services"][name]
         env = dict(e.split("=", 1) for e in service["environment"])
-        targets = [v.split(":")[1] for v in service["volumes"]]
-        assert os.path.dirname(env["MAINTENANCE_FILE"]) in targets, name
+        mounts = {v.split(":")[1]: v.split(":")[0] for v in service["volumes"]}
+        assert os.path.dirname(env["MAINTENANCE_FILE"]) in mounts, name
+        sources.add(mounts[os.path.dirname(env["MAINTENANCE_FILE"])])
+    assert len(sources) == 1   # 兩個 slot 共用主機上同一個目錄
 
 
 def test_save_replaces_the_file_atomically(tmp_path, monkeypatch):
@@ -37,3 +40,17 @@ def test_save_replaces_the_file_atomically(tmp_path, monkeypatch):
     assert seen_while_writing == [{"is_maintenance": False}]
     assert system.read_maintenance_file() == {"is_maintenance": True}
     assert list(tmp_path.iterdir()) == [path]   # 沒留下暫存檔
+
+
+def test_save_keeps_permissions_and_syncs_before_replacing(tmp_path, monkeypatch):
+    # 容器以 root 寫入：不沿用原檔的擁有者與權限，主機上就得 sudo 才改得了。換上前要 fsync，斷電後才不會是空檔
+    path = tmp_path / "maintenance.json"
+    path.write_text("{}")
+    path.chmod(0o664)
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    synced = []
+    real_fsync = os.fsync
+    monkeypatch.setattr(system.os, "fsync", lambda fd: (synced.append(fd), real_fsync(fd)))
+    system.save_maintenance_config({"is_maintenance": True})
+    assert path.stat().st_mode & 0o777 == 0o664
+    assert synced

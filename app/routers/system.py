@@ -1,4 +1,5 @@
 
+import contextlib
 import json
 import tempfile
 from typing import Optional
@@ -7,6 +8,7 @@ from pydantic import BaseModel
 import os
 import logging
 
+from app.config import settings
 from app.database import models
 from app.websocket.manager import ConnectionManager
 from app.dependencies import get_current_admin_user, get_connection_manager, rate_limit
@@ -23,8 +25,8 @@ class MaintenanceConfigUpdate(BaseModel):
     title: str
     message: str
 
-# 正式機以環境變數指到掛載的目錄裡，blue / green 共用主機上同一份（#81）；沒設定時用專案裡的檔案
-MAINTENANCE_FILE_PATH = os.environ.get("MAINTENANCE_FILE") or os.path.join(os.path.dirname(__file__), "..", "maintenance.json")
+# 正式機以 MAINTENANCE_FILE 指到掛載的目錄裡，blue / green 共用主機上同一份（#81）；沒設定時用專案裡的檔案
+MAINTENANCE_FILE_PATH = settings.maintenance_file or os.path.join(os.path.dirname(__file__), "..", "maintenance.json")
 
 
 router = APIRouter(prefix="/system", tags=["system"])
@@ -60,17 +62,27 @@ async def get_maintenance_info():
 
 def save_maintenance_config(data: dict) -> None:
     """
-    寫暫存檔再換上（os.replace）：另一個 slot 或主機上同時讀的人只會讀到舊檔或新檔，不會讀到寫一半、
-    誤判成「沒有維護」並廣播。正式機掛的是目錄而不是單一檔案，才能換檔（#81）
+    寫暫存檔、fsync 後換上（os.replace）：另一個 slot 或主機上同時讀的人只會讀到舊檔或新檔，不會讀到寫一半、
+    誤判成「沒有維護」並廣播；斷電後也不會是空檔。正式機掛的是目錄而不是單一檔案，才能換檔（#81）
     """
     fd, tmp = tempfile.mkstemp(dir=os.path.dirname(MAINTENANCE_FILE_PATH), suffix=".tmp")
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        os.chmod(tmp, 0o644)   # mkstemp 是 600，主機上的維運帳號也要讀得到
+            f.flush()
+            os.fsync(f.fileno())
+        # 容器以 root 執行：沿用原檔的擁有者與權限，主機上不用 sudo 也能改（mkstemp 預設 root、600）
+        try:
+            st = os.stat(MAINTENANCE_FILE_PATH)
+            os.chmod(tmp, st.st_mode & 0o777)
+            with contextlib.suppress(PermissionError):   # 不是 root 時只能維持自己擁有，不因此存檔失敗
+                os.chown(tmp, st.st_uid, st.st_gid)
+        except FileNotFoundError:
+            os.chmod(tmp, 0o644)
         os.replace(tmp, MAINTENANCE_FILE_PATH)
     except BaseException:
-        os.unlink(tmp)
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
         raise
 
 
