@@ -38,19 +38,15 @@ docker compose pull "boss_service_${NEXT}" "boss_timer_nginx_${NEXT}"
 echo "▶ 執行 DB migration..."
 docker compose run --rm "boss_service_${NEXT}" alembic upgrade head
 
-# 5. 起 next slot
-echo "▶ 啟動 ${NEXT} 容器..."
-docker compose up -d --no-deps "boss_service_${NEXT}" "boss_timer_nginx_${NEXT}"
+# 5. 起 next slot 並等 healthcheck
+start_slot "$NEXT" || { echo "❌ ${NEXT} 未通過健康檢查，放棄部署"; exit 1; }
 
-# 6. 等 healthcheck
-wait_healthy "$NEXT" || { echo "❌ 健康檢查逾時，放棄部署"; exit 1; }
-
-# 7. 切換 Traefik 流量（改檔案，Traefik 自動偵測），並停掉舊 slot
+# 6. 切換 Traefik 流量（改檔案，Traefik 自動偵測），並停掉舊 slot
 switch_and_stop "$NEXT" "$CURRENT"
 SWITCHED=1
 record_switch deploy "$NEW_TAG"
 
-# 8. 更新 Celery worker
+# 7. 更新 Celery worker
 set_active_tag "$NEW_TAG"
 
 echo "✅ 完成！流量已切到 ${NEXT} (${NEW_TAG})，舊 slot ${CURRENT} 已停止"

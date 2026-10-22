@@ -91,7 +91,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 120s   # 與 lib.sh 的 --wait-timeout 相同：等後端的 2 分鐘全程每 2 秒檢查
+      start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
 
   boss_timer_nginx_blue:
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${BLUE_TAG}
@@ -111,6 +112,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+      start_interval: 2s   # start_interval 只在 start_period 內生效
 
   # ── Green ─────────────────────────────────────────
   boss_service_green:
@@ -138,7 +141,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 40s
+      start_period: 120s   # 與 lib.sh 的 --wait-timeout 相同：等後端的 2 分鐘全程每 2 秒檢查
+      start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
 
   boss_timer_nginx_green:
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${GREEN_TAG}
@@ -158,6 +162,8 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 30s
+      start_interval: 2s   # start_interval 只在 start_period 內生效
 
 networks:
   boss_network:

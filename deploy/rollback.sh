@@ -22,18 +22,19 @@ PREV=$(other_slot "$CURRENT")
 PREV_UPPER=$(echo "$PREV" | tr '[:lower:]' '[:upper:]')
 PREV_TAG=$(grep "^${PREV_UPPER}_TAG=" .env | cut -d= -f2)
 
-# 1. 重新啟動舊 slot（沿用 .env 中舊 slot 的 tag）
-echo "▶ 啟動 ${PREV} (tag: ${PREV_TAG})..."
-docker compose up -d --no-deps "boss_service_${PREV}" "boss_timer_nginx_${PREV}"
+# 1. 重新啟動舊 slot（沿用 .env 中舊 slot 的 tag）並等 healthcheck
+echo "▶ 回滾到 ${PREV} (tag: ${PREV_TAG})"
+if ! start_slot "$PREV"; then
+  docker compose stop "boss_service_${PREV}" "boss_timer_nginx_${PREV}" || true   # 與 deploy.sh 一致，不留半啟動的舊 slot
+  echo "❌ ${PREV} 未通過健康檢查，放棄回滾（流量仍在 ${CURRENT}）"
+  exit 1
+fi
 
-# 2. 等 healthcheck
-wait_healthy "$PREV" || { echo "❌ 健康檢查逾時，放棄回滾（流量仍在 ${CURRENT}）"; exit 1; }
-
-# 3. 切回流量並停掉目前的 slot
+# 2. 切回流量並停掉目前的 slot
 switch_and_stop "$PREV" "$CURRENT"
 record_switch rollback "$PREV_TAG"
 
-# 4. Celery worker 一併回到舊版
+# 3. Celery worker 一併回到舊版
 set_active_tag "$PREV_TAG"
 
 echo "✅ 已切回 ${PREV} (${PREV_TAG})"
