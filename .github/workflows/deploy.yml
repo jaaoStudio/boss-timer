@@ -12,12 +12,15 @@ on:
       - 'docs/**'
 
 jobs:
-  # 建置不排隊：連續合併時各 run 的建置並行，前後端也並行。只有 deploy job 依序執行
+  # 建置不等部署，前後端並行；更新的 commit 開始建置時，取消較舊 commit 還在跑的建置（它不會被部署）
   build:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
     # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
     timeout-minutes: 20
+    concurrency:
+      group: build-${{ matrix.image }}
+      cancel-in-progress: true
     strategy:
       matrix:
         include:
@@ -27,9 +30,10 @@ jobs:
           - image: boss_timer_nginx
             context: ./frontend
             file: frontend/Dockerfile
+            vite: true
     env:
       IMAGE: ${{ secrets.HARBOR_URL }}/boss_service/${{ matrix.image }}
-      # matrix 裡不能用 secrets，前端的建置參數放在這裡，只傳給前端
+      # matrix 裡不能用 secrets，Vite 建置參數放在這裡，只傳給 vite: true 的前端
       FRONTEND_BUILD_ARGS: |
         VITE_GTM_ID=${{ secrets.VITE_GTM_ID }}
         VITE_ANALYTICS_ID=${{ secrets.VITE_ANALYTICS_ID }}
@@ -64,12 +68,13 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:${{ github.sha }}
             ${{ env.IMAGE }}:latest
-          build-args: ${{ matrix.image == 'boss_timer_nginx' && env.FRONTEND_BUILD_ARGS || '' }}
+          build-args: ${{ matrix.vite && env.FRONTEND_BUILD_ARGS || '' }}
           cache-from: type=registry,ref=${{ env.IMAGE }}:cache
           cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
 
   # 建置並行後，較早的 commit 可能較晚建好；排在新版之後部署會把正式機降回舊版。
-  # 所以建好時 main 已經往前走就不部署（較新的 run 會部署最新的 main，已包含這次的變更）。
+  # 所以這次不是本 workflow 最新的 run 就不部署，較新的 run 會部署已包含這次變更的 main。
+  # 比對 run 而不是 main 的 HEAD：只改文件的 commit 不觸發部署（paths-ignore），HEAD 往前走了卻沒有新的 run。
   # 要在進入 deploy 的 concurrency 群組之前判斷：群組只保留一個排隊中的 job，
   # 在 deploy job 裡才判斷的話，晚建好的舊 run 會取代排隊中的新 run，結果兩個都沒部署
   check-latest:
@@ -83,16 +88,15 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          head=$(gh api "repos/${{ github.repository }}/commits/${{ github.ref_name }}" --jq .sha)
-          echo "main 目前是 ${head}，這次是 ${{ github.sha }}"
-          echo "is_latest=$([ "$head" = "${{ github.sha }}" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          latest=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy.yml/runs?branch=${{ github.ref_name }}&event=push&per_page=1" --jq '.workflow_runs[0].id')
+          echo "最新的 run 是 ${latest}，這次是 ${{ github.run_id }}"
+          echo "is_latest=$([ "$latest" = "${{ github.run_id }}" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
   deploy:
     needs: check-latest
     if: needs.check-latest.outputs.is_latest == 'true'
     runs-on: ubuntu-latest
-    # 部署依序執行：前一個還在部署時排隊，排隊中的舊 job 會被更新的取代，最新的 main 已包含所有變更，所以不會漏部署。
-    # 回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥
+    # 前一個還在部署時排隊；回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥
     concurrency:
       group: production-deploy
       cancel-in-progress: false

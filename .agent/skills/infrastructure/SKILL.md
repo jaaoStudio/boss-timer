@@ -240,8 +240,8 @@ uv run alembic upgrade head
 
 專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到 `main` 分支後自動執行，分成三個 job（#51）：
 
-1. **`build`**（matrix，前後端並行；runner 為原生 arm64 的 `ubuntu-24.04-arm`，不經 QEMU 模擬；逾時 20 分鐘）— 各自推送 `harbor.jaao.tw/boss_service/<image>:<sha>` + `:latest`，並以 registry 的 `:cache` 加速。後端 context 為專案根目錄；前端透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等）。**不排隊**：連續合併時各 run 的建置同時進行
-2. **`check-latest`** — 建好時 `main` 已經往前走就不部署。建置並行後，較早的 commit 可能較晚建好，排在新版之後部署會把正式機降回舊版；較新的 run 會部署最新的 `main`。**要在進入 concurrency 群組之前判斷**（群組只保留一個排隊中的 job，在 deploy 裡才判斷的話，晚建好的舊 run 會取代排隊中的新 run，兩個都不部署）
+1. **`build`**（matrix，前後端並行；runner 為原生 arm64 的 `ubuntu-24.04-arm`，不經 QEMU 模擬；逾時 20 分鐘）— 各自推送 `harbor.jaao.tw/boss_service/<image>:<sha>` + `:latest`，並以 registry 的 `:cache` 加速。後端 context 為專案根目錄；前端透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等）。**不等部署**；較新的 commit 開始建置時取消較舊的建置
+2. **`check-latest`** — 這次不是本 workflow 最新的 run 就不部署，避免較晚建好的舊 commit 把正式機降回舊版。比對 run 而非 `main` 的 HEAD、且必須在進入 concurrency 群組之前判斷，原因見 `deploy.yml` 註解
 3. **`deploy`**（`concurrency: production-deploy`，只有這個 job 序列化；逾時 25 分鐘）— SSH 登入正式機執行 `~/boss-tracker/deploy.sh ${{ github.sha }}`
 
 所需 GitHub Secrets：`HARBOR_URL`、`HARBOR_USER`、`HARBOR_PASSWORD`、`VM_HOST`、`VM_USER`、`VM_SSH_KEY`，以及所有 `VITE_*` 環境變數。
