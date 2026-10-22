@@ -411,6 +411,7 @@ ConnectionManager
 ## 維護模式
 
 - 透過 `maintenance.json` 控制，支援熱更新
+- 正式機把主機的 `~/boss-tracker/app/maintenance.json` 掛到程式讀寫的 `/project/app/maintenance.json`，blue / green 共用同一份、換 slot 不會不見（#81，`tests/test_deploy_config.py` 檢查路徑一致）；直接改主機上的檔案也會生效
 - `is_maintenance: true` → 所有受保護路由回傳 503
 - `is_ready_for_maintenance: true` → 顯示即將維護的橫幅
 - 狀態變更時透過 WebSocket 廣播通知所有連線客戶端

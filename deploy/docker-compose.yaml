@@ -73,7 +73,7 @@ services:
     command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
     env_file: .env
     volumes:
-      - ./app/maintenance.json:/app/maintenance.json
+      - ./app/maintenance.json:/project/app/maintenance.json   # 程式讀寫的路徑（WORKDIR /project），兩個 slot 共用主機上同一份（#81）
     depends_on:
       db:
         condition: service_healthy
@@ -119,7 +119,7 @@ services:
     command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
     env_file: .env
     volumes:
-      - ./app/maintenance.json:/app/maintenance.json
+      - ./app/maintenance.json:/project/app/maintenance.json   # 程式讀寫的路徑（WORKDIR /project），兩個 slot 共用主機上同一份（#81）
     depends_on:
       db:
         condition: service_healthy
