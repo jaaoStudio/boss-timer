@@ -73,7 +73,7 @@ services:
     command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
     env_file: .env
     volumes:
-      - ./app/maintenance.json:/app/maintenance.json
+      - ./maintenance:/data/maintenance   # 掛目錄不掛單一檔案：換檔寫入、主機上編輯都看得到，兩個 slot 共用（#81）
     depends_on:
       db:
         condition: service_healthy
@@ -85,6 +85,7 @@ services:
     environment:
       - ENV=production
       - REDIS_URL=redis://redis:6379/0
+      - MAINTENANCE_FILE=/data/maintenance/maintenance.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
       interval: 30s
@@ -119,7 +120,7 @@ services:
     command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
     env_file: .env
     volumes:
-      - ./app/maintenance.json:/app/maintenance.json
+      - ./maintenance:/data/maintenance   # 掛目錄不掛單一檔案：換檔寫入、主機上編輯都看得到，兩個 slot 共用（#81）
     depends_on:
       db:
         condition: service_healthy
@@ -131,6 +132,7 @@ services:
     environment:
       - ENV=production
       - REDIS_URL=redis://redis:6379/0
+      - MAINTENANCE_FILE=/data/maintenance/maintenance.json
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
       interval: 30s

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     
     redis_url: str = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+    # 維護設定檔；正式機指到掛載的目錄（#81），沒設定時用 app/maintenance.json
+    maintenance_file: str = os.getenv("MAINTENANCE_FILE", "")
+
     model_config = SettingsConfigDict(env_file=".env", extra='ignore')
 
     @property

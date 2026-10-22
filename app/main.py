@@ -22,7 +22,7 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
     並在狀態變化時透過 WebSocket 廣播。
     """
     global last_maintenance_status
-    # 在 event loop 上直接讀（檔案很小）：管理員寫檔也回到 event loop 執行，讀寫不會同時發生；
+    # 在 event loop 上直接讀（檔案很小）：寫入以換檔完成（save_maintenance_config），不會讀到一半；
     # 讀完到比較、更新上次的狀態之間沒有 await，同時的請求不會廣播錯的狀態
     data = read_maintenance_file() or {}
     current_maintenance_status = {

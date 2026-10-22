@@ -22,7 +22,7 @@ status: accepted
 - 不經 `get_db` 的資料庫工作一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行）：WebSocket 有登入 cookie 的握手、回報、清理工作、Google 登入的資料庫那段。勿只用 `run_in_threadpool`：不拿鎖會和其他資料庫工作同時執行，而且測試抓不到。唯一的例外是加入房間：讀房間狀態到訂閱都要在鎖裡（別人的回報要等訂閱好才寫得進去），所以自己 `async with db_lock()`。匿名握手不查資料庫，不拿鎖。
 - 帶登入 cookie 的握手最多等鎖 15 秒（`HANDSHAKE_LOCK_TIMEOUT_SECONDS`），等不到就拒絕、前端退避重連。資料庫故障時鎖前面的工作每個要卡 5～10 秒，前端握手 20 秒就放棄重連；不設上限的話，被放棄的握手仍在排隊，佇列越來越長（PR #80 第 4 輪）。上限要比前端的 20 秒短，也不能太短：部署後幾百個分頁同時重連時，加入房間在鎖裡要排好幾秒，第 4 輪訂的 5 秒會讓登入者的握手被拒（第 5 輪）。一般 HTTP 請求等鎖不設上限：資料庫故障時被放棄的請求仍會排隊，PR 之前同樣如此（而且卡住整個 event loop）。
 - **拿著鎖時不可再等另一件也要拿鎖的事**（會互相等待而卡死），也不要在鎖裡等外部服務：`/auth/google` 因此不依賴 `get_db`，呼叫 Google 在鎖外、資料庫那段才拿鎖；Google 呼叫另外用自己的執行緒上限（`GOOGLE_LIMITER`），不佔 threadpool 預設的 40 條——拿著鎖的請求每一段都要從那 40 條拿一條，被 Google 佔光時所有資料庫工作一起停住。Redis（Discord 排程、預警撤銷）仍在鎖裡，是已接受的取捨，見 Consequences。從 threadpool 回到 event loop 只用來廣播（`manager.*_from_thread`）與寫維護設定檔，兩者都不需要鎖。
-- 維護設定檔（`maintenance.json`）不經鎖：讀與寫都在 event loop 上直接做（檔案很小），不會同時發生，讀完到比較、廣播之間也沒有 `await`。
+- 維護設定檔（`maintenance.json`）不經鎖：讀在 event loop 上直接做（檔案很小），讀完到比較、廣播之間沒有 `await`；寫入以暫存檔換上，讀的一方不會讀到一半（兩個 slot 共用同一份，#81）。
 - `get_db` 收尾的 `db.close` 放在 `CancelScope(shield=True)` 裡：請求被取消時也要把連線還回連線池。
 - 第 1 輪加的防競爭寫法（撞到唯一限制改用已存在的那一筆、鎖住使用者那一列）保留，以後放寬時用得上（`tests/test_concurrency_pg.py`）。
 
