@@ -238,11 +238,10 @@ uv run alembic upgrade head
 
 ### CI/CD 自動部署（主要流程）
 
-專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到 `main` 分支後自動執行（runner 為原生 arm64 的 `ubuntu-24.04-arm`，不經 QEMU 模擬；job 逾時 30 分鐘）：
+專案已整合 GitHub Actions (`.github/workflows/deploy.yml`)。推送到 `main` 分支後自動執行，分成兩個 job（#51）：
 
-1. **建置後端映像** — context 為專案根目錄，推送 `harbor.jaao.tw/boss_service/boss_service:<sha>` + `:latest`
-2. **建置前端映像** — 透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等），推送至 Harbor
-3. **SSH 部署** — 登入正式機執行 `~/boss-tracker/deploy.sh ${{ github.sha }}`
+1. **`build`**（matrix，前後端並行；runner 為原生 arm64 的 `ubuntu-24.04-arm`，不經 QEMU 模擬；逾時 20 分鐘）— 各自推送 `harbor.jaao.tw/boss_service/<image>:<sha>` + `:latest`，並以 registry 的 `:cache` 加速。後端 context 為專案根目錄；前端透過 `build-args` 注入 Vite 環境變數（`VITE_GTM_ID`、`VITE_GOOGLE_CLIENT_ID`、`VITE_WS_URL`、`VITE_CLARITY_ID` 等）。**不等部署**；較新的 commit 開始建置時取消較舊的建置（`cancel-in-progress`），較舊的 commit 就不會比較新的晚建好、排在新版之後部署把正式機降回舊版
+2. **`deploy`**（`concurrency: production-deploy`，只有這個 job 序列化；逾時 25 分鐘）— SSH 登入正式機執行 `~/boss-tracker/deploy.sh ${{ github.sha }}`
 
 所需 GitHub Secrets：`HARBOR_URL`、`HARBOR_USER`、`HARBOR_PASSWORD`、`VM_HOST`、`VM_USER`、`VM_SSH_KEY`，以及所有 `VITE_*` 環境變數。
 
@@ -252,7 +251,7 @@ uv run alembic upgrade head
 
 正式機上 `~/boss-tracker/deploy.sh` 接收 git SHA 後執行 blue/green 切換：
 
-0. 取得部署鎖（`flock`，最多等 10 分鐘；ssh-action 的 `command_timeout` 設為 20 分鐘以容納等待）。兩個部署 / 回滾同時跑會讀到同一個 active slot、互相重建同一組容器。CI 端 `deploy.yml` 另有 `concurrency: production-deploy` 讓部署排隊；`rollback.yml` **刻意不加入同一群組**（GitHub 每個群組只保留一個排隊中的 run，共用會讓回滾與部署互相取消），由鎖互斥
+0. 取得部署鎖（`flock`，最多等 10 分鐘；ssh-action 的 `command_timeout` 設為 20 分鐘以容納等待）。兩個部署 / 回滾同時跑會讀到同一個 active slot、互相重建同一組容器。CI 端 `deploy.yml` 的 deploy job 另有 `concurrency: production-deploy` 讓部署排隊；`rollback.yml` **刻意不加入同一群組**（GitHub 每個群組只保留一個排隊中的 run，共用會讓回滾與部署互相取消），由鎖互斥
 1. 讀 Traefik 動態設定判斷目前活躍 slot（blue / green），下一個切到另一個
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
 3. `docker compose pull` 拉新 image

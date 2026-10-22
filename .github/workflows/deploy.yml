@@ -11,24 +11,39 @@ on:
       - '.claude/**'
       - 'docs/**'
 
-# 部署依序執行：連續合併多個 PR 時，後面的 run 會排隊等前一個跑完；排隊中的舊 run 會被更新的取代，
-# 最新的 main 已包含所有變更，所以不會漏部署。回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥。
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
-env:
-  HARBOR: ${{ secrets.HARBOR_URL }}
-  IMAGE_BACKEND: ${{ secrets.HARBOR_URL }}/boss_service/boss_service
-  IMAGE_FRONTEND: ${{ secrets.HARBOR_URL }}/boss_service/boss_timer_nginx
-
 jobs:
-  build-and-deploy:
+  # 建置不等部署，前後端並行。較新的 commit 開始建置時取消較舊的建置（較新的已包含它的變更），
+  # 所以較舊的 commit 不會比較新的晚建好、排在新版之後部署把正式機降回舊版；:latest / :cache 也不會被舊的覆蓋
+  build:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
-    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限。
-    # 須大於建置（約 10 分鐘）＋ SSH 部署的 command_timeout（20 分鐘），避免切換到一半被砍
-    timeout-minutes: 40
+    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
+    timeout-minutes: 20
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.ref }}-build-${{ matrix.image }}
+      cancel-in-progress: true
+    strategy:
+      matrix:
+        include:
+          - image: boss_service
+            context: .
+            file: app/Dockerfile
+          - image: boss_timer_nginx
+            context: ./frontend
+            file: frontend/Dockerfile
+            vite: true
+    env:
+      IMAGE: ${{ secrets.HARBOR_URL }}/boss_service/${{ matrix.image }}
+      # matrix 裡不能用 secrets，Vite 建置參數放在這裡，只傳給 vite: true 的前端
+      FRONTEND_BUILD_ARGS: |
+        VITE_GTM_ID=${{ secrets.VITE_GTM_ID }}
+        VITE_ANALYTICS_ID=${{ secrets.VITE_ANALYTICS_ID }}
+        VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        VITE_WS_URL=${{ secrets.VITE_WS_URL }}
+        VITE_APP_BASE_URL=/api
+        VITE_BASE_PUBLIC_PATH=/
+        VITE_APP_TITLE=BOSS
+        VITE_CLARITY_ID=${{ secrets.VITE_CLARITY_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,38 +58,30 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      - name: Build & Push Backend
+      - name: Build & Push
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: app/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_BACKEND }}:${{ github.sha }}
-            ${{ env.IMAGE_BACKEND }}:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_BACKEND }}:cache
-          cache-to: type=registry,ref=${{ env.IMAGE_BACKEND }}:cache,mode=max
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          build-args: ${{ matrix.vite && env.FRONTEND_BUILD_ARGS || '' }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
 
-      - name: Build & Push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
-            ${{ env.IMAGE_FRONTEND }}:latest
-          build-args: |
-            VITE_GTM_ID=${{ secrets.VITE_GTM_ID }}
-            VITE_ANALYTICS_ID=${{ secrets.VITE_ANALYTICS_ID }}
-            VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-            VITE_WS_URL=${{ secrets.VITE_WS_URL }}
-            VITE_APP_BASE_URL=/api
-            VITE_BASE_PUBLIC_PATH=/
-            VITE_APP_TITLE=BOSS
-            VITE_CLARITY_ID=${{ secrets.VITE_CLARITY_ID }}
-
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    # 前一個還在部署時排隊，排隊中的舊 job 會被更新的取代；回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    # 須大於 SSH 部署的 command_timeout（20 分鐘），避免切換到一半被砍
+    timeout-minutes: 25
+    steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
