@@ -12,14 +12,15 @@ on:
       - 'docs/**'
 
 jobs:
-  # 建置不等部署，前後端並行；更新的 commit 開始建置時，取消較舊 commit 還在跑的建置（它不會被部署）
+  # 建置不等部署，前後端並行。較新的 commit 開始建置時取消較舊的建置（較新的已包含它的變更），
+  # 所以較舊的 commit 不會比較新的晚建好、排在新版之後部署把正式機降回舊版；:latest / :cache 也不會被舊的覆蓋
   build:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
     # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
     timeout-minutes: 20
     concurrency:
-      group: build-${{ matrix.image }}
+      group: ${{ github.workflow }}-${{ github.ref }}-build-${{ matrix.image }}
       cancel-in-progress: true
     strategy:
       matrix:
@@ -57,7 +58,6 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      # 並行的 run 可能同時推 :latest / :cache，部署用的是 SHA tag，不受影響
       - name: Build & Push
         uses: docker/build-push-action@v5
         with:
@@ -72,31 +72,10 @@ jobs:
           cache-from: type=registry,ref=${{ env.IMAGE }}:cache
           cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
 
-  # 建置並行後，較早的 commit 可能較晚建好；排在新版之後部署會把正式機降回舊版。
-  # 所以這次不是本 workflow 最新的 run 就不部署，較新的 run 會部署已包含這次變更的 main。
-  # 比對 run 而不是 main 的 HEAD：只改文件的 commit 不觸發部署（paths-ignore），HEAD 往前走了卻沒有新的 run。
-  # 要在進入 deploy 的 concurrency 群組之前判斷：群組只保留一個排隊中的 job，
-  # 在 deploy job 裡才判斷的話，晚建好的舊 run 會取代排隊中的新 run，結果兩個都沒部署
-  check-latest:
+  deploy:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      is_latest: ${{ steps.check.outputs.is_latest }}
-    steps:
-      - id: check
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          latest=$(gh api "repos/${{ github.repository }}/actions/workflows/deploy.yml/runs?branch=${{ github.ref_name }}&event=push&per_page=1" --jq '.workflow_runs[0].id')
-          echo "最新的 run 是 ${latest}，這次是 ${{ github.run_id }}"
-          echo "is_latest=$([ "$latest" = "${{ github.run_id }}" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-
-  deploy:
-    needs: check-latest
-    if: needs.check-latest.outputs.is_latest == 'true'
-    runs-on: ubuntu-latest
-    # 前一個還在部署時排隊；回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥
+    # 前一個還在部署時排隊，排隊中的舊 job 會被更新的取代；回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥
     concurrency:
       group: production-deploy
       cancel-in-progress: false
