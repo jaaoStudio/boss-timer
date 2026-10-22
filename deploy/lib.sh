@@ -66,7 +66,10 @@ other_slot() {
 # 失敗或逾時回傳非 0。healthcheck 的 start_interval 讓健康後數秒內就回傳（需 Docker 25+）
 start_slot() {
   echo "▶ 啟動 $1 並等待健康檢查（最多 2 分鐘）..."
-  docker compose up -d --no-deps --wait --wait-timeout 120 "boss_service_$1" "boss_timer_nginx_$1"
+  # --wait-timeout 與後端 healthcheck 的 start_period 一致（tests/test_deploy.py）
+  docker compose up -d --no-deps --wait --wait-timeout 120 "boss_service_$1" "boss_timer_nginx_$1" && return
+  docker compose ps -a "boss_service_$1" "boss_timer_nginx_$1"   # 失敗時看得出是哪個沒起來
+  return 1
 }
 
 # 從 Traefik 容器內連得到 slot（與 Traefik 轉送走同一個網路與 DNS），容器內重試約 15 秒。

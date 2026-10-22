@@ -24,7 +24,11 @@ PREV_TAG=$(grep "^${PREV_UPPER}_TAG=" .env | cut -d= -f2)
 
 # 1. 重新啟動舊 slot（沿用 .env 中舊 slot 的 tag）並等 healthcheck
 echo "▶ 回滾到 ${PREV} (tag: ${PREV_TAG})"
-start_slot "$PREV" || { echo "❌ ${PREV} 未通過健康檢查，放棄回滾（流量仍在 ${CURRENT}）"; exit 1; }
+if ! start_slot "$PREV"; then
+  docker compose stop "boss_service_${PREV}" "boss_timer_nginx_${PREV}" || true   # 與 deploy.sh 一致，不留半啟動的舊 slot
+  echo "❌ ${PREV} 未通過健康檢查，放棄回滾（流量仍在 ${CURRENT}）"
+  exit 1
+fi
 
 # 2. 切回流量並停掉目前的 slot
 switch_and_stop "$PREV" "$CURRENT"
