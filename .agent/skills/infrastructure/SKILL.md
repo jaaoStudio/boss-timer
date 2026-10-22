@@ -257,8 +257,8 @@ uv run alembic upgrade head
 2. `sed` 把 `.env` 的 `NEXT_TAG`（`BLUE_TAG` 或 `GREEN_TAG`）改成新 SHA
 3. `docker compose pull` 拉新 image
 4. `docker compose run --rm <service> alembic upgrade head` 跑 migration（只跑一次）
-5. `docker compose up -d` 起 next slot 容器
-6. 等 healthcheck 通過（最多 2 分鐘 / 12 次重試）
+5. `docker compose up -d --no-deps --wait --wait-timeout 120` 起 next slot 容器，由 compose 等後端與 nginx 的 healthcheck 都通過（最多 2 分鐘，逾時或不健康即失敗；`lib.sh` 的 `start_slot`，回滾共用）
+6. 兩個 slot 的 healthcheck 設 `start_interval: 2s`（需 Docker 25+）：啟動期間每 2 秒檢查一次，新 slot 健康後數秒內就進入切換，不必等滿 30 秒的 `interval`
 7. 確認 Traefik 容器內連得到新 slot 的 `/api/health`（`docker exec traefik wget`，經 nginx 轉給同 slot 後端，前後端都通才算；未被路由使用的 service 不做健康檢查，切換前只能這樣確認），再 `sed` 改 Traefik 設定切流量（`service: boss-frontend-<slot>@file`）
 8. **輪詢 Traefik API 確認新 slot 的 service 已被路由使用（`usedBy`，約 2 分鐘內），再打一次新 slot 的 `/api/health`**，才等 3 秒讓舊 slot 完成進行中的請求、**停掉舊 slot**（`docker compose stop`）。確認不到就還原路由、**停掉新 slot**（切換期間連進新 slot 的 WebSocket 會重連回舊 slot，避免同一房間分成兩群）並以失敗結束。WebSocket 房間訂閱只存在單一容器記憶體，舊 slot 存活會把同一房間拆成兩群；停掉後前端自動重連到新 slot（見 ADR-0005）
 9. 更新 `.env` 的 `ACTIVE_TAG`，重起 Celery worker（共用 image，不分 blue/green）

@@ -62,18 +62,11 @@ other_slot() {
   if [ "$1" = "blue" ]; then echo green; else echo blue; fi
 }
 
-# 等 slot 的 nginx healthcheck 通過（最多 2 分鐘）；逾時回傳 1
-wait_healthy() {
-  local slot="$1" status
-  echo "▶ 等待 ${slot} 健康檢查（最多 2 分鐘）..."
-  for i in $(seq 1 12); do
-    status=$(docker inspect "boss_timer_nginx_${slot}" \
-      --format='{{.State.Health.Status}}' 2>/dev/null || echo "starting")
-    echo "  [$i/12] $status"
-    [ "$status" = "healthy" ] && return 0
-    sleep 10
-  done
-  return 1
+# 啟動 slot 並由 compose 等到後端與 nginx 的 healthcheck 都通過（最多 2 分鐘，含等待 depends_on）；
+# 失敗或逾時回傳非 0。healthcheck 的 start_interval 讓健康後數秒內就回傳（需 Docker 25+）
+start_slot() {
+  echo "▶ 啟動 $1 並等待健康檢查（最多 2 分鐘）..."
+  docker compose up -d --no-deps --wait --wait-timeout 120 "boss_service_$1" "boss_timer_nginx_$1"
 }
 
 # 從 Traefik 容器內連得到 slot（與 Traefik 轉送走同一個網路與 DNS），容器內重試約 15 秒。
