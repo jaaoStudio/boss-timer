@@ -1,6 +1,6 @@
 
 import json
-from anyio import from_thread
+import tempfile
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
@@ -23,15 +23,14 @@ class MaintenanceConfigUpdate(BaseModel):
     title: str
     message: str
 
-# 設定檔的路徑
-MAINTENANCE_FILE_PATH = os.path.join(os.path.dirname(__file__), "..", "maintenance.json")
+# 正式機以環境變數指到掛載的目錄裡，blue / green 共用主機上同一份（#81）；沒設定時用專案裡的檔案
+MAINTENANCE_FILE_PATH = os.environ.get("MAINTENANCE_FILE") or os.path.join(os.path.dirname(__file__), "..", "maintenance.json")
 
 
 router = APIRouter(prefix="/system", tags=["system"])
 def read_maintenance_file() -> Optional[dict]:
     """
-    讀 maintenance.json，沒有或格式錯誤時回傳 None。在 event loop 上呼叫（檔案很小）；寫檔也回到 event loop
-    （save_maintenance_config），讀寫不會同時發生——先清空再寫入時同時讀到一半，會誤判成「沒有維護」並廣播出去
+    讀 maintenance.json，沒有或格式錯誤時回傳 None。在 event loop 上呼叫（檔案很小）；寫入以換檔完成，不會讀到一半
     """
     if not os.path.exists(MAINTENANCE_FILE_PATH):
         return None
@@ -59,17 +58,20 @@ async def get_maintenance_info():
     return {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": "everything all good."}
 
 
-def _write_maintenance_file(data: dict) -> None:
-    with open(MAINTENANCE_FILE_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-
 def save_maintenance_config(data: dict) -> None:
     """
-    在 threadpool 執行的端點裡寫 maintenance.json：回到 event loop 上寫，與 read_maintenance_file 不會同時發生。
-    不用「寫暫存檔再換上」：正式機以單一檔案掛載，不能以 rename 覆蓋掛載點
+    寫暫存檔再換上（os.replace）：另一個 slot 或主機上同時讀的人只會讀到舊檔或新檔，不會讀到寫一半、
+    誤判成「沒有維護」並廣播。正式機掛的是目錄而不是單一檔案，才能換檔（#81）
     """
-    from_thread.run_sync(_write_maintenance_file, data)
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(MAINTENANCE_FILE_PATH), suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.chmod(tmp, 0o644)   # mkstemp 是 600，主機上的維運帳號也要讀得到
+        os.replace(tmp, MAINTENANCE_FILE_PATH)
+    except BaseException:
+        os.unlink(tmp)
+        raise
 
 
 @router.post("/maintenance-config", response_model=MaintenanceConfigUpdate, dependencies=[rate_limit("10/minute")])

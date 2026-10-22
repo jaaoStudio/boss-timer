@@ -15,7 +15,7 @@ from fastapi.testclient import TestClient
 
 from app.database.database import db_lock, get_db, run_db
 from app.main import app
-from app.routers import auth, system
+from app.routers import auth
 from app.services import auth_service, boss_service
 from app.services.boss_service import BossService
 from app.websocket.manager import ConnectionManager
@@ -181,20 +181,6 @@ def test_google_is_called_outside_the_database_lock(monkeypatch):
     with TestClient(app) as client:
         client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.7"})
     assert held == [False]
-
-
-def test_maintenance_config_is_written_on_the_event_loop(monkeypatch):
-    # 讀 maintenance.json 的地方（check_maintenance_mode、維護資訊）都在 event loop 上直接讀；寫檔也回到 event loop，
-    # 讀寫就不會同時發生（先清空再寫入時，同時讀到一半會誤判成「沒有維護」並廣播）。不用換檔：正式機以單一檔案掛載
-    threads = {}
-    monkeypatch.setattr(system, "_write_maintenance_file", lambda data: threads.setdefault("write", threading.get_ident()))
-
-    async def main():
-        threads["loop"] = threading.get_ident()
-        await anyio.to_thread.run_sync(system.save_maintenance_config, {"is_maintenance": True})
-
-    anyio.run(main)
-    assert threads["write"] == threads["loop"]
 
 
 def test_run_db_gives_up_waiting_for_the_lock_after_the_timeout():
