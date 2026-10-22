@@ -146,3 +146,18 @@ def test_unreadable_file_keeps_last_status(tmp_path, monkeypatch):
     path.unlink()
     assert asyncio.run(system.refresh_maintenance_status(Manager()))["is_maintenance"] is False
     assert sent[0]["data"]["is_maintenance"] is False
+
+
+def test_info_endpoint_agrees_with_protected_routes_when_file_is_unreadable(tmp_path, monkeypatch):
+    # 讀檔失敗時受保護的路由沿用上次的狀態（503），/maintenance-info 也要回同一個狀態，前端才不會一邊被帶到維護頁、一邊收起橫幅
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+
+    path = tmp_path / "maintenance.json"
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status, is_maintenance=True, title="t"))
+    path.write_text('{"is_maintenance": tr')
+    client = TestClient(main.app)
+    assert client.get("/ws/connections/count").status_code == 503
+    assert client.get("/system/maintenance-info").json()["is_maintenance"] is True

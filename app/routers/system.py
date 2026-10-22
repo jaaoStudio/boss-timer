@@ -33,14 +33,15 @@ MAINTENANCE_FILE_PATH = settings.maintenance_file or os.path.join(os.path.dirnam
 router = APIRouter(prefix="/system", tags=["system"])
 def read_maintenance_file() -> Optional[dict]:
     """
-    讀 maintenance.json，沒有或格式錯誤時回傳 None。在 event loop 上呼叫（檔案很小）；寫入以換檔完成，不會讀到一半
+    讀 maintenance.json：不存在回傳 {}（沒有維護），讀取或格式錯誤回傳 None（狀態不明）。
+    在 event loop 上呼叫（檔案很小）；程式寫入以換檔完成，不會讀到一半
     """
-    if not os.path.exists(MAINTENANCE_FILE_PATH):
-        return None
     try:
         with open(MAINTENANCE_FILE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except FileNotFoundError:
+        return {}
+    except (json.JSONDecodeError, OSError):
         return None
     return data if isinstance(data, dict) else None
 
@@ -51,15 +52,14 @@ last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": 
 
 async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
     """
-    讀維護狀態，跟上次不同就廣播。所有維護狀態的廣播都經這裡（受保護的請求、後台切換），同一個變化只廣播一次（#86）。
+    讀維護狀態，跟上次不同就廣播。所有維護狀態的讀取與廣播都經這裡（受保護的請求、/maintenance-info、後台切換），同一個變化只廣播一次（#86）。
     在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）。廣播前就記下：同時的請求不會重複廣播；
     廣播失敗時還原，下一個請求會重試
     """
     global last_maintenance_status
     data = read_maintenance_file()
-    if data is None and os.path.exists(MAINTENANCE_FILE_PATH):
+    if data is None:
         return last_maintenance_status   # 讀到一半或格式錯誤：沿用上次的狀態，不當成「沒有維護」；檔案不存在才是沒有維護
-    data = data or {}
     current = {
         "is_maintenance": data.get("is_maintenance", False),
         "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),
@@ -85,18 +85,13 @@ async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connec
 
 
 @router.get("/maintenance-info", response_model=MaintenanceInfo, dependencies=[rate_limit("60/minute")])
-async def get_maintenance_info():
+async def get_maintenance_info(manager: ConnectionManager = Depends(get_connection_manager)):
     """
-    獲取系統維護公告資訊。
-    從 maintenance.json 檔案動態讀取。
+    獲取系統維護公告資訊：與受保護的路由同一個來源（refresh_maintenance_status），讀檔失敗時兩者一致
     """
-    default_info = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
-    data = read_maintenance_file()
-    # 確保所有必要的鍵都存在
-    if data is None or not all(key in data for key in ["is_maintenance", "is_ready_for_maintenance", "title", "message"]):
-        return default_info
-    if data["is_maintenance"] or data["is_ready_for_maintenance"]:
-        return data
+    status = await refresh_maintenance_status(manager)
+    if status["is_maintenance"] or status["is_ready_for_maintenance"]:
+        return status
     return {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": "everything all good."}
 
 
