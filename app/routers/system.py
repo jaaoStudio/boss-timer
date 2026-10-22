@@ -56,7 +56,10 @@ async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
     廣播失敗時還原，下一個請求會重試
     """
     global last_maintenance_status
-    data = read_maintenance_file() or {}
+    data = read_maintenance_file()
+    if data is None and os.path.exists(MAINTENANCE_FILE_PATH):
+        return last_maintenance_status   # 讀到一半或格式錯誤：沿用上次的狀態，不當成「沒有維護」；檔案不存在才是沒有維護
+    data = data or {}
     current = {
         "is_maintenance": data.get("is_maintenance", False),
         "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),

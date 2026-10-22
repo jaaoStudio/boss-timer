@@ -83,7 +83,7 @@ def test_admin_toggle_is_broadcast_once(tmp_path, monkeypatch):
 
 
 def test_failed_broadcast_is_retried(tmp_path, monkeypatch):
-    # 廣播前就更新「上次的狀態」的話，廣播失敗後同一個變化永遠不會再廣播
+    # 廣播失敗時要還原「上次的狀態」，否則同一個變化永遠不會再廣播
     import asyncio
 
     monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
@@ -125,3 +125,24 @@ def test_concurrent_refreshes_broadcast_once_even_if_broadcast_yields(tmp_path, 
 
     asyncio.run(main())
     assert len(sent) == 1
+
+
+def test_unreadable_file_keeps_last_status(tmp_path, monkeypatch):
+    # 主機上原地編輯讀到一半、JSON 壞掉時不可當成「沒有維護」：會放行請求並廣播相反的狀態。檔案不存在才是沒有維護
+    import asyncio
+
+    path = tmp_path / "maintenance.json"
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status, is_maintenance=True))
+    sent = []
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            sent.append(message)
+
+    path.write_text('{"is_maintenance": tr')
+    assert asyncio.run(system.refresh_maintenance_status(Manager()))["is_maintenance"] is True
+    assert sent == []
+    path.unlink()
+    assert asyncio.run(system.refresh_maintenance_status(Manager()))["is_maintenance"] is False
+    assert sent[0]["data"]["is_maintenance"] is False
