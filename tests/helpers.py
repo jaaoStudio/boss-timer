@@ -1,6 +1,7 @@
-"""測試共用：設定匿名 cookie。"""
+"""測試共用：設定匿名 cookie、取個人額度的 key。"""
 from fastapi.testclient import TestClient
 
+from app.dependencies import http_limit_keys
 from app.utils import anonymous_id
 
 
@@ -11,3 +12,7 @@ def set_cookies(client: TestClient, anon: str | None = None, signed: bool = True
         client.cookies.set(anonymous_id.COOKIE_NAME, anonymous_id.sign(anon) if signed else anon)
     for name, value in extra.items():
         client.cookies.set(name, value)
+
+
+def personal_key(request) -> str:
+    return http_limit_keys(request)[0]

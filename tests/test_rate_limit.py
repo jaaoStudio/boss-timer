@@ -11,14 +11,9 @@ from app.utils import anonymous_id
 from app.dependencies import (
     IP_CEILING_MULTIPLIER,
     get_client_ip,
-    http_limit_keys,
     rate_limit,
 )
-from tests.helpers import set_cookies
-
-
-def personal_key(request) -> str:
-    return http_limit_keys(request)[0]
+from tests.helpers import personal_key, set_cookies
 
 
 PERSONAL_LIMIT = 2
@@ -128,6 +123,20 @@ def test_logged_in_user_is_not_blocked_by_exhausted_ip_ceiling():
     exhaust_ip_ceiling("203.0.113.1")
     token = jwt.encode({"sub": "42", "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
     assert call("203.0.113.1", access_token=token) == 200
+
+
+def test_every_http_route_has_a_route_level_rate_limit():
+    # 掛在其他 dependency 裡或改回 decorator，限流就會在拿資料庫鎖之後才檢查（#82）。
+    # /health 給 Docker healthcheck 與部署腳本，不限流（被擋會誤判下線）
+    from fastapi.routing import APIRoute
+    from app.main import app as main_app
+
+    unlimited = [
+        route.path for route in main_app.routes
+        if isinstance(route, APIRoute) and route.path != "/health"
+        and not any(getattr(d.dependency, "__qualname__", "") == "rate_limit.<locals>.check" for d in route.dependencies)
+    ]
+    assert unlimited == []
 
 
 def test_rate_limited_request_does_not_take_the_database_lock():

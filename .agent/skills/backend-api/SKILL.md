@@ -178,9 +178,10 @@ def create_room(...):   # 用到資料庫的端點宣告成 def（ADR-0010）
 ```
 
 - **勿改回包在端點外面的 decorator**（原本的 slowapi 寫法）：那要等所有 dependency 解析完才檢查，超過限流的請求也會先拿資料庫鎖、查一次登入才被 429 擋下（#82）。路由層級的 dependency 最先解析，被擋的請求不碰資料庫（`tests/test_rate_limit.py`）
+- 只有 `/health` 不限流（Docker healthcheck 與部署腳本在打，被擋會誤判下線）；`tests/test_rate_limit.py` 檢查其他路由都掛了
 - 每個端點各自計數（scope 為端點函式的 `module.qualname`）；超過時回 429 `{"detail": "Rate limit exceeded: ..."}`
 - 兩個 key 都由 `http_limit_keys()` 從同一個身分產生（access token 過期時以 refresh token 裡的使用者計算），登入者的 IP 天花板也以自己計算，不受同 IP 其他人影響（ADR-0007）
-- 參數驗證失敗（422）的請求也會計入（路由層級的 dependency 在驗證參數之前執行，fastapi-limiter 相同）；格式錯誤的 JSON 在讀 body 時就回 422，不計入
+- 參數驗證失敗（422）、未登入或權限不足（401 / 403）的請求也會計入（路由層級的 dependency 在驗證參數、`get_current_user` 之前執行，fastapi-limiter 相同）；格式錯誤的 JSON 在讀 body 時就回 422，不計入
 - WebSocket 訊息與握手用同一套計數（`check_dual_limit`）
 
 | 層 | key | 額度 | 用途 |

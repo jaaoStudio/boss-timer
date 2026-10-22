@@ -12,17 +12,12 @@ from starlette.websockets import WebSocket
 import app.dependencies as deps
 from app.config import settings
 from app.database import models
-from app.dependencies import http_limit_keys
 from app.routers import auth, feedback
 from app.services.feedback_service import FeedbackRateLimited, FeedbackService
 from app.utils import anonymous_id
 from app.utils import identity as identity_module
 from app.utils.identity import Identity, resolve_identity
-from tests.helpers import set_cookies
-
-
-def personal_key(request) -> str:
-    return http_limit_keys(request)[0]
+from tests.helpers import personal_key, set_cookies
 
 
 app = FastAPI()

@@ -11,7 +11,7 @@ from anyio import to_thread
 
 from app.database.database import SessionLocal, db_lock, run_db
 from app.services import room_service, boss_service
-from app.dependencies import IP_CEILING_MULTIPLIER, check_dual_limit, get_connection_manager, limit_keys
+from app.dependencies import IP_CEILING_MULTIPLIER, check_dual_limit, get_connection_manager, limit_keys, rate_limit
 from app.utils.identity import Identity, has_login_cookies, resolve_identity
 from app.websocket.manager import ConnectionManager
 from app.schemas.boss import BossRecordCreate
@@ -34,7 +34,7 @@ MAX_CONNECTIONS = 10
 CLOSE_CODE_LIMITED = 4429
 
 
-@router.get("/connections/count")
+@router.get("/connections/count", dependencies=[rate_limit("60/minute")])
 async def get_connections_count(manager: ConnectionManager = Depends(get_connection_manager)):
     return {"count": manager.get_total_connections()}
 

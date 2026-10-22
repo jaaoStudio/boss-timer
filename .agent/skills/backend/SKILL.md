@@ -403,7 +403,7 @@ ConnectionManager
 ### WebSocket (`/ws`)
 | Method | Path | 說明 |
 |---|---|---|
-| GET | `/ws/connections/count` | 取得目前 WebSocket 連線總數 |
+| GET | `/ws/connections/count` | 取得目前 WebSocket 連線總數，60/min |
 | WS | `/ws/` | WebSocket 連線端點 |
 
 ---
