@@ -17,5 +17,5 @@ import pytest  # noqa: E402  設定環境變數後才載入 app
 
 @pytest.fixture(autouse=True)
 def reset_limiter():
-    from app.dependencies import limiter
-    limiter.reset()
+    from app.dependencies import limit_storage
+    limit_storage.reset()

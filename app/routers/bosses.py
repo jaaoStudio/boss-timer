@@ -1,6 +1,6 @@
 # app/routers/bosses.py
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends, Query, Request, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException
 from sqlalchemy import or_, func, text
 from sqlalchemy.orm import Session
 from typing import List, Optional
@@ -29,17 +29,14 @@ def _revoke_alerts(records) -> None:
         celery_app.control.revoke(task_ids, terminate=False)
 
 
-@router.get("/boss-types", response_model=List[BossTypeResponse])
-@rate_limit("15/minute")
-def get_boss_types(request: Request, db: Session = Depends(get_db)):
+@router.get("/boss-types", response_model=List[BossTypeResponse], dependencies=[rate_limit("15/minute")])
+def get_boss_types(db: Session = Depends(get_db)):
     """取得全域 Boss 種類（不含房間自訂）"""
     return db.query(BossType).filter(BossType.room_id == None).all()
 
 
-@router.post("/room/{room_id}/boss-types", response_model=BossTypeResponse)
-@rate_limit("30/minute")
+@router.post("/room/{room_id}/boss-types", response_model=BossTypeResponse, dependencies=[rate_limit("30/minute")])
 def create_custom_boss_type(
-    request: Request,
     room_id: str,
     payload: CustomBossTypeCreate,
     db: Session = Depends(get_db),
@@ -68,10 +65,8 @@ def create_custom_boss_type(
     return response
 
 
-@router.delete("/room/{room_id}/boss-types/{boss_type_id}")
-@rate_limit("30/minute")
+@router.delete("/room/{room_id}/boss-types/{boss_type_id}", dependencies=[rate_limit("30/minute")])
 def delete_custom_boss_type(
-    request: Request,
     room_id: str,
     boss_type_id: int,
     db: Session = Depends(get_db),
@@ -108,10 +103,8 @@ def delete_custom_boss_type(
     )
     return {"message": "Custom boss type deleted"}
 
-@router.get("/room/{room_id}/records", response_model=BossRecordHistoryPage)
-@rate_limit("60/minute")
+@router.get("/room/{room_id}/records", response_model=BossRecordHistoryPage, dependencies=[rate_limit("60/minute")])
 def list_boss_records(
-    request: Request,
     room_id: str,
     before_id: Optional[int] = Query(None, ge=1),
     limit: int = Query(50, ge=1, le=100),
@@ -141,10 +134,8 @@ def list_boss_records(
     )
 
 
-@router.delete("/room/{room_id}/records/{record_id}")
-@rate_limit("15/minute")
+@router.delete("/room/{room_id}/records/{record_id}", dependencies=[rate_limit("15/minute")])
 def delete_boss_record(
-    request: Request,
     room_id: str,
     record_id: int,
     db: Session = Depends(get_db),
@@ -191,10 +182,8 @@ def delete_boss_record(
     return {"message": "Record archived successfully"}
 
 
-@router.post("/room/{room_id}/boss-types/{boss_type_id}/clear")
-@rate_limit("10/minute")
+@router.post("/room/{room_id}/boss-types/{boss_type_id}/clear", dependencies=[rate_limit("10/minute")])
 def clear_boss_type_records(
-    request: Request,
     room_id: str,
     boss_type_id: int,
     db: Session = Depends(get_db),

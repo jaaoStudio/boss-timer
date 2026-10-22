@@ -47,10 +47,8 @@ def _login_user(google_id: str, email: str, display_name: Optional[str], avatar_
         return auth_schemas.User.model_validate(user), refresh_token
 
 
-@router.post("/google", response_model=auth_schemas.LoginResponse)
-@rate_limit("10/minute")
+@router.post("/google", response_model=auth_schemas.LoginResponse, dependencies=[rate_limit("10/minute")])
 async def login_with_google(
-        request: Request,
         login_data: auth_schemas.GoogleLoginRequest,
         response: Response,
 ):
@@ -101,8 +99,7 @@ async def login_with_google(
     }
 
 
-@router.post("/refresh", response_model=auth_schemas.TokenResponse)
-@rate_limit("30/minute")
+@router.post("/refresh", response_model=auth_schemas.TokenResponse, dependencies=[rate_limit("30/minute")])
 def refresh_token(
         request: Request,
         response: Response,
@@ -133,10 +130,8 @@ def refresh_token(
     }
 
 
-@router.post("/validate", response_model=auth_schemas.ValidateResponse)
-@rate_limit("60/minute")
+@router.post("/validate", response_model=auth_schemas.ValidateResponse, dependencies=[rate_limit("60/minute")])
 def validate_token(
-        request: Request,
         authorization: str = Header(None),
         access_token: str = Cookie(None),
         db: Session = Depends(get_db)
@@ -165,17 +160,15 @@ def validate_token(
     except HTTPException:
         return {"valid": False}
 
-@router.get("/me", response_model=auth_schemas.User)
-@rate_limit("60/minute")
-def read_users_me(request: Request, current_user: models.User = Depends(get_current_user)):
+@router.get("/me", response_model=auth_schemas.User, dependencies=[rate_limit("60/minute")])
+def read_users_me(current_user: models.User = Depends(get_current_user)):
     """
     獲取當前登入的用戶資訊。
     """
     return current_user
 
 
-@router.post("/logout")
-@rate_limit("10/minute")
+@router.post("/logout", dependencies=[rate_limit("10/minute")])
 def logout(
         request: Request,
         response: Response,
@@ -194,10 +187,8 @@ def logout(
     return {"message": "Logged out successfully"}
 
 
-@router.put("/me/preferences", response_model=auth_schemas.User)
-@rate_limit("30/minute")
+@router.put("/me/preferences", response_model=auth_schemas.User, dependencies=[rate_limit("30/minute")])
 def update_preferences(
-        request: Request,
         preferences: Dict[str, Any],
         current_user: models.User = Depends(get_current_user),
         db: Session = Depends(get_db)
@@ -211,8 +202,7 @@ def update_preferences(
     return updated_user
 
 
-@router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK)
-@rate_limit("60/minute")
+@router.post("/session", response_model=auth_schemas.SessionResponse, status_code=status.HTTP_200_OK, dependencies=[rate_limit("60/minute")])
 def init_session(
         request: Request,
         response: Response,

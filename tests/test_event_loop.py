@@ -19,7 +19,6 @@ from app.routers import auth, system
 from app.services import auth_service, boss_service
 from app.services.boss_service import BossService
 from app.websocket.manager import ConnectionManager
-from tests.helpers import make_limited_app
 
 
 def _depends_on_db(dependant) -> bool:
@@ -177,7 +176,7 @@ def test_google_is_called_outside_the_database_lock(monkeypatch):
         return None
 
     monkeypatch.setattr(auth.auth_service, "verify_google_token", verify)
-    app = make_limited_app()
+    app = FastAPI()
     app.include_router(auth.router)
     with TestClient(app) as client:
         client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.7"})
@@ -228,7 +227,7 @@ def test_google_calls_do_not_take_the_default_threads(monkeypatch):
         return None
 
     monkeypatch.setattr(auth.auth_service, "verify_google_token", verify)
-    app = make_limited_app()
+    app = FastAPI()
     app.include_router(auth.router)
     with TestClient(app) as client:
         client.post("/auth/google", json={"credential": "bad"}, headers={"CF-Connecting-IP": "203.0.113.8"})

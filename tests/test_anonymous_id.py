@@ -5,22 +5,22 @@ from datetime import datetime, timezone
 import pytest
 from fastapi.testclient import TestClient
 from jose import jwt
-from fastapi import HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response
 from starlette.requests import Request
 from starlette.websockets import WebSocket
 
 import app.dependencies as deps
 from app.config import settings
 from app.database import models
-from app.dependencies import get_user_identifier
 from app.routers import auth, feedback
 from app.services.feedback_service import FeedbackRateLimited, FeedbackService
 from app.utils import anonymous_id
 from app.utils import identity as identity_module
 from app.utils.identity import Identity, resolve_identity
-from tests.helpers import make_limited_app, set_cookies
+from tests.helpers import personal_key, set_cookies
 
-app = make_limited_app()
+
+app = FastAPI()
 app.include_router(auth.router)
 app.include_router(feedback.router)
 client = TestClient(app)
@@ -117,15 +117,15 @@ def test_websocket_identity_is_not_cached(login):
 
 def test_personal_rate_limit_uses_refresh_token_user_when_access_token_is_invalid():
     # access token 過期時以 refresh token 裡的使用者計算，不退回 IP（同 IP 的人不會互相擋到）
-    assert get_user_identifier(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "user:7"
+    assert personal_key(http_request(f"refresh_token={token('refresh', '7', jti='current')}".encode())) == "user:7"
     # 以使用者而不是 token 本身計算：舊的或被撤銷的 token 不會各拿一份額度
-    assert get_user_identifier(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "user:7"
+    assert personal_key(http_request(f"refresh_token={token('refresh', '7', jti='revoked')}".encode())) == "user:7"
     both = f"access_token={token('access', '42')}; refresh_token={token('refresh', '7')}".encode()
-    assert get_user_identifier(http_request(both)) == "user:42"
+    assert personal_key(http_request(both)) == "user:42"
     # 拿 access token 冒充 refresh token：不算，退回一般的個人額度 key
     request = Request({"type": "http", "client": ("203.0.113.9", 0),
                        "headers": [(b"cookie", f"refresh_token={token('access', '7')}".encode())]})
-    assert get_user_identifier(request) == "ip:203.0.113.9"
+    assert personal_key(request) == "ip:203.0.113.9"
 
 
 # --- /auth/session ---

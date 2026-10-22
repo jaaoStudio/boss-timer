@@ -1,7 +1,7 @@
 """雙層限流（個人額度 + IP 天花板）的行為測試，見 docs/adr/0007。"""
 import uuid
 
-from fastapi import Request
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from jose import jwt
 from starlette.requests import Request as StarletteRequest
@@ -11,21 +11,19 @@ from app.utils import anonymous_id
 from app.dependencies import (
     IP_CEILING_MULTIPLIER,
     get_client_ip,
-    get_user_identifier,
     rate_limit,
-    scale_limit,
 )
-from tests.helpers import make_limited_app, set_cookies
+from tests.helpers import personal_key, set_cookies
+
 
 PERSONAL_LIMIT = 2
 CEILING = PERSONAL_LIMIT * IP_CEILING_MULTIPLIER
 
-app = make_limited_app()
+app = FastAPI()
 
 
-@app.get("/limited")
-@rate_limit(f"{PERSONAL_LIMIT}/minute")
-async def limited_endpoint(request: Request):
+@app.get("/limited", dependencies=[rate_limit(f"{PERSONAL_LIMIT}/minute")])
+async def limited_endpoint():
     return {"ok": True}
 
 
@@ -50,10 +48,6 @@ def make_request(headers: dict[str, str] | None = None, cookies: str | None = No
     return StarletteRequest({"type": "http", "headers": raw_headers, "client": ("172.70.1.1", 443)})
 
 
-def test_scale_limit_multiplies_every_limit():
-    assert scale_limit("15/minute;50/day", 50) == "750 per 1 minute;2500 per 1 day"
-
-
 def test_client_ip_prefers_cf_connecting_ip():
     assert get_client_ip(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "203.0.113.7"
 
@@ -65,8 +59,8 @@ def test_client_ip_falls_back_to_connection_source():
 def test_personal_key_uses_signed_anonymous_cookie_then_real_ip():
     anon = str(uuid.uuid4())
     signed = anonymous_id.sign(anon)
-    assert get_user_identifier(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == f"anon:{anon}"
-    assert get_user_identifier(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
+    assert personal_key(make_request(cookies=f"{anonymous_id.COOKIE_NAME}={signed}")) == f"anon:{anon}"
+    assert personal_key(make_request({"CF-Connecting-IP": "203.0.113.7"})) == "ip:203.0.113.7"
 
 
 def test_forged_or_legacy_cookie_falls_back_to_real_ip():
@@ -74,15 +68,15 @@ def test_forged_or_legacy_cookie_falls_back_to_real_ip():
     headers = {"CF-Connecting-IP": "203.0.113.7"}
     for value in ["made-up", str(uuid.uuid4())]:
         request = make_request(headers, cookies=f"{anonymous_id.COOKIE_NAME}={value}")
-        assert get_user_identifier(request) == "ip:203.0.113.7"
+        assert personal_key(request) == "ip:203.0.113.7"
 
 
 def test_ipv4_mapped_ipv6_uses_ipv4_key():
-    assert get_user_identifier(make_request({"CF-Connecting-IP": "::ffff:203.0.113.7"})) == "ip:203.0.113.7"
+    assert personal_key(make_request({"CF-Connecting-IP": "::ffff:203.0.113.7"})) == "ip:203.0.113.7"
 
 
 def test_ipv6_key_collapses_to_64_prefix():
-    key = get_user_identifier(make_request({"CF-Connecting-IP": "2407:4d00:bc01:14e3:64a0:b1e7:f2a2:e28d"}))
+    key = personal_key(make_request({"CF-Connecting-IP": "2407:4d00:bc01:14e3:64a0:b1e7:f2a2:e28d"}))
     assert key == "ip:2407:4d00:bc01:14e3::/64"
 
 
@@ -129,3 +123,54 @@ def test_logged_in_user_is_not_blocked_by_exhausted_ip_ceiling():
     exhaust_ip_ceiling("203.0.113.1")
     token = jwt.encode({"sub": "42", "type": "access"}, settings.secret_key, algorithm=settings.algorithm)
     assert call("203.0.113.1", access_token=token) == 200
+
+
+def test_every_http_route_has_a_route_level_rate_limit():
+    # 掛在其他 dependency 裡或改回 decorator，限流就會在拿資料庫鎖之後才檢查（#82）。
+    # /health 給 Docker healthcheck 與部署腳本，不限流（被擋會誤判下線）
+    from fastapi.routing import APIRoute
+    from app.main import app as main_app
+
+    unlimited = [
+        route.path for route in main_app.routes
+        if isinstance(route, APIRoute) and route.path != "/health"
+        and not any(getattr(d.dependency, "__qualname__", "") == "rate_limit.<locals>.check" for d in route.dependencies)
+    ]
+    assert unlimited == []
+
+
+def test_rate_limited_request_does_not_take_the_database_lock():
+    # 超過限流的請求在拿資料庫鎖、查登入之前就要被擋下（#82）：不然有人狂打 API 時，每個被擋的請求都要先在鎖裡
+    # 跑一次查詢，其他人的資料庫工作跟著排隊
+    from fastapi import Depends
+
+    from app.database.database import get_db
+
+    db_calls = []
+    db_app = FastAPI()
+
+    async def fake_db():
+        db_calls.append(True)
+        yield None
+
+    db_app.dependency_overrides[get_db] = fake_db
+
+    @db_app.get("/with-db", dependencies=[rate_limit("1/minute")])
+    def with_db(db=Depends(get_db)):
+        return {"ok": True}
+
+    db_client = TestClient(db_app)
+    headers = {"CF-Connecting-IP": "203.0.113.50"}
+    assert db_client.get("/with-db", headers=headers).status_code == 200
+    assert db_client.get("/with-db", headers=headers).status_code == 429
+    assert db_calls == [True]
+
+
+def test_logged_in_user_with_expired_access_token_is_not_limited_by_the_ip_ceiling():
+    # access token 過期時以 refresh token 認出登入者（ADR-0009）。IP 天花板也要以這個登入者計算，
+    # 不然同 IP 有人灌爆天花板時，連換發 token 的 /auth/session 都會被擋（ADR-0007：登入者不受同 IP 其他人影響）
+    ip = "203.0.113.60"
+    exhaust_ip_ceiling(ip)
+    refresh = jwt.encode({"sub": "77", "type": "refresh"}, settings.secret_key, algorithm=settings.algorithm)
+    set_cookies(client, refresh_token=refresh)
+    assert client.get("/limited", headers={"CF-Connecting-IP": ip}).status_code == 200

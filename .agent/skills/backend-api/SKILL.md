@@ -12,7 +12,7 @@ description: 新增或修改 FastAPI 路由、Pydantic Schema、Service 層業�
 | 框架 | FastAPI |
 | ORM | SQLAlchemy (同步模式) |
 | 資料驗證 | Pydantic v2 |
-| 限流 | slowapi |
+| 限流 | limits（記憶體計數，`dependencies.rate_limit()`） |
 | 套件管理 | uv (pyproject.toml) |
 
 ---
@@ -48,7 +48,7 @@ app/
 
 > ⚠️ **同步的資料庫一律不在 event loop 上執行（ADR-0010）**：用到資料庫（含 `get_current_user` / `get_optional_user`）的端點宣告成一般的 `def`，FastAPI 會放到 threadpool。**勿在 `async def` 裡直接查詢**——會卡住整個 worker，WebSocket 心跳與廣播一起停住。`def` 端點要廣播時用 `manager.broadcast_to_room_from_thread(...)` 或 `anyio.from_thread.run(...)` 回到 event loop。`tests/test_event_loop.py` 會檢查（含 `async def` 裡不可直接開 `SessionLocal()`）。呼叫外部服務一律設逾時
 >
-> ⚠️ **資料庫工作依序執行：一把鎖住整個請求**（`app/database/database.py` 的 `db_lock()`，ADR-0010）：`get_db` 是 async dependency，請求開始拿鎖、結束才放開，段與段之間不會插進別的請求；等鎖時在 event loop 上等、不佔執行緒與連線。不經 `get_db` 的資料庫工作（WebSocket、背景工作）一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行），勿只用 `run_in_threadpool`（不拿鎖，測試抓不到）；唯一例外是加入房間（訂閱也要在鎖裡）。限流在 dependency 之後才檢查，超過限流的請求也會先拿鎖（#82）。**拿著鎖時不可再等另一件也要拿鎖的事**（互相等待而卡死），也不要在鎖裡等 Google 這類動輒 10 秒的外部服務（`/auth/google` 不依賴 `get_db`，Google 在鎖外、資料庫那段才拿鎖，而且用自己的執行緒上限 `GOOGLE_LIMITER`，不佔預設的 40 條；Redis 仍在鎖裡，是已接受的取捨，見 ADR-0010）。勿改回「把 threadpool 限成一次一個」（交接名額不嚴格、單位是一段，見 ADR-0010）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列）；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（要指向空的資料庫，例如臨時容器；已有資料表會拒絕執行），平常跳過
+> ⚠️ **資料庫工作依序執行：一把鎖住整個請求**（`app/database/database.py` 的 `db_lock()`，ADR-0010）：`get_db` 是 async dependency，請求開始拿鎖、結束才放開，段與段之間不會插進別的請求；等鎖時在 event loop 上等、不佔執行緒與連線。不經 `get_db` 的資料庫工作（WebSocket、背景工作）一律經 `run_db(fn, *args)`（拿鎖、在 threadpool 執行），勿只用 `run_in_threadpool`（不拿鎖，測試抓不到）；唯一例外是加入房間（訂閱也要在鎖裡）。限流在拿鎖之前檢查（路由層級的 dependency，#82）。**拿著鎖時不可再等另一件也要拿鎖的事**（互相等待而卡死），也不要在鎖裡等 Google 這類動輒 10 秒的外部服務（`/auth/google` 不依賴 `get_db`，Google 在鎖外、資料庫那段才拿鎖，而且用自己的執行緒上限 `GOOGLE_LIMITER`，不佔預設的 40 條；Redis 仍在鎖裡，是已接受的取捨，見 ADR-0010）。勿改回「把 threadpool 限成一次一個」（交接名額不嚴格、單位是一段，見 ADR-0010）。防競爭的寫法仍保留（`IntegrityError` 改用已存在的那一筆、`with_for_update()` 鎖住使用者那一列）；競爭測試在 `tests/test_concurrency_pg.py`，需要 PostgreSQL：`TEST_DATABASE_URL=postgresql://... uv run pytest tests/test_concurrency_pg.py`（要指向空的資料庫，例如臨時容器；已有資料表會拒絕執行），平常跳過
 
 1. **定義 Schema** (`schemas/`): 建立 Pydantic 輸入/輸出模型
 2. **實作 Service** (`services/`): 實作業務邏輯（不含 HTTP 細節）
@@ -170,18 +170,24 @@ def get_room_state(db, room_id) -> dict:
 
 ## Rate Limiting / 限流
 
-使用 `slowapi`，一律透過 `dependencies.py` 的 `rate_limit()` 掛上**雙層限流**（見 ADR-0007），**勿直接用 `@limiter.limit`**：
+一律透過 `dependencies.py` 的 `rate_limit()` 以**路由層級的 dependency** 掛上**雙層限流**（見 ADR-0007，照 fastapi-limiter 的寫法）：
 
 ```python
-@router.post("/", response_model=RoomResponse)
-@rate_limit("15/minute;50/day")   # 多條上限以 ; 分隔
-def create_room(request: Request, ...):   # 必須有 request 參數；用到資料庫的端點宣告成 def（ADR-0010）
+@router.post("/", response_model=RoomResponse, dependencies=[rate_limit("15/minute;50/day")])   # 多條上限以 ; 分隔
+def create_room(...):   # 用到資料庫的端點宣告成 def（ADR-0010）
 ```
+
+- **勿改回包在端點外面的 decorator**（原本的 slowapi 寫法）：那要等所有 dependency 解析完才檢查，超過限流的請求也會先拿資料庫鎖、查一次登入才被 429 擋下（#82）。路由層級的 dependency 最先解析，被擋的請求不碰資料庫（`tests/test_rate_limit.py`）
+- 只有 `/health` 不限流（Docker healthcheck 與部署腳本在打，被擋會誤判下線）；`tests/test_rate_limit.py` 檢查其他路由都掛了
+- 每個端點各自計數（scope 為端點函式的 `module.qualname`）；超過時回 429 `{"detail": "Rate limit exceeded: ..."}`
+- 兩個 key 都由 `http_limit_keys()` 從同一個身分產生（access token 過期時以 refresh token 裡的使用者計算），登入者的 IP 天花板也以自己計算，不受同 IP 其他人影響（ADR-0007）
+- 參數驗證失敗（422）、未登入或權限不足（401 / 403）的請求也會計入（路由層級的 dependency 在驗證參數、`get_current_user` 之前執行，fastapi-limiter 相同）；格式錯誤的 JSON 在讀 body 時就回 422，不計入
+- WebSocket 訊息與握手用同一套計數（`check_dual_limit`）
 
 | 層 | key | 額度 | 用途 |
 |---|---|---|---|
-| 個人額度 | `get_user_identifier`：`user:{id}` → access token 無效時 refresh token 裡的使用者 `user:{id}`（只解開不查資料庫，不以 jti 計算） → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
-| IP 天花板 | `get_ip_ceiling_key`：登入者 `user:{id}`（登入者無法換身分、不受同 IP 影響），否則 IP key | `limit_value` × `IP_CEILING_MULTIPLIER`（200） | 最後防線，擋大量申請新身分與灌爆 |
+| 個人額度 | `http_limit_keys()` 的第一個 key：`user:{id}` → access token 無效時 refresh token 裡的使用者 `user:{id}`（只解開不查資料庫，不以 jti 計算） → `anon:{uuid}`（cookie **簽章正確**才算）→ IP key | `limit_value` | 公平；共用 IP 的玩家各用各的 |
+| IP 天花板 | `http_limit_keys()` 的第二個 key：登入者 `user:{id}`（登入者無法換身分、不受同 IP 影響），否則 IP key | `limit_value` × `IP_CEILING_MULTIPLIER`（200） | 最後防線，擋大量申請新身分與灌爆 |
 
 **IP key**（`get_ip_rate_limit_key`）：`ip:{真實 IP}`；IPv6 縮成 /64（不縮到 /56：行動網路常替每支手機各配一段 /64，縮太粗會把不相干的使用者算在一起），IPv4-mapped IPv6 視為 IPv4。
 
@@ -246,7 +252,7 @@ except Exception as e:
 | 沒有匿名身分 | 發放新身分（受發放上限） | `{ status: "anonymous", anonymous_user_id }` |
 | 撞到發放上限 | 不發放、**不回 429**（拿不到身分的結果相同，429 只會讓前端當成判斷失敗、沿用上次的顯示） | `{ status: "anonymous", anonymous_user_id: null }`（暫時沒有身分、以 IP 限流） |
 
-- 個人額度（所有 API 共用 `get_user_identifier`）：access token 的使用者 → refresh token 裡的使用者（`user:{id}`）→ 一般規則。需要登入的 API 與 `/auth/session` 在 access token 過期時照樣以登入者處理，退回匿名或 IP 會讓同 IP 的登入者互相擋到。**勿改成以 refresh token 的 jti 計算**：不查資料庫，舊的、已撤銷的 token 會各拿一份額度（PR #70 第 5 輪）
+- 個人額度（所有 API 共用 `http_limit_keys()`，IP 天花板也以同一個身分計算）：access token 的使用者 → refresh token 裡的使用者（`user:{id}`）→ 一般規則。需要登入的 API 與 `/auth/session` 在 access token 過期時照樣以登入者處理，退回匿名或 IP 會讓同 IP 的登入者互相擋到。**勿改成以 refresh token 的 jti 計算**：不查資料庫，舊的、已撤銷的 token 會各拿一份額度（PR #70 第 5 輪）
 - **勿把換發或清 cookie 的判斷搬回前端**：前端每多處理一種失敗，就多一個與伺服器判斷不一致的可能
 
 ### 匿名使用者

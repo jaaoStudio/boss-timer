@@ -4,12 +4,10 @@ from typing import Optional
 from functools import lru_cache
 
 from fastapi import Depends, status, HTTPException, Request, Response
-from fastapi.responses import JSONResponse
 
 from limits import parse_many
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
+from limits.storage import MemoryStorage
+from limits.strategies import FixedWindowRateLimiter
 from starlette.requests import HTTPConnection
 
 from app.database import models
@@ -37,7 +35,7 @@ def get_client_ip(request: HTTPConnection) -> str:
     Traefik 只接受 Cloudflare 來的連線（cf-only），這個 header 才不會被偽造。
     沒有這個 header（本機開發、直連後端）時退回連線來源。
     """
-    return request.headers.get("cf-connecting-ip") or get_remote_address(request)
+    return request.headers.get("cf-connecting-ip") or (request.client.host if request.client else "127.0.0.1")
 
 
 def get_ip_rate_limit_key(request: HTTPConnection) -> str:
@@ -78,26 +76,24 @@ def limit_keys(identity: Identity, conn: HTTPConnection) -> tuple[str, str]:
     return personal_limit_key(identity, conn), ceiling_limit_key(identity, conn)
 
 
-def get_ip_ceiling_key(request: Request) -> str:
-    """slowapi 的 key_func：IP 天花板，見 ceiling_limit_key。"""
-    return ceiling_limit_key(resolve_identity(request), request)
-
-
-def get_user_identifier(request: Request) -> str:
+def http_limit_keys(request: Request) -> tuple[str, str]:
     """
-    slowapi 的 key_func：個人額度，見 personal_limit_key。access token 無效時改以 refresh token 裡的使用者計算：
+    HTTP API 的 (個人額度 key, IP 天花板 key)。access token 無效時改以 refresh token 裡的使用者計算，兩個 key 都是：
     需要登入的 API 與 /auth/session 在 access token 過期時照樣以登入者處理並換發（ADR-0009），
-    若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、互相擋到（ADR-0007）。
+    若退回匿名身分或 IP，同一個 IP 上的登入者會共用額度、被同 IP 其他人灌爆的天花板擋住，連換發都做不到（ADR-0007）。
     只解開 refresh token、不查資料庫：以使用者而不是 token 本身（jti）計算，舊的或已撤銷的 token 才不會各拿一份額度
     （每次登入都會產生新的 jti，輪流使用就能繞過每日上限）
     """
     identity = resolve_identity(request)
     if identity.kind != "user":
         if refresh_user := decode_token_user_id(request.cookies.get("refresh_token"), token_type="refresh"):
-            return f"user:{refresh_user}"
-    return personal_limit_key(identity, request)
+            identity = Identity("user", str(refresh_user))
+    return limit_keys(identity, request)
 
-limiter = Limiter(key_func=get_user_identifier, key_style="endpoint")
+
+# 計數器存在記憶體，每次部署歸零（ADR-0007）
+limit_storage = MemoryStorage()
+_rate_limiter = FixedWindowRateLimiter(limit_storage)
 
 
 @lru_cache(maxsize=None)
@@ -109,18 +105,15 @@ def _limit_items(limit_value: str, factor: int = 1) -> tuple:
 def _hit_all(limit_value: str, scope: str, key: str, factor: int = 1) -> bool:
     """
     依序計數每條上限，任一條超過就回傳 False（之後的不再計數）。
-    被後面的時間窗擋下時，前面的時間窗已經計數（與 slowapi 行為一致）。
+    被後面的時間窗擋下時，前面的時間窗已經計數。
     """
-    if not limiter.enabled:
-        return True
-    return all(limiter.limiter.hit(item, scope, key) for item in _limit_items(limit_value, factor))
+    return all(_rate_limiter.hit(item, scope, key) for item in _limit_items(limit_value, factor))
 
 
 def check_dual_limit(limit_value: str, scope: str, keys: tuple[str, str]) -> bool:
     """
-    給無法用 rate_limit() decorator 的地方（WebSocket 訊息、握手）使用的雙層限流：
-    個人額度 limit_value，IP 天花板為其 IP_CEILING_MULTIPLIER 倍；keys 為 limit_keys() 的結果。
-    與 decorator 的差異：個人額度被擋時不計入天花板（decorator 由 slowapi 依序計數，結果相同）。
+    雙層限流（HTTP 的 rate_limit()、WebSocket 訊息與握手共用）：個人額度 limit_value，IP 天花板為其
+    IP_CEILING_MULTIPLIER 倍；keys 為 (個人額度 key, IP 天花板 key)。個人額度被擋時不計入天花板。
     """
     personal_key, ceiling_key = keys
     if not _hit_all(limit_value, f"{scope}:personal", personal_key):
@@ -137,35 +130,24 @@ def anonymous_id_mint_allowed(request: Request) -> bool:
     return _hit_all(ANONYMOUS_ID_MINT_LIMIT, "anonymous_id_mint", get_ip_rate_limit_key(request))
 
 
-def scale_limit(limit_value: str, factor: int) -> str:
-    """把 "15/minute;50/day" 的每條上限乘上 factor（給 slowapi decorator 用的字串版本）。"""
-    return ";".join(
-        f"{item.amount} per {item.multiples} {item.GRANULARITY.name}" for item in _limit_items(limit_value, factor)
-    )
-
-
 def rate_limit(limit_value: str):
     """
-    雙層限流（見 docs/adr/0007）：
+    HTTP API 的雙層限流（見 docs/adr/0007），以路由層級的 dependency 掛上：
+    `@router.get("/", dependencies=[rate_limit("15/minute;50/day")])`
     - 個人額度：limit_value，以登入身分或伺服器簽發的匿名身分計算（都沒有時以 IP），維持公平；
       編造的 cookie 不算身分，換 cookie 狂打會直接撞到 IP 的個人額度
     - IP 天花板：limit_value × IP_CEILING_MULTIPLIER，以真實 IP（IPv6 以 /64）計算，是最後防線：
       擋同一個 IP 申請大量身分後灌爆；登入者改以自己的身分計算，不受同 IP 其他人影響
+    FastAPI 先解析路由層級的 dependency：超過限流的請求不會拿資料庫鎖、查登入（#82，ADR-0010）。
+    勿改回包在端點外面的 decorator：那要等所有 dependency 解析完才檢查。每個端點各自計數
     """
-    personal = limiter.limit(limit_value)
-    ceiling = limiter.limit(scale_limit(limit_value, IP_CEILING_MULTIPLIER), key_func=get_ip_ceiling_key)
+    async def check(request: Request) -> None:
+        endpoint = request.scope["endpoint"]
+        if not check_dual_limit(limit_value, f"{endpoint.__module__}.{endpoint.__qualname__}", http_limit_keys(request)):
+            raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=f"Rate limit exceeded: {limit_value}")
 
-    def decorator(func):
-        return ceiling(personal(func))
+    return Depends(check)
 
-    return decorator
-
-# 自定義速率限制超過時的例外處理函式
-async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
-    return JSONResponse(
-        status_code=429,
-        content={"detail": f"Rate limit exceeded: {exc.detail}"}
-    )
 
 _connection_manager = ConnectionManager()
 

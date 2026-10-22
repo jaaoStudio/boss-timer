@@ -2,7 +2,7 @@
 import json
 from anyio import from_thread
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends, status, Request
+from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
 import os
 import logging
@@ -43,9 +43,8 @@ def read_maintenance_file() -> Optional[dict]:
     return data if isinstance(data, dict) else None
 
 
-@router.get("/maintenance-info", response_model=MaintenanceInfo)
-@rate_limit("60/minute")
-async def get_maintenance_info(request: Request):
+@router.get("/maintenance-info", response_model=MaintenanceInfo, dependencies=[rate_limit("60/minute")])
+async def get_maintenance_info():
     """
     獲取系統維護公告資訊。
     從 maintenance.json 檔案動態讀取。
@@ -73,10 +72,8 @@ def save_maintenance_config(data: dict) -> None:
     from_thread.run_sync(_write_maintenance_file, data)
 
 
-@router.post("/maintenance-config", response_model=MaintenanceConfigUpdate)
-@rate_limit("10/minute")
+@router.post("/maintenance-config", response_model=MaintenanceConfigUpdate, dependencies=[rate_limit("10/minute")])
 def update_maintenance_config(
-    request: Request,
     config: MaintenanceConfigUpdate,
     current_user: models.User = Depends(get_current_admin_user),
     manager: ConnectionManager = Depends(get_connection_manager)
