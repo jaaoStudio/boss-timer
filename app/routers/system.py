@@ -2,6 +2,7 @@
 import contextlib
 import json
 import tempfile
+from anyio import from_thread
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
 from pydantic import BaseModel
@@ -42,6 +43,30 @@ def read_maintenance_file() -> Optional[dict]:
     except (json.JSONDecodeError, IOError):
         return None
     return data if isinstance(data, dict) else None
+
+
+# 上次讀到的維護狀態：變了才廣播
+last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
+
+
+async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
+    """
+    讀維護狀態，跟上次不同就廣播。所有維護狀態的廣播都經這裡（受保護的請求、後台切換），同一個變化只廣播一次（#86）。
+    在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）；讀完到更新上次的狀態之間沒有 await，同時的請求不會重複廣播
+    """
+    global last_maintenance_status
+    data = read_maintenance_file() or {}
+    current = {
+        "is_maintenance": data.get("is_maintenance", False),
+        "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),
+        "title": data.get("title", ""),
+        "message": data.get("message", ""),
+    }
+    if current != last_maintenance_status:
+        last_maintenance_status = current
+        logging.info(f"Maintenance status changed: {current}")
+        await manager.broadcast_to_all({"type": "maintenance_status_update", "data": current})
+    return current
 
 
 @router.get("/maintenance-info", response_model=MaintenanceInfo, dependencies=[rate_limit("60/minute")])
@@ -100,11 +125,8 @@ def update_maintenance_config(
         save_maintenance_config(config.model_dump())
         logging.info(f"Maintenance config updated by admin {current_user.email}: {config.model_dump()}")
 
-        # 立即透過 WebSocket 廣播更新的狀態：同步端點在 threadpool 執行，回到 event loop 上廣播（ADR-0010）
-        manager.broadcast_to_all_from_thread({
-            "type": "maintenance_status_update",
-            "data": config.model_dump()
-        })
+        # 立即廣播：同步端點在 threadpool 執行，回到 event loop 上（ADR-0010）
+        from_thread.run(refresh_maintenance_status, manager)
 
         return config
     except Exception as e:

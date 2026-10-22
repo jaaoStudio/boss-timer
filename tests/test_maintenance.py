@@ -54,3 +54,29 @@ def test_save_keeps_permissions_and_syncs_before_replacing(tmp_path, monkeypatch
     system.save_maintenance_config({"is_maintenance": True})
     assert path.stat().st_mode & 0o777 == 0o664
     assert synced
+
+
+def test_admin_toggle_is_broadcast_once(tmp_path, monkeypatch):
+    # 端點寫檔後自己廣播、卻沒更新「上次的狀態」時，下一個受保護的請求會再廣播一次同樣的內容（#86）
+    from types import SimpleNamespace
+
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+    from app.dependencies import get_connection_manager, get_current_admin_user
+
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    manager = get_connection_manager()
+    sent = []
+
+    async def broadcast_to_all(message):
+        sent.append(message)
+
+    monkeypatch.setattr(manager, "broadcast_to_all", broadcast_to_all)
+    monkeypatch.setitem(main.app.dependency_overrides, get_current_admin_user, lambda: SimpleNamespace(email="admin@example.com"))
+    client = TestClient(main.app)
+    config = {"is_maintenance": False, "is_ready_for_maintenance": True, "title": "t", "message": "m"}
+    assert client.post("/system/maintenance-config", json=config).status_code == 200
+    assert client.get("/ws/connections/count").status_code == 200
+    assert sent == [{"type": "maintenance_status_update", "data": config}]

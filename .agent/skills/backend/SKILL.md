@@ -414,7 +414,7 @@ ConnectionManager
 - 正式機以 `MAINTENANCE_FILE` 指到 `/data/maintenance/maintenance.json`，掛的是主機的**目錄** `~/boss-tracker/maintenance/`，blue / green 共用同一份、換 slot 不會不見（#81，`tests/test_maintenance.py`）。**勿改回掛單一檔案**：主機上以編輯器存檔（寫新檔再換上）容器看不到，檔案不存在時 Docker 還會建立同名目錄。寫入以暫存檔 + `os.replace` 換上，另一個 slot 不會讀到寫一半。直接改主機上的檔案會生效，但 WebSocket 要等下一個受保護的 HTTP 請求才廣播
 - `is_maintenance: true` → 所有受保護路由回傳 503
 - `is_ready_for_maintenance: true` → 顯示即將維護的橫幅
-- 狀態變更時透過 WebSocket 廣播通知所有連線客戶端
+- 狀態變更時透過 WebSocket 廣播通知所有連線客戶端：一律經 `system.refresh_maintenance_status()`（跟上次讀到的狀態比，變了才廣播），受保護的請求與後台切換共用，同一個變化只廣播一次（#86）；勿在端點裡另外廣播
 - Admin 可透過 `/system/maintenance-config` API 即時切換
 
 ---
