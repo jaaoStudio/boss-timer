@@ -62,12 +62,12 @@ other_slot() {
   if [ "$1" = "blue" ]; then echo green; else echo blue; fi
 }
 
-# 啟動 slot 並由 compose 等到後端與 nginx 的 healthcheck 都通過（最多 2 分鐘，含等待 depends_on）；
+# 啟動 slot 並由 compose 等到後端與 nginx 的 healthcheck 都通過（最多 2 分半，含等待 depends_on）；
 # 失敗或逾時回傳非 0。healthcheck 的 start_interval 讓健康後數秒內就回傳（需 Docker 25+）
 start_slot() {
-  echo "▶ 啟動 $1 並等待健康檢查（最多 2 分鐘）..."
-  # --wait-timeout 與後端 healthcheck 的 start_period 一致（tests/test_deploy.py）
-  docker compose up -d --no-deps --wait --wait-timeout 120 "boss_service_$1" "boss_timer_nginx_$1" && return
+  echo "▶ 啟動 $1 並等待健康檢查（最多 2 分半）..."
+  # 後端 start_period（120 秒）+ nginx start_period（30 秒），見 tests/test_deploy.py
+  docker compose up -d --no-deps --wait --wait-timeout 150 "boss_service_$1" "boss_timer_nginx_$1" && return
   docker compose ps -a "boss_service_$1" "boss_timer_nginx_$1"   # 失敗時看得出是哪個沒起來
   return 1
 }

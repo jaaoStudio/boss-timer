@@ -91,7 +91,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s   # 涵蓋 lib.sh 的 --wait-timeout：整段等待都每 2 秒檢查，稍慢的啟動不會多等 30 秒而被判定失敗
+      start_period: 120s   # 後端最多 2 分鐘啟動，期間每 2 秒檢查；lib.sh 的 --wait-timeout 另外留 nginx 的 start_period
       start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
 
   boss_timer_nginx_blue:
@@ -141,7 +141,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 120s   # 涵蓋 lib.sh 的 --wait-timeout：整段等待都每 2 秒檢查，稍慢的啟動不會多等 30 秒而被判定失敗
+      start_period: 120s   # 後端最多 2 分鐘啟動，期間每 2 秒檢查；lib.sh 的 --wait-timeout 另外留 nginx 的 start_period
       start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
 
   boss_timer_nginx_green:
