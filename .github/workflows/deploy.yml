@@ -11,24 +11,34 @@ on:
       - '.claude/**'
       - 'docs/**'
 
-# 部署依序執行：連續合併多個 PR 時，後面的 run 會排隊等前一個跑完；排隊中的舊 run 會被更新的取代，
-# 最新的 main 已包含所有變更，所以不會漏部署。回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥。
-concurrency:
-  group: production-deploy
-  cancel-in-progress: false
-
-env:
-  HARBOR: ${{ secrets.HARBOR_URL }}
-  IMAGE_BACKEND: ${{ secrets.HARBOR_URL }}/boss_service/boss_service
-  IMAGE_FRONTEND: ${{ secrets.HARBOR_URL }}/boss_service/boss_timer_nginx
-
 jobs:
-  build-and-deploy:
+  # 建置不排隊：連續合併時各 run 的建置並行，前後端也並行。只有 deploy job 依序執行
+  build:
     # 正式機是 arm64：用原生 arm64 runner 建置，不經過 QEMU 模擬（public repo 免費）
     runs-on: ubuntu-24.04-arm
-    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限。
-    # 須大於建置（約 10 分鐘）＋ SSH 部署的 command_timeout（20 分鐘），避免切換到一半被砍
-    timeout-minutes: 40
+    # 正常約 5～10 分鐘；卡住時提早失敗，不要等到 GitHub 的 6 小時上限
+    timeout-minutes: 20
+    strategy:
+      matrix:
+        include:
+          - image: boss_service
+            context: .
+            file: app/Dockerfile
+          - image: boss_timer_nginx
+            context: ./frontend
+            file: frontend/Dockerfile
+    env:
+      IMAGE: ${{ secrets.HARBOR_URL }}/boss_service/${{ matrix.image }}
+      # matrix 裡不能用 secrets，前端的建置參數放在這裡，只傳給前端
+      FRONTEND_BUILD_ARGS: |
+        VITE_GTM_ID=${{ secrets.VITE_GTM_ID }}
+        VITE_ANALYTICS_ID=${{ secrets.VITE_ANALYTICS_ID }}
+        VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
+        VITE_WS_URL=${{ secrets.VITE_WS_URL }}
+        VITE_APP_BASE_URL=/api
+        VITE_BASE_PUBLIC_PATH=/
+        VITE_APP_TITLE=BOSS
+        VITE_CLARITY_ID=${{ secrets.VITE_CLARITY_ID }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -43,38 +53,52 @@ jobs:
           username: ${{ secrets.HARBOR_USER }}
           password: ${{ secrets.HARBOR_PASSWORD }}
 
-      - name: Build & Push Backend
+      # 並行的 run 可能同時推 :latest / :cache，部署用的是 SHA tag，不受影響
+      - name: Build & Push
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: app/Dockerfile
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
           platforms: linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_BACKEND }}:${{ github.sha }}
-            ${{ env.IMAGE_BACKEND }}:latest
-          cache-from: type=registry,ref=${{ env.IMAGE_BACKEND }}:cache
-          cache-to: type=registry,ref=${{ env.IMAGE_BACKEND }}:cache,mode=max
+            ${{ env.IMAGE }}:${{ github.sha }}
+            ${{ env.IMAGE }}:latest
+          build-args: ${{ matrix.image == 'boss_timer_nginx' && env.FRONTEND_BUILD_ARGS || '' }}
+          cache-from: type=registry,ref=${{ env.IMAGE }}:cache
+          cache-to: type=registry,ref=${{ env.IMAGE }}:cache,mode=max
 
-      - name: Build & Push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          platforms: linux/arm64
-          push: true
-          tags: |
-            ${{ env.IMAGE_FRONTEND }}:${{ github.sha }}
-            ${{ env.IMAGE_FRONTEND }}:latest
-          build-args: |
-            VITE_GTM_ID=${{ secrets.VITE_GTM_ID }}
-            VITE_ANALYTICS_ID=${{ secrets.VITE_ANALYTICS_ID }}
-            VITE_GOOGLE_CLIENT_ID=${{ secrets.VITE_GOOGLE_CLIENT_ID }}
-            VITE_WS_URL=${{ secrets.VITE_WS_URL }}
-            VITE_APP_BASE_URL=/api
-            VITE_BASE_PUBLIC_PATH=/
-            VITE_APP_TITLE=BOSS
-            VITE_CLARITY_ID=${{ secrets.VITE_CLARITY_ID }}
+  # 建置並行後，較早的 commit 可能較晚建好；排在新版之後部署會把正式機降回舊版。
+  # 所以建好時 main 已經往前走就不部署（較新的 run 會部署最新的 main，已包含這次的變更）。
+  # 要在進入 deploy 的 concurrency 群組之前判斷：群組只保留一個排隊中的 job，
+  # 在 deploy job 裡才判斷的話，晚建好的舊 run 會取代排隊中的新 run，結果兩個都沒部署
+  check-latest:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      is_latest: ${{ steps.check.outputs.is_latest }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/${{ github.repository }}/commits/${{ github.ref_name }}" --jq .sha)
+          echo "main 目前是 ${head}，這次是 ${{ github.sha }}"
+          echo "is_latest=$([ "$head" = "${{ github.sha }}" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
+  deploy:
+    needs: check-latest
+    if: needs.check-latest.outputs.is_latest == 'true'
+    runs-on: ubuntu-latest
+    # 部署依序執行：前一個還在部署時排隊，排隊中的舊 job 會被更新的取代，最新的 main 已包含所有變更，所以不會漏部署。
+    # 回滾與手動執行由正式機上 deploy/lib.sh 的 flock 互斥
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    # 須大於 SSH 部署的 command_timeout（20 分鐘），避免切換到一半被砍
+    timeout-minutes: 25
+    steps:
       - name: Deploy
         uses: appleboy/ssh-action@v1
         with:
