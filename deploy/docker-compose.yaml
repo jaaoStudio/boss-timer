@@ -4,7 +4,8 @@ services:
 
   # ── 基礎設施（共用，不參與藍綠）──────────────────
   db:
-    image: postgres:latest
+    # 固定大版本：latest 會跳到新大版本，資料目錄不相容會讓 db 起不來
+    image: postgres:17
     platform: linux/arm64
     restart: always
     shm_size: 128mb
