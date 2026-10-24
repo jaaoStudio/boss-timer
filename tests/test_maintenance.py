@@ -54,3 +54,132 @@ def test_save_keeps_permissions_and_syncs_before_replacing(tmp_path, monkeypatch
     system.save_maintenance_config({"is_maintenance": True})
     assert path.stat().st_mode & 0o777 == 0o664
     assert synced
+
+
+def test_admin_toggle_is_broadcast_once(tmp_path, monkeypatch):
+    # 端點寫檔後自己廣播、卻沒更新「上次的狀態」時，下一個受保護的請求會再廣播一次同樣的內容（#86）
+    from types import SimpleNamespace
+
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+    from app.dependencies import get_connection_manager, get_current_admin_user
+
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    manager = get_connection_manager()
+    sent = []
+
+    async def broadcast_to_all(message):
+        sent.append(message)
+
+    monkeypatch.setattr(manager, "broadcast_to_all", broadcast_to_all)
+    monkeypatch.setitem(main.app.dependency_overrides, get_current_admin_user, lambda: SimpleNamespace(email="admin@example.com"))
+    client = TestClient(main.app)
+    config = {"is_maintenance": False, "is_ready_for_maintenance": True, "title": "t", "message": "m"}
+    assert client.post("/system/maintenance-config", json=config).status_code == 200
+    assert client.get("/ws/connections/count").status_code == 200
+    assert sent == [{"type": "maintenance_status_update", "data": config}]
+
+
+def test_failed_broadcast_is_retried(tmp_path, monkeypatch):
+    # 廣播失敗時要還原「上次的狀態」，否則同一個變化永遠不會再廣播
+    import asyncio
+
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    system.save_maintenance_config({"is_maintenance": True})
+    sent = []
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            if not sent:
+                sent.append(None)
+                raise RuntimeError("broadcast failed")
+            sent.append(message)
+
+    try:
+        asyncio.run(system.refresh_maintenance_status(Manager()))
+    except RuntimeError:
+        pass
+    asyncio.run(system.refresh_maintenance_status(Manager()))
+    assert sent[1]["data"]["is_maintenance"] is True
+
+
+def test_concurrent_refreshes_broadcast_once_even_if_broadcast_yields(tmp_path, monkeypatch):
+    # 比較與記下狀態之間若隔著會讓出的 await，同時的兩個請求都會廣播同一個變化
+    import asyncio
+
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(tmp_path / "maintenance.json"))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    system.save_maintenance_config({"is_maintenance": True})
+    sent = []
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            await asyncio.sleep(0)
+            sent.append(message)
+
+    async def main():
+        await asyncio.gather(*(system.refresh_maintenance_status(Manager()) for _ in range(2)))
+
+    asyncio.run(main())
+    assert len(sent) == 1
+
+
+def test_unreadable_file_keeps_last_status(tmp_path, monkeypatch):
+    # 主機上原地編輯讀到一半、JSON 壞掉時不可當成「沒有維護」：會放行請求並廣播相反的狀態。檔案不存在才是沒有維護
+    import asyncio
+
+    path = tmp_path / "maintenance.json"
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status, is_maintenance=True))
+    sent = []
+
+    class Manager:
+        async def broadcast_to_all(self, message):
+            sent.append(message)
+
+    path.write_text('{"is_maintenance": tr')
+    assert asyncio.run(system.refresh_maintenance_status(Manager()))["is_maintenance"] is True
+    assert sent == []
+    path.unlink()
+    assert asyncio.run(system.refresh_maintenance_status(Manager()))["is_maintenance"] is False
+    assert sent[0]["data"]["is_maintenance"] is False
+
+
+def test_info_endpoint_agrees_with_protected_routes_when_file_is_unreadable(tmp_path, monkeypatch):
+    # 讀檔失敗時受保護的路由沿用上次的狀態（503），/maintenance-info 也要回同一個狀態，前端才不會一邊被帶到維護頁、一邊收起橫幅
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+
+    path = tmp_path / "maintenance.json"
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status, is_maintenance=True, title="t"))
+    path.write_text('{"is_maintenance": tr')
+    client = TestClient(main.app)
+    assert client.get("/ws/connections/count").status_code == 503
+    assert client.get("/system/maintenance-info").json()["is_maintenance"] is True
+
+
+def test_file_values_are_validated_once_for_both_paths(tmp_path, monkeypatch):
+    # 手動改檔寫成 "false"（字串）時，受保護的路由當成真（503）、/maintenance-info 卻轉成 false；title 寫成 null 時 /maintenance-info 回 500。
+    # 讀到的內容先以 MaintenanceInfo 驗證，兩條路徑用同一份值；驗證不過當成讀取失敗，沿用上次的狀態
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+
+    path = tmp_path / "maintenance.json"
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    client = TestClient(main.app)
+    path.write_text('{"is_maintenance": "false"}')
+    assert client.get("/ws/connections/count").status_code == 200
+    assert client.get("/system/maintenance-info").json()["is_maintenance"] is False
+    path.write_text('{"is_maintenance": true, "title": "t"}')
+    assert client.get("/ws/connections/count").status_code == 503
+    path.write_text('{"is_maintenance": false, "title": null}')
+    assert client.get("/ws/connections/count").status_code == 503
+    response = client.get("/system/maintenance-info")
+    assert response.status_code == 200 and response.json()["title"] == "t"

@@ -138,10 +138,6 @@ class ConnectionManager:
         """
         from_thread.run(self.broadcast_to_room, room_id, message)
 
-    def broadcast_to_all_from_thread(self, message: dict) -> None:
-        """同 broadcast_to_room_from_thread，廣播給所有連線"""
-        from_thread.run(self.broadcast_to_all, message)
-
     async def broadcast_to_all(self, message: dict):
         """Broadcasts a message to all connected WebSocket clients."""
         self._enqueue_all(self.active_connections, message)

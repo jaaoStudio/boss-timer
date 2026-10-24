@@ -2,9 +2,10 @@
 import contextlib
 import json
 import tempfile
+from anyio import from_thread
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import os
 import logging
 
@@ -14,10 +15,10 @@ from app.websocket.manager import ConnectionManager
 from app.dependencies import get_current_admin_user, get_connection_manager, rate_limit
 
 class MaintenanceInfo(BaseModel):
-    is_maintenance: bool
-    is_ready_for_maintenance: bool
-    title: str
-    message: str
+    is_maintenance: bool = False
+    is_ready_for_maintenance: bool = False
+    title: str = ""
+    message: str = ""
 
 class MaintenanceConfigUpdate(BaseModel):
     is_maintenance: bool
@@ -32,31 +33,62 @@ MAINTENANCE_FILE_PATH = settings.maintenance_file or os.path.join(os.path.dirnam
 router = APIRouter(prefix="/system", tags=["system"])
 def read_maintenance_file() -> Optional[dict]:
     """
-    讀 maintenance.json，沒有或格式錯誤時回傳 None。在 event loop 上呼叫（檔案很小）；寫入以換檔完成，不會讀到一半
+    讀 maintenance.json：不存在回傳 {}（沒有維護），讀取或格式錯誤回傳 None（狀態不明）。
+    在 event loop 上呼叫（檔案很小）；程式寫入以換檔完成，不會讀到一半
     """
-    if not os.path.exists(MAINTENANCE_FILE_PATH):
-        return None
     try:
         with open(MAINTENANCE_FILE_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, IOError):
+    except FileNotFoundError:
+        return {}
+    except (json.JSONDecodeError, OSError):
         return None
     return data if isinstance(data, dict) else None
 
 
-@router.get("/maintenance-info", response_model=MaintenanceInfo, dependencies=[rate_limit("60/minute")])
-async def get_maintenance_info():
+# 上次讀到的維護狀態：變了才廣播
+last_maintenance_status = MaintenanceInfo().model_dump()
+
+
+async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
     """
-    獲取系統維護公告資訊。
-    從 maintenance.json 檔案動態讀取。
+    讀維護狀態，跟上次不同就廣播。所有維護狀態的讀取與廣播都經這裡（受保護的請求、/maintenance-info、後台切換），同一個變化只廣播一次（#86）。
+    在 event loop 上直接讀（檔案很小，寫入以換檔完成不會讀到一半）。廣播前就記下：同時的請求不會重複廣播；
+    廣播失敗時還原，下一個請求會重試
     """
-    default_info = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
+    global last_maintenance_status
     data = read_maintenance_file()
-    # 確保所有必要的鍵都存在
-    if data is None or not all(key in data for key in ["is_maintenance", "is_ready_for_maintenance", "title", "message"]):
-        return default_info
-    if data["is_maintenance"] or data["is_ready_for_maintenance"]:
-        return data
+    try:
+        # 缺的欄位補預設值；手動改檔寫錯型別（"title": null）時不放行也不回 500。受保護的路由與 /maintenance-info 用同一份驗證過的值
+        current = MaintenanceInfo.model_validate(data).model_dump()
+    except ValidationError:
+        return last_maintenance_status   # 讀到一半、格式或型別錯誤：沿用上次的狀態，不當成「沒有維護」；檔案不存在才是沒有維護
+    if current != last_maintenance_status:
+        previous, last_maintenance_status = last_maintenance_status, current
+        logging.info(f"Maintenance status changed: {current}")
+        try:
+            await manager.broadcast_to_all({"type": "maintenance_status_update", "data": current})
+        except BaseException:
+            if last_maintenance_status is current:   # 期間沒有更新的狀態才還原
+                last_maintenance_status = previous
+            raise
+    return current
+
+
+async def check_maintenance_mode(manager: ConnectionManager = Depends(get_connection_manager)):
+    """受保護路由的 dependency：維護中回 503；狀態變化時廣播"""
+    if (await refresh_maintenance_status(manager))["is_maintenance"]:
+        raise HTTPException(status_code=503, detail="Service Unavailable")
+
+
+@router.get("/maintenance-info", response_model=MaintenanceInfo, dependencies=[rate_limit("60/minute")])
+async def get_maintenance_info(manager: ConnectionManager = Depends(get_connection_manager)):
+    """
+    獲取系統維護公告資訊：與受保護的路由同一個來源（refresh_maintenance_status），讀檔失敗時兩者一致
+    """
+    info = await refresh_maintenance_status(manager)
+    if info["is_maintenance"] or info["is_ready_for_maintenance"]:
+        return info
     return {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": "everything all good."}
 
 
@@ -100,11 +132,8 @@ def update_maintenance_config(
         save_maintenance_config(config.model_dump())
         logging.info(f"Maintenance config updated by admin {current_user.email}: {config.model_dump()}")
 
-        # 立即透過 WebSocket 廣播更新的狀態：同步端點在 threadpool 執行，回到 event loop 上廣播（ADR-0010）
-        manager.broadcast_to_all_from_thread({
-            "type": "maintenance_status_update",
-            "data": config.model_dump()
-        })
+        # 立即廣播：同步端點在 threadpool 執行，回到 event loop 上（ADR-0010）
+        from_thread.run(refresh_maintenance_status, manager)
 
         return config
     except Exception as e:

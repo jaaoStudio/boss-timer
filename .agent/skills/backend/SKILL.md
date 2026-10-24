@@ -411,10 +411,10 @@ ConnectionManager
 ## 維護模式
 
 - 透過 `maintenance.json` 控制，支援熱更新
-- 正式機以 `MAINTENANCE_FILE` 指到 `/data/maintenance/maintenance.json`，掛的是主機的**目錄** `~/boss-tracker/maintenance/`，blue / green 共用同一份、換 slot 不會不見（#81，`tests/test_maintenance.py`）。**勿改回掛單一檔案**：主機上以編輯器存檔（寫新檔再換上）容器看不到，檔案不存在時 Docker 還會建立同名目錄。寫入以暫存檔 + `os.replace` 換上，另一個 slot 不會讀到寫一半。直接改主機上的檔案會生效，但 WebSocket 要等下一個受保護的 HTTP 請求才廣播
+- 正式機以 `MAINTENANCE_FILE` 指到 `/data/maintenance/maintenance.json`，掛的是主機的**目錄** `~/boss-tracker/maintenance/`，blue / green 共用同一份、換 slot 不會不見（#81，`tests/test_maintenance.py`）。**勿改回掛單一檔案**：主機上以編輯器存檔（寫新檔再換上）容器看不到，檔案不存在時 Docker 還會建立同名目錄。寫入以暫存檔 + `os.replace` 換上，另一個 slot 不會讀到寫一半。直接改主機上的檔案會生效，但 WebSocket 要等下一個受保護的請求或 `/system/maintenance-info` 才廣播
 - `is_maintenance: true` → 所有受保護路由回傳 503
 - `is_ready_for_maintenance: true` → 顯示即將維護的橫幅
-- 狀態變更時透過 WebSocket 廣播通知所有連線客戶端
+- 狀態變更時透過 WebSocket 廣播通知所有連線客戶端：一律經 `system.refresh_maintenance_status()`（跟上次讀到的狀態比，變了才廣播），受保護的請求（`system.check_maintenance_mode`）、`/system/maintenance-info` 與後台切換共用，同一個變化只廣播一次（#86），廣播前記下（同時的請求不重複廣播）、失敗時還原讓下一個請求重試；內容以 `MaintenanceInfo` 驗證（缺的欄位補預設值），檔案不存在才算沒有維護，讀取、解析或型別錯誤（例如主機上原地編輯讀到一半、`"title": null`）沿用上次的狀態；勿在端點裡另外廣播
 - Admin 可透過 `/system/maintenance-config` API 即時切換
 
 ---
@@ -486,7 +486,7 @@ ConnectionManager
 
 ### WebSocket 開發慣例
 - 新增訊息類型: 在 `routers/websocket.py` 的 `handle_message()` 中加入新的 `if msg_type == "..."` 分支
-- 廣播: 在 event loop 上（async handler）用 `await manager.broadcast_to_room()` / `broadcast_to_all()`；在 threadpool 裡（`def` 端點、`run_db` 執行的函式）用 `manager.broadcast_to_room_from_thread()` / `broadcast_to_all_from_thread()`，勿直接呼叫 async 版本（沒有 await，廣播不會執行）
+- 廣播: 在 event loop 上（async handler）用 `await manager.broadcast_to_room()` / `broadcast_to_all()`；在 threadpool 裡（`def` 端點、`run_db` 執行的函式）用 `manager.broadcast_to_room_from_thread()`，勿直接呼叫 async 版本（沒有 await，廣播不會執行）。維護狀態一律經 `system.refresh_maintenance_status()`（見「維護模式」），勿另外廣播
 - 所有 WebSocket 訊息須做好安全驗證 (如檢查送訊者是否在目標房間內)
 - **⚠️ DB Session 模式**: WebSocket endpoint **不可**使用 `Depends(get_db)` — 這會讓 DB 連線長持整個 WS 生命週期導致 connection pool 耗盡。改用 `with SessionLocal() as db:` 短暫取用，用完即還給 pool。**查資料庫的部分寫成同步函式、經 `run_db()` 執行**（拿資料庫鎖、在 threadpool；`_record_boss`，session 在函式裡開。唯一例外是加入房間：訂閱也要在鎖裡，所以自己 `async with db_lock()`），handler 本身留在 event loop 上操作 `ConnectionManager`（它的狀態不是 thread-safe，勿整段丟進 threadpool，ADR-0010）
 - **`ping` 訊息**直接回 `pong` 並 `continue`，不進 `handle_message`、不碰資料庫
