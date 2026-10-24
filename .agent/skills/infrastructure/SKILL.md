@@ -149,10 +149,12 @@ services:
 | `db` | PostgreSQL，只綁 `127.0.0.1:15432`，持久化 volume |
 | `redis` | Celery Broker |
 | `celery_worker_fast` / `celery_worker_discord` | 共用 `ACTIVE_TAG` image，不分 blue/green |
-| `boss_service_blue` / `boss_service_green` | 後端，各用 `BLUE_TAG` / `GREEN_TAG`，有 healthcheck，不對外開埠 |
-| `boss_timer_nginx_blue` / `boss_timer_nginx_green` | 前端 nginx，掛載 `frontend/nginx/nginx-<slot>.conf`（`/api/` 轉給同 slot 後端）；**不帶 traefik labels**，由 Traefik 檔案設定的 `boss-frontend-<slot>@file` 連線 |
+| `boss_service_blue` / `boss_service_green` | 後端，各用 `BLUE_TAG` / `GREEN_TAG`，有 healthcheck，不對外開埠；接 `boss_network`（db / redis）與自己 slot 的網路 `boss_<slot>`，在後者的別名是 `boss_service` |
+| `boss_timer_nginx_blue` / `boss_timer_nginx_green` | 前端 nginx，用映像內建的 `frontend/nginx/nginx.conf`（`/api/` 轉給 `boss_service:1254`，以 `resolve` 定期重新解析，後端重啟換了 IP 也跟得上）；只接 `boss_<slot>` 與 `traefik-net`，所以只連得到同 slot 的後端；**不帶 traefik labels**，由 Traefik 檔案設定的 `boss-frontend-<slot>@file` 連線 |
 
 **所有服務指定 `platform: linux/arm64`**，確保拉取 ARM 映像。
+
+blue / green 的共用設定在檔案開頭的 `x-backend` / `x-nginx`（YAML anchor），兩邊只差 tag、`container_name`、`depends_on` 與網路（`tests/test_deploy.py`）。`<<:` 只合併第一層，單一 slot 寫 `environment` 等鍵會整段取代共用的設定，要改就改 anchor。nginx 設定只有一份（#50），本機 compose 與正式機共用，**勿再掛各 slot 的設定檔**，也**勿讓 nginx 接 `boss_network` 或在那裡加 `boss_service` 別名**：兩個後端都在 `boss_network`，同名別名會讓 nginx 隨機轉給兩邊，同一房間拆成兩群。
 
 ---
 
@@ -275,7 +277,6 @@ repo 的 `deploy/` 對應正式機的 `~/boss-tracker/`，Traefik 設定對應 `
 | `deploy/deploy.sh`、`rollback.sh`、`lib.sh` | `~/boss-tracker/` | 部署 / 回滾腳本 |
 | `deploy/sync_cloudflare_ips.py` | `~/boss-tracker/` | 每日 cron，見下方 cf-only |
 | `deploy/docker-compose.yaml` | `~/boss-tracker/docker-compose.yaml` | 正式機實際使用的 compose（blue/green） |
-| `deploy/frontend/nginx/nginx-{blue,green}.conf` | `~/boss-tracker/frontend/nginx/` | 各 slot 的 nginx，`/api/` 轉給同 slot 的後端 |
 | `deploy/traefik/dynamic/boss-services.yml` | `/opt/traefik/dynamic/` | blue/green service（刻意不設 healthCheck，見檔案註解） |
 | `deploy/traefik/dynamic/boss-timer.yml` | `/opt/traefik/dynamic/` | 路由；`service:` 行由 `lib.sh` 改寫，正式機上的值代表目前 slot，**同步時保留正式機的 slot** |
 

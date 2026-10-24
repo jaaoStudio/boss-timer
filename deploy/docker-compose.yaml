@@ -1,5 +1,42 @@
 # 正式機路徑：~/boss-tracker/docker-compose.yaml（blue/green 部署實際使用的設定，以此為準）
 # 前端 nginx 不帶 traefik labels，service 由 deploy/traefik/dynamic/boss-services.yml 定義（見 infrastructure skill）
+# blue / green 共用的設定（YAML anchor 要先定義才能引用，所以放在 services 前面）
+# <<: 只合併第一層：在單一 slot 寫 environment / depends_on / healthcheck / volumes 會整段取代這裡的設定，要改就改這裡
+x-backend: &backend
+  platform: linux/arm64
+  command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
+  env_file: .env
+  volumes:
+    - ./maintenance:/data/maintenance   # 掛目錄不掛單一檔案：換檔寫入、主機上編輯都看得到，兩個 slot 共用（#81）
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_started
+  restart: unless-stopped
+  environment:
+    - ENV=production
+    - REDIS_URL=redis://redis:6379/0
+    - MAINTENANCE_FILE=/data/maintenance/maintenance.json
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 120s   # 與 lib.sh 的 --wait-timeout 相同：等後端的 2 分鐘全程每 2 秒檢查
+    start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
+
+x-nginx: &nginx
+  platform: linux/arm64
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:80"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 30s
+    start_interval: 2s   # start_interval 只在 start_period 內生效
+
 services:
 
   # ── 基礎設施（共用，不參與藍綠）──────────────────
@@ -65,108 +102,56 @@ services:
       - redis
       - db
 
-  # ── Blue ──────────────────────────────────────────
+  # ── Blue / Green ──────────────────────────────────
+  # 兩個 slot 只差 tag、container_name、depends_on 與網路，共用設定在檔案開頭的 x-backend / x-nginx。
+  # 每個 slot 一個專用網路，後端在上面的別名是 boss_service，nginx 照映像內建的 nginx.conf 轉給它（#50）；
+  # nginx 不接 boss_network：兩個後端都在那裡，同名別名會讓 nginx 隨機轉給兩邊
   boss_service_blue:
+    <<: *backend
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${BLUE_TAG}
-    platform: linux/arm64
     container_name: boss_service_blue
-    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
-    env_file: .env
-    volumes:
-      - ./maintenance:/data/maintenance   # 掛目錄不掛單一檔案：換檔寫入、主機上編輯都看得到，兩個 slot 共用（#81）
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    restart: unless-stopped
     networks:
-      - boss_network
-    environment:
-      - ENV=production
-      - REDIS_URL=redis://redis:6379/0
-      - MAINTENANCE_FILE=/data/maintenance/maintenance.json
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s   # 與 lib.sh 的 --wait-timeout 相同：等後端的 2 分鐘全程每 2 秒檢查
-      start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
+      boss_network: {}
+      boss_blue:
+        aliases: [boss_service]
 
   boss_timer_nginx_blue:
+    <<: *nginx
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${BLUE_TAG}
-    platform: linux/arm64
     container_name: boss_timer_nginx_blue
-    volumes:
-      - ./frontend/nginx/nginx-blue.conf:/etc/nginx/nginx.conf:ro
-    restart: unless-stopped
     networks:
-      - boss_network
+      - boss_blue
       - traefik-net
     depends_on:
       boss_service_blue:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-      start_interval: 2s   # start_interval 只在 start_period 內生效
 
-  # ── Green ─────────────────────────────────────────
   boss_service_green:
+    <<: *backend
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_service:${GREEN_TAG}
-    platform: linux/arm64
     container_name: boss_service_green
-    command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"
-    env_file: .env
-    volumes:
-      - ./maintenance:/data/maintenance   # 掛目錄不掛單一檔案：換檔寫入、主機上編輯都看得到，兩個 slot 共用（#81）
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
-    restart: unless-stopped
     networks:
-      - boss_network
-    environment:
-      - ENV=production
-      - REDIS_URL=redis://redis:6379/0
-      - MAINTENANCE_FILE=/data/maintenance/maintenance.json
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:1254/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 120s   # 與 lib.sh 的 --wait-timeout 相同：等後端的 2 分鐘全程每 2 秒檢查
-      start_interval: 2s   # 啟動期間每 2 秒檢查，部署時 compose --wait 才不必等滿 30 秒的 interval（Docker 25+）
+      boss_network: {}
+      boss_green:
+        aliases: [boss_service]
 
   boss_timer_nginx_green:
+    <<: *nginx
     image: ${REMOTE_REGISTRY_IP}/boss_service/boss_timer_nginx:${GREEN_TAG}
-    platform: linux/arm64
     container_name: boss_timer_nginx_green
-    volumes:
-      - ./frontend/nginx/nginx-green.conf:/etc/nginx/nginx.conf:ro
-    restart: unless-stopped
     networks:
-      - boss_network
+      - boss_green
       - traefik-net
     depends_on:
       boss_service_green:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:80"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
-      start_interval: 2s   # start_interval 只在 start_period 內生效
 
 networks:
   boss_network:
+    driver: bridge
+  boss_blue:
+    driver: bridge
+  boss_green:
     driver: bridge
   traefik-net:
     external: true
