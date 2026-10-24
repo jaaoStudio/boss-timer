@@ -5,7 +5,7 @@ import tempfile
 from anyio import from_thread
 from typing import Optional
 from fastapi import APIRouter, HTTPException, Depends, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 import os
 import logging
 
@@ -15,10 +15,10 @@ from app.websocket.manager import ConnectionManager
 from app.dependencies import get_current_admin_user, get_connection_manager, rate_limit
 
 class MaintenanceInfo(BaseModel):
-    is_maintenance: bool
-    is_ready_for_maintenance: bool
-    title: str
-    message: str
+    is_maintenance: bool = False
+    is_ready_for_maintenance: bool = False
+    title: str = ""
+    message: str = ""
 
 class MaintenanceConfigUpdate(BaseModel):
     is_maintenance: bool
@@ -47,7 +47,7 @@ def read_maintenance_file() -> Optional[dict]:
 
 
 # 上次讀到的維護狀態：變了才廣播
-last_maintenance_status = {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": ""}
+last_maintenance_status = MaintenanceInfo().model_dump()
 
 
 async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
@@ -58,14 +58,11 @@ async def refresh_maintenance_status(manager: ConnectionManager) -> dict:
     """
     global last_maintenance_status
     data = read_maintenance_file()
-    if data is None:
-        return last_maintenance_status   # 讀到一半或格式錯誤：沿用上次的狀態，不當成「沒有維護」；檔案不存在才是沒有維護
-    current = {
-        "is_maintenance": data.get("is_maintenance", False),
-        "is_ready_for_maintenance": data.get("is_ready_for_maintenance", False),
-        "title": data.get("title", ""),
-        "message": data.get("message", ""),
-    }
+    try:
+        # 缺的欄位補預設值；手動改檔寫錯型別（"title": null）時不放行也不回 500。受保護的路由與 /maintenance-info 用同一份驗證過的值
+        current = MaintenanceInfo.model_validate(data).model_dump()
+    except ValidationError:
+        return last_maintenance_status   # 讀到一半、格式或型別錯誤：沿用上次的狀態，不當成「沒有維護」；檔案不存在才是沒有維護
     if current != last_maintenance_status:
         previous, last_maintenance_status = last_maintenance_status, current
         logging.info(f"Maintenance status changed: {current}")
@@ -89,9 +86,9 @@ async def get_maintenance_info(manager: ConnectionManager = Depends(get_connecti
     """
     獲取系統維護公告資訊：與受保護的路由同一個來源（refresh_maintenance_status），讀檔失敗時兩者一致
     """
-    status = await refresh_maintenance_status(manager)
-    if status["is_maintenance"] or status["is_ready_for_maintenance"]:
-        return status
+    info = await refresh_maintenance_status(manager)
+    if info["is_maintenance"] or info["is_ready_for_maintenance"]:
+        return info
     return {"is_maintenance": False, "is_ready_for_maintenance": False, "title": "", "message": "everything all good."}
 
 

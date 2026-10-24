@@ -161,3 +161,25 @@ def test_info_endpoint_agrees_with_protected_routes_when_file_is_unreadable(tmp_
     client = TestClient(main.app)
     assert client.get("/ws/connections/count").status_code == 503
     assert client.get("/system/maintenance-info").json()["is_maintenance"] is True
+
+
+def test_file_values_are_validated_once_for_both_paths(tmp_path, monkeypatch):
+    # 手動改檔寫成 "false"（字串）時，受保護的路由當成真（503）、/maintenance-info 卻轉成 false；title 寫成 null 時 /maintenance-info 回 500。
+    # 讀到的內容先以 MaintenanceInfo 驗證，兩條路徑用同一份值；驗證不過當成讀取失敗，沿用上次的狀態
+    from fastapi.testclient import TestClient
+
+    import app.main as main
+
+    path = tmp_path / "maintenance.json"
+    monkeypatch.setattr(system, "MAINTENANCE_FILE_PATH", str(path))
+    monkeypatch.setattr(system, "last_maintenance_status", dict(system.last_maintenance_status))
+    client = TestClient(main.app)
+    path.write_text('{"is_maintenance": "false"}')
+    assert client.get("/ws/connections/count").status_code == 200
+    assert client.get("/system/maintenance-info").json()["is_maintenance"] is False
+    path.write_text('{"is_maintenance": true, "title": "t"}')
+    assert client.get("/ws/connections/count").status_code == 503
+    path.write_text('{"is_maintenance": false, "title": null}')
+    assert client.get("/ws/connections/count").status_code == 503
+    response = client.get("/system/maintenance-info")
+    assert response.status_code == 200 and response.json()["title"] == "t"
