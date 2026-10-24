@@ -1,6 +1,7 @@
 # 正式機路徑：~/boss-tracker/docker-compose.yaml（blue/green 部署實際使用的設定，以此為準）
 # 前端 nginx 不帶 traefik labels，service 由 deploy/traefik/dynamic/boss-services.yml 定義（見 infrastructure skill）
 # blue / green 共用的設定（YAML anchor 要先定義才能引用，所以放在 services 前面）
+# <<: 只合併第一層：在單一 slot 寫 environment / depends_on / healthcheck / volumes 會整段取代這裡的設定，要改就改這裡
 x-backend: &backend
   platform: linux/arm64
   command: sh -c "uvicorn app.main:app --host 0.0.0.0 --port 1254 --root-path /api --proxy-headers --forwarded-allow-ips='*'"

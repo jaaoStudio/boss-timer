@@ -49,7 +49,9 @@ def test_nginx_reaches_only_its_own_slot_backend():
 
 def test_nginx_uses_the_config_built_into_the_image():
     # 只留 frontend/nginx/nginx.conf 一份：正式機不再掛各 slot 的設定檔，回滾到舊映像也是同一份設定
-    assert "server boss_service:1254;" in (ROOT / "frontend/nginx/nginx.conf").read_text()
+    conf = (ROOT / "frontend/nginx/nginx.conf").read_text()
+    assert "server boss_service:1254 resolve;" in conf   # 後端重啟換了 IP 時跟著更新，否則一直回 502
+    assert "resolver 127.0.0.11" in conf
     assert not (ROOT / "deploy/frontend").exists()
     for slot in SLOTS:
         assert "volumes" not in _services()[f"boss_timer_nginx_{slot}"], slot

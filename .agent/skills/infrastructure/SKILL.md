@@ -150,11 +150,11 @@ services:
 | `redis` | Celery Broker |
 | `celery_worker_fast` / `celery_worker_discord` | 共用 `ACTIVE_TAG` image，不分 blue/green |
 | `boss_service_blue` / `boss_service_green` | 後端，各用 `BLUE_TAG` / `GREEN_TAG`，有 healthcheck，不對外開埠；接 `boss_network`（db / redis）與自己 slot 的網路 `boss_<slot>`，在後者的別名是 `boss_service` |
-| `boss_timer_nginx_blue` / `boss_timer_nginx_green` | 前端 nginx，用映像內建的 `frontend/nginx/nginx.conf`（`/api/` 轉給 `boss_service:1254`）；只接 `boss_<slot>` 與 `traefik-net`，所以只連得到同 slot 的後端；**不帶 traefik labels**，由 Traefik 檔案設定的 `boss-frontend-<slot>@file` 連線 |
+| `boss_timer_nginx_blue` / `boss_timer_nginx_green` | 前端 nginx，用映像內建的 `frontend/nginx/nginx.conf`（`/api/` 轉給 `boss_service:1254`，以 `resolve` 定期重新解析，後端重啟換了 IP 也跟得上）；只接 `boss_<slot>` 與 `traefik-net`，所以只連得到同 slot 的後端；**不帶 traefik labels**，由 Traefik 檔案設定的 `boss-frontend-<slot>@file` 連線 |
 
 **所有服務指定 `platform: linux/arm64`**，確保拉取 ARM 映像。
 
-blue / green 的共用設定在檔案開頭的 `x-backend` / `x-nginx`（YAML anchor），兩邊只差 tag、`container_name`、`depends_on` 與網路（`tests/test_deploy.py`）。nginx 設定只有一份（#50），本機 compose 與正式機共用，**勿再掛各 slot 的設定檔**，也**勿讓 nginx 接 `boss_network` 或在那裡加 `boss_service` 別名**：兩個後端都在 `boss_network`，同名別名會讓 nginx 隨機轉給兩邊，同一房間拆成兩群。
+blue / green 的共用設定在檔案開頭的 `x-backend` / `x-nginx`（YAML anchor），兩邊只差 tag、`container_name`、`depends_on` 與網路（`tests/test_deploy.py`）。`<<:` 只合併第一層，單一 slot 寫 `environment` 等鍵會整段取代共用的設定，要改就改 anchor。nginx 設定只有一份（#50），本機 compose 與正式機共用，**勿再掛各 slot 的設定檔**，也**勿讓 nginx 接 `boss_network` 或在那裡加 `boss_service` 別名**：兩個後端都在 `boss_network`，同名別名會讓 nginx 隨機轉給兩邊，同一房間拆成兩群。
 
 ---
 
